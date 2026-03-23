@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ticker Display Setup",
+        "description": "Set up Ticker Display. After installation, find the editor in the sidebar."
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ticker Display Einrichtung",
+        "description": "Ticker Display einrichten. Nach der Installation findest du den Editor in der Seitenleiste."
+      }
+    }
+  }
+}

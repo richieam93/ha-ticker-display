@@ -1,0 +1,13 @@
+{
+  "domain": "ticker_display",
+  "name": "Ticker Display",
+  "version": "1.0.1",
+  "documentation": "https://github.com/richieam93/ha-ticker-display",
+  "issue_tracker": "https://github.com/richieam93/ha-ticker-display/issues",
+  "requirements": [],
+  "dependencies": ["http", "websocket_api"],
+  "codeowners": ["@richieam93"],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "homeassistant": "2023.1"
+}

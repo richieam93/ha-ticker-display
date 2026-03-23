@@ -1,0 +1,76 @@
+/* ══ TICKER ══ */
+.ticker-bar{
+  height:var(--td-ticker-height,36px);background:var(--td-ticker-bg,rgba(255,255,255,.03));
+  border-top:1px solid rgba(255,255,255,.05);overflow:hidden;position:relative;width:100%;
+}
+.ticker-content{display:inline-flex;align-items:center;height:100%;white-space:nowrap;will-change:transform}
+.ticker-content.scrolling{animation:tickerScroll var(--ticker-duration,30s) linear infinite}
+.ticker-item{display:inline-flex;align-items:center;gap:6px;padding:0 20px;font-size:14px;color:var(--td-text-secondary);flex-shrink:0}
+.ticker-item .ticker-icon{font-size:16px}
+.ticker-item .ticker-icon svg{width:16px;height:16px;fill:currentColor}
+.ticker-separator{color:rgba(255,255,255,.1);padding:0 4px;flex-shrink:0}
+@keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* ══ ALERTS ══ */
+.alert-overlay{
+  position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:40px;animation:alertIn .3s ease;
+}
+.alert-overlay.severity-info{background:rgba(33,150,243,.92)}
+.alert-overlay.severity-warning{background:rgba(255,152,0,.92)}
+.alert-overlay.severity-critical{background:rgba(244,67,54,.92);animation:alertIn .3s ease,alertPulse 1.5s ease infinite}
+.alert-icon{font-size:64px;margin-bottom:20px}
+.alert-title{font-size:36px;font-weight:700;margin-bottom:12px;color:white}
+.alert-message{font-size:20px;color:rgba(255,255,255,.9);max-width:600px}
+.alert-timer{margin-top:24px;font-size:14px;color:rgba(255,255,255,.5)}
+@keyframes alertIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+@keyframes alertPulse{0%,100%{opacity:1}50%{opacity:.8}}
+
+.notification-banner{
+  position:fixed;top:0;left:0;right:0;padding:16px 24px;z-index:900;
+  display:flex;align-items:center;gap:12px;animation:slideDown .3s ease;color:white;font-size:16px;
+}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+
+.toast-container{position:fixed;bottom:60px;right:20px;z-index:800;animation:toastIn .3s ease}
+.toast-message{background:rgba(50,50,50,.95);color:white;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+@keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.pip-container{position:fixed;z-index:700;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.1)}
+.pip-container.top-right{top:16px;right:16px}
+.pip-container.top-left{top:16px;left:16px}
+.pip-container.bottom-right{bottom:52px;right:16px}
+.pip-container.bottom-left{bottom:52px;left:16px}
+.pip-container.small{width:15%}
+.pip-container.medium{width:25%}
+.pip-container.large{width:35%}
+.pip-image{width:100%;display:block}
+
+/* ══ TRANSITIONS ══ */
+.screen-enter-fade{animation:fadeIn .5s ease forwards}
+.screen-exit-fade{animation:fadeOut .5s ease forwards}
+.screen-enter-slide{animation:slideInRight .5s ease forwards}
+.screen-exit-slide{animation:slideOutLeft .5s ease forwards}
+.screen-enter-flip{animation:flipIn .6s ease forwards}
+.screen-exit-flip{animation:flipOut .6s ease forwards}
+.screen-enter-zoom{animation:zoomIn .4s ease forwards}
+.screen-exit-zoom{animation:zoomOut .4s ease forwards}
+
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+@keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes slideOutLeft{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+@keyframes flipIn{from{transform:perspective(800px) rotateY(90deg);opacity:0}to{transform:perspective(800px) rotateY(0);opacity:1}}
+@keyframes flipOut{from{transform:perspective(800px) rotateY(0);opacity:1}to{transform:perspective(800px) rotateY(-90deg);opacity:0}}
+@keyframes zoomIn{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes zoomOut{from{transform:scale(1);opacity:1}to{transform:scale(1.2);opacity:0}}
+
+/* ══ WIDGET ANIMATIONS ══ */
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.animate-pulse{animation:pulse 2s ease infinite}
+.animate-blink{animation:blink 1s ease infinite}
+.animate-shake{animation:shake .3s ease}
+.animate-bounce{animation:bounce .5s ease}
