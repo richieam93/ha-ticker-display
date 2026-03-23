@@ -1,0 +1,373 @@
+show_dashboard:
+  name: Show dashboard
+  description: Show the dashboard screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+show_graph:
+  name: Show graph
+  description: Show a graph screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+show_camera:
+  name: Show camera
+  description: Show a camera screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    entity_id:
+      name: Camera entity
+      description: Camera entity to display.
+      example: "camera.front_door"
+
+show_weather:
+  name: Show weather
+  description: Show a weather screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    entity_id:
+      name: Weather entity
+      description: Weather entity to display.
+      example: "weather.home"
+
+show_single_value:
+  name: Show single value
+  description: Show a single-value screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    entity_id:
+      name: Entity
+      description: Entity to display.
+      example: "sensor.temperature"
+
+show_clock:
+  name: Show clock
+  description: Show a clock screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+show_status_board:
+  name: Show status board
+  description: Show a status board screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+show_image:
+  name: Show image
+  description: Show an image screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    image_url:
+      name: Image URL
+      description: Image URL to display.
+      example: "/ticker-display/media/images/example.png"
+
+show_template:
+  name: Show template
+  description: Show a saved template on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    template_id:
+      name: Template ID
+      description: Saved template ID.
+      example: "template_123"
+
+show_alert:
+  name: Show alert
+  description: Show an alert on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    title:
+      name: Title
+      description: Alert title.
+      example: "Alarm"
+    message:
+      name: Message
+      description: Alert message.
+      example: "Bewegung erkannt"
+    severity:
+      name: Severity
+      description: Alert severity.
+      example: "warning"
+    mode:
+      name: Mode
+      description: Alert mode.
+      example: "fullscreen"
+    sound:
+      name: Sound
+      description: Sound ID to play.
+      example: "alarm"
+
+show_notification:
+  name: Show notification
+  description: Show a notification banner on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    title:
+      name: Title
+      description: Notification title.
+      example: "Info"
+    message:
+      name: Message
+      description: Notification text.
+      example: "Waschmaschine fertig"
+
+show_toast:
+  name: Show toast
+  description: Show a toast message on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    message:
+      name: Message
+      description: Toast text.
+      example: "Willkommen"
+
+clear_alert:
+  name: Clear alert
+  description: Clear active alerts on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+send_ticker_message:
+  name: Send ticker message
+  description: Send one or more ticker messages to one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    message:
+      name: Message
+      description: Single ticker message.
+      example: "Willkommen zuhause"
+    messages:
+      name: Messages
+      description: List of ticker messages.
+      example: '[{"text":"Message 1"},{"text":"Message 2"}]'
+
+set_ticker_entities:
+  name: Set ticker entities
+  description: Configure ticker entities on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    entities:
+      name: Entities
+      description: List of entity configs.
+      example: '[{"entity_id":"sensor.temp","template":"{friendly_name}: {state}{unit}"}]'
+
+clear_ticker:
+  name: Clear ticker
+  description: Clear ticker content on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+set_screen_power:
+  name: Set screen power
+  description: Turn screen on or off on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    power:
+      name: Power
+      description: True to turn on, false to turn off.
+      example: true
+
+set_brightness:
+  name: Set brightness
+  description: Set display brightness on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    brightness:
+      name: Brightness
+      description: Brightness percentage.
+      example: 80
+
+set_theme:
+  name: Set theme
+  description: Apply a theme on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+set_volume:
+  name: Set volume
+  description: Set volume on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    volume:
+      name: Volume
+      description: Volume percentage.
+      example: 50
+
+play_sound:
+  name: Play sound
+  description: Play a sound on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    sound:
+      name: Sound
+      description: Sound ID to play.
+      example: "doorbell"
+    volume:
+      name: Volume
+      description: Volume percentage.
+      example: 100
+    loop:
+      name: Loop
+      description: Whether the sound should loop.
+      example: false
+
+tts_speak:
+  name: TTS speak
+  description: Speak text on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    message:
+      name: Message
+      description: Text to speak.
+      example: "Achtung, die Haustür wurde geöffnet"
+    language:
+      name: Language
+      description: Language code.
+      example: "de"
+    volume:
+      name: Volume
+      description: Volume percentage.
+      example: 70
+
+stop_audio:
+  name: Stop audio
+  description: Stop audio playback on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+next_screen:
+  name: Next screen
+  description: Go to the next screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+previous_screen:
+  name: Previous screen
+  description: Go to the previous screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+goto_screen:
+  name: Go to screen
+  description: Go to a specific screen on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    screen_id:
+      name: Screen ID
+      description: Screen ID or screen name.
+      example: "screen_1"
+
+pause_rotation:
+  name: Pause rotation
+  description: Pause screen rotation on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+resume_rotation:
+  name: Resume rotation
+  description: Resume screen rotation on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+reload_page:
+  name: Reload page
+  description: Reload the display page on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+
+identify_device:
+  name: Identify device
+  description: Flash an identification overlay on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
