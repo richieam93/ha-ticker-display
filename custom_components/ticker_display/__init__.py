@@ -32,6 +32,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Ticker Display from a config entry."""
     _LOGGER.info("Setting up Ticker Display integration")
 
+    # Wichtig: auch hier absichern, damit kein KeyError entsteht
+    hass.data.setdefault(DOMAIN, {})
+
     store = TickerDisplayStore(hass)
     await store.async_load()
 
@@ -86,7 +89,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         if entry_data is not None:
             coordinator = entry_data.get("coordinator")
-            if coordinator and hasattr(coordinator, "_unsub_timer") and coordinator._unsub_timer:
+            if (
+                coordinator
+                and hasattr(coordinator, "_unsub_timer")
+                and coordinator._unsub_timer
+            ):
                 coordinator._unsub_timer()
                 coordinator._unsub_timer = None
 
