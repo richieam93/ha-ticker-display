@@ -1,0 +1,5 @@
+{
+  "name": "ticker_display",
+  "render_readme": true,
+  "homeassistant": "2023.1.0"
+}
