@@ -32,7 +32,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Ticker Display from a config entry."""
     _LOGGER.info("Setting up Ticker Display integration")
 
-    # Wichtig: auch hier absichern, damit kein KeyError entsteht
     hass.data.setdefault(DOMAIN, {})
 
     store = TickerDisplayStore(hass)
@@ -68,7 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "name": "ticker-display-panel",
                 "embed_iframe": False,
                 "trust_external": False,
-                "js_url": PANEL_URL,
+                "module_url": PANEL_URL,
             }
         },
         require_admin=True,
