@@ -120,15 +120,24 @@ class WebSocketClient {
       try {
         this.ws = new WebSocket(this.app.wsUrl);
         this.ws.onopen = () => {
-          this._connected = true; this._reconnectDelay = 1000;
-          document.getElementById("offline-screen").hidden = true;
+          this._connected = true;
+          this._reconnectDelay = 1000;
+          const offline = document.getElementById("offline-screen");
+          if (offline) offline.hidden = true;
+
           this.send({ type: "subscribe", entities: this.app.neededEntities });
+
+          if (this.app && typeof this.app.reportSensorsNow === "function") {
+            this.app.reportSensorsNow();
+          }
+
           resolve();
         };
         this.ws.onmessage = (e) => { try { this._handleMessage(JSON.parse(e.data)); } catch (err) { } };
         this.ws.onclose = () => {
           this._connected = false;
-          document.getElementById("offline-screen").hidden = false;
+          const offline = document.getElementById("offline-screen");
+          if (offline) offline.hidden = false;
           this._scheduleReconnect();
         };
         this.ws.onerror = (err) => reject(err);
@@ -602,10 +611,21 @@ class TickerDisplayApp {
   onConfigChanged(cfg) { this.config = cfg; this.screenManager.rebuild(); this.tickerManager.rebuild(); try { localStorage.setItem("ticker_config_cache", JSON.stringify(cfg)); } catch (e) { } }
   onThemeChanged(data) { this.themeManager.applyDynamic(data); }
 
+  reportSensorsNow() {
+    if (!this.bridge || !this.bridge.isAvailable()) return;
+    const d = this.bridge.getAllSensorData();
+    if (d && this.wsClient?.isConnected()) {
+      this.wsClient.send({
+        type: "sensor_update",
+        data: { device_id: this.deviceId, ...d }
+      });
+    }
+  }
+
   _startSensorReporting() {
     if (!this.bridge.isAvailable()) return;
-    const report = () => { const d = this.bridge.getAllSensorData(); if (d && this.wsClient?.isConnected()) this.wsClient.send({ type: "sensor_update", data: { device_id: this.deviceId, ...d } }); };
-    setInterval(report, 30000); setTimeout(report, 2000);
+    this._sensorTimer = setInterval(() => this.reportSensorsNow(), 30000);
+    setTimeout(() => this.reportSensorsNow(), 2000);
   }
 
   _showIdentify() {
