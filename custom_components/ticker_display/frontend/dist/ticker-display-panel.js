@@ -894,7 +894,22 @@ class TdScreenEditor extends LitElement {
       ]},
       { n: "Graphen", items: [
         { t: "mini-graph", i: "📉", l: "Mini Graph" },
+        { t: "area-chart", i: "🟦", l: "Flächenlinie" },
+        { t: "multi-line-chart", i: "📈", l: "Mehrere Linien" },
         { t: "bar-chart", i: "📊", l: "Balken" },
+        { t: "stacked-bar-chart", i: "📚", l: "Gestapelte Balken" },
+        { t: "horizontal-bar-chart", i: "↔️", l: "Horizontale Balken" },
+        { t: "donut-chart", i: "🍩", l: "Donut" },
+        { t: "pie-chart", i: "🥧", l: "Pie" },
+        { t: "radar-chart", i: "🕸️", l: "Radar" },
+        { t: "heatmap-mini", i: "🔥", l: "Heatmap Mini" },
+        { t: "timeline-chart", i: "📍", l: "Timeline" },
+        { t: "scatter-chart", i: "✳️", l: "Scatter" },
+        { t: "forecast-chart", i: "🌦️", l: "Forecast" },
+        { t: "energy-flow-mini", i: "⚡", l: "Energy Flow" },
+        { t: "comparison-chart", i: "⚖️", l: "Vergleich" },
+        { t: "radial-gauge-advanced", i: "🎛️", l: "Radial Gauge+" },
+        { t: "bullet-chart", i: "🎯", l: "Bullet" },
         { t: "sparkline", i: "〰️", l: "Sparkline" },
       ]},
       { n: "Media", items: [
@@ -941,7 +956,7 @@ class TdScreenEditor extends LitElement {
     }
 
     const els = [];
-    const ti = { "simple-value": "🔢", gauge: "🎯", "progress-bar": "📊", "status-dot": "🔵", camera: "📹", clock: "🕐", weather: "🌤️", "mini-graph": "📉", image: "🖼️" };
+    const ti = { "simple-value": "🔢", gauge: "🎯", "progress-bar": "📊", "status-dot": "🔵", camera: "📹", clock: "🕐", weather: "🌤️", "mini-graph": "📉", "area-chart": "🟦", "multi-line-chart": "📈", "stacked-bar-chart": "📚", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "📍", "scatter-chart": "✳️", "forecast-chart": "🌦️", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", image: "🖼️" };
 
     for (let i = 0; i < widgets.length; i++) {
       const w = widgets[i];
@@ -987,7 +1002,7 @@ class TdScreenEditor extends LitElement {
 
   _properties() {
     if (this._sel < 0 || !this._cfg.widgets?.[this._sel]) {
-      return html`<div class="props"><div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div></div>`;
+      return html`<div class="props"><div class="pg4">Screen Style</div><div class="pf2"><label>Hintergrundfarbe</label><input .value=${this._cfg.backgroundColor || ""} placeholder="#121212" @input=${(e) => this._cfg = { ...this._cfg, backgroundColor: e.target.value }}></div><div class="pf2"><label>Hintergrundbild</label><input .value=${this._cfg.backgroundImage || ""} placeholder="/ticker-display/media/images/dein-bild.png" @input=${(e) => this._cfg = { ...this._cfg, backgroundImage: e.target.value }}></div><div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.backgroundSize || "cover"} @change=${(e) => this._cfg = { ...this._cfg, backgroundSize: e.target.value }}><option value="cover">Cover</option><option value="contain">Contain</option><option value="auto">Auto</option></select></div><div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div></div>`;
     }
 
     const w = this._cfg.widgets[this._sel];
@@ -998,6 +1013,21 @@ class TdScreenEditor extends LitElement {
       { v: "status-dot", l: "Status Punkt" },
       { v: "icon-value", l: "Icon+Wert" },
       { v: "mini-graph", l: "Mini Graph" },
+      { v: "area-chart", l: "Area Chart" },
+      { v: "multi-line-chart", l: "Multi Line Chart" },
+      { v: "stacked-bar-chart", l: "Stacked Bar Chart" },
+      { v: "horizontal-bar-chart", l: "Horizontal Bar Chart" },
+      { v: "donut-chart", l: "Donut Chart" },
+      { v: "pie-chart", l: "Pie Chart" },
+      { v: "radar-chart", l: "Radar Chart" },
+      { v: "heatmap-mini", l: "Heatmap Mini" },
+      { v: "timeline-chart", l: "Timeline Chart" },
+      { v: "scatter-chart", l: "Scatter Chart" },
+      { v: "forecast-chart", l: "Forecast Chart" },
+      { v: "energy-flow-mini", l: "Energy Flow Mini" },
+      { v: "comparison-chart", l: "Comparison Chart" },
+      { v: "radial-gauge-advanced", l: "Radial Gauge Advanced" },
+      { v: "bullet-chart", l: "Bullet Chart" },
       { v: "camera", l: "Kamera" },
       { v: "clock", l: "Uhr" },
       { v: "weather", l: "Wetter" },
@@ -1053,10 +1083,18 @@ class TdScreenEditor extends LitElement {
           ${w.type === "camera" ? html`
             <div class="pg4">Kamera</div>
             <div class="pf2"><label>Refresh (s)</label><input type="number" min="1" .value=${w.config?.refresh_interval || 5} @change=${(e) => this._uwc("refresh_interval", +e.target.value)}></div>
+            <div class="pf2"><label>Kamera Quelle</label><select .value=${w.config?.camera_source || "auto"} @change=${(e) => this._uwc("camera_source", e.target.value)}><option value="auto">Auto</option><option value="entity_picture">entity_picture</option><option value="camera_proxy">Camera Proxy</option><option value="stream">Stream Snapshot</option></select></div>
           ` : ""}
           ${w.type === "image" ? html`
             <div class="pg4">Bild</div>
             <div class="pf2"><label>Bild-URL</label><input .value=${w.imageUrl || ""} placeholder="/ticker-display/media/images/xyz.png" @input=${(e) => this._uw("imageUrl", e.target.value)}></div>
+          ` : ""}
+          ${["mini-graph","area-chart","multi-line-chart","bar-chart","stacked-bar-chart","horizontal-bar-chart","donut-chart","pie-chart","radar-chart","heatmap-mini","timeline-chart","scatter-chart","forecast-chart","energy-flow-mini","comparison-chart","radial-gauge-advanced","bullet-chart","sparkline"].includes(w.type) ? html`
+            <div class="pg4">Chart</div>
+            <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
+            <div class="pf2"><label>Weitere Entities (eine pro Zeile)</label><textarea rows="4" .value=${(w.config?.entities || []).join("
+")} @change=${(e) => this._uwc("entities", e.target.value.split(/
+|,/).map((x) => x.trim()).filter(Boolean))}></textarea></div>
           ` : ""}
         ` : ""}
 
@@ -1066,6 +1104,8 @@ class TdScreenEditor extends LitElement {
           <div class="pf2"><label>Schriftgröße: ${w.fontSize || 28}px</label><input type="range" min="12" max="72" step="2" .value=${w.fontSize || 28} @input=${(e) => this._uw("fontSize", +e.target.value)}></div>
           <div class="pf2"><td-color-picker .value=${w.textColor || "#FFFFFF"} label="Textfarbe" @value-changed=${(e) => this._uw("textColor", e.detail.value)}></td-color-picker></div>
           <div class="pf2"><td-color-picker .value=${w.bgColor || "#1E1E1E"} label="Hintergrundfarbe" @value-changed=${(e) => this._uw("bgColor", e.detail.value)}></td-color-picker></div>
+          <div class="pf2"><label>Hintergrund Transparenz: ${Math.round((w.backgroundAlpha ?? 1) * 100)}%</label><input type="range" min="0" max="1" step="0.05" .value=${w.backgroundAlpha ?? 1} @input=${(e) => this._uw("backgroundAlpha", +e.target.value)}></div>
+          <div class="pf2"><label>Blur: ${w.blur || 0}px</label><input type="range" min="0" max="24" step="1" .value=${w.blur || 0} @input=${(e) => this._uw("blur", +e.target.value)}></div>
           <div class="pf2"><label>Ecken-Radius: ${w.borderRadius || 12}px</label><input type="range" min="0" max="32" step="2" .value=${w.borderRadius || 12} @input=${(e) => this._uw("borderRadius", +e.target.value)}></div>
         ` : ""}
 

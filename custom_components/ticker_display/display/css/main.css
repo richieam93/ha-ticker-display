@@ -20,6 +20,15 @@ html, body {
 
 body {
   position: relative;
+  background-image: var(--td-bg-image, none);
+  background-size: var(--td-bg-size, cover);
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .screen-container {
@@ -27,6 +36,11 @@ body {
   width: 100%;
   height: calc(100vh - var(--td-ticker-height, 36px));
   overflow: hidden;
+  background: var(--td-screen-bg, transparent);
+  background-image: var(--td-screen-bg-image, none);
+  background-size: var(--td-screen-bg-size, cover);
+  background-position: center center;
+  background-repeat: no-repeat;
 }
 
 .screen-container.no-ticker {
@@ -189,6 +203,10 @@ body {
 }
 
 .widget {
+  --td-widget-opacity: 1;
+  --td-widget-backdrop-blur: 0px;
+  opacity: var(--td-widget-opacity);
+  backdrop-filter: blur(var(--td-widget-backdrop-blur));
   background: var(--td-card-bg, #1E1E1E);
   border-radius: var(--td-widget-radius, 14px);
   padding: var(--td-widget-padding, 14px);
@@ -507,6 +525,10 @@ body {
   }
 
   .widget {
+  --td-widget-opacity: 1;
+  --td-widget-backdrop-blur: 0px;
+  opacity: var(--td-widget-opacity);
+  backdrop-filter: blur(var(--td-widget-backdrop-blur));
     border-radius: 12px;
     padding: 10px;
   }

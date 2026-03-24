@@ -522,6 +522,7 @@ class ScreenManager {
 
     const screen = document.createElement("div");
     screen.className = "screen";
+    this._applyScreenStyle(screen, config);
 
     switch (config.type) {
       case "clock":
@@ -619,15 +620,19 @@ class ScreenManager {
 
   _buildCameraScreen(screen, config) {
     const eid = config.entity_id || "";
+    const src = this._cameraSourceUrl(config, eid);
     screen.innerHTML = `
-      <img id="camera-img" src="${this.app.apiBase}/api/image/camera/${eid}" class="screen-image-contain" alt="Camera">
+      <img id="camera-img" src="${src}" class="screen-image-contain" alt="Camera">
       <div class="screen-caption">${config.title || eid || "Kamera"}</div>
     `;
 
-    const ms = (config.refresh_interval || 5) * 1000;
+    const img = screen.querySelector("#camera-img");
+    if (img) this._attachCameraFallback(img, config, eid);
+
+    const ms = (config.refresh_interval || config.config?.refresh_interval || 5) * 1000;
     this._cameraIntervals.push(setInterval(() => {
       const img = screen.querySelector("#camera-img");
-      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+      if (img) img.src = this._cameraSourceUrl(config, eid, true);
     }, ms));
   }
 
@@ -705,7 +710,23 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
-        this._renderLineChartWidget(widget, config, state, name, false);
+      case "area-chart":
+      case "line-chart":
+      case "multi-line-chart":
+      case "stacked-bar-chart":
+      case "horizontal-bar-chart":
+      case "donut-chart":
+      case "pie-chart":
+      case "radar-chart":
+      case "heatmap-mini":
+      case "timeline-chart":
+      case "scatter-chart":
+      case "forecast-chart":
+      case "energy-flow-mini":
+      case "comparison-chart":
+      case "radial-gauge-advanced":
+      case "bullet-chart":
+        this._renderAdvancedChartWidget(widget, config, state, name);
         break;
 
       case "bar-chart":
@@ -788,14 +809,17 @@ class ScreenManager {
     widget.classList.add("widget-camera");
     const eid = config.entity_id || "";
     widget.innerHTML = `
-      <img src="${this.app.apiBase}/api/image/camera/${eid}" alt="Camera" class="widget-camera-image">
+      <img src="${this._cameraSourceUrl(config, eid)}" alt="Camera" class="widget-camera-image">
       <div class="camera-overlay">${name || eid}</div>
     `;
+
+    const img = widget.querySelector("img");
+    if (img) this._attachCameraFallback(img, config, eid);
 
     const ms = (config.config?.refresh_interval || 5) * 1000;
     const interval = setInterval(() => {
       const img = widget.querySelector("img");
-      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+      if (img) img.src = this._cameraSourceUrl(config, eid, true);
     }, ms);
     this._cameraIntervals.push(interval);
   }
@@ -1026,6 +1050,120 @@ class ScreenManager {
     }
   }
 
+  _renderAdvancedChartWidget(widget, config, state, name) {
+    const currentValue = Utils.toNumber(state?.state, 0);
+    const unit = state?.attributes?.unit_of_measurement || config.unit || "";
+    const title = name || state?.attributes?.friendly_name || config.entity_id || config.type || "Chart";
+    const hours = config.config?.hours || 24;
+
+    widget.classList.add("widget-chart");
+    widget.innerHTML = `
+      <div class="chart-header">
+        <div class="chart-title">${title}</div>
+        <div class="chart-value">${Utils.text(state?.state)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}</div>
+      </div>
+      <div class="chart-body">
+        <canvas class="chart-canvas"></canvas>
+      </div>
+    `;
+
+    const canvas = widget.querySelector(".chart-canvas");
+    if (!canvas || !window.Chart || !config.entity_id) return;
+    this._buildAdvancedChart(canvas, config, hours, currentValue);
+  }
+
+  async _buildAdvancedChart(canvas, config, hours, currentValue) {
+    try {
+      const entityIds = [config.entity_id, ...Utils.safeArray(config.config?.entities)].filter(Boolean);
+      const histories = await Promise.all(entityIds.map((entityId) => this.app.dataManager.fetchHistory(entityId, hours)));
+      const datasets = histories.map((history, idx) => {
+        const points = Utils.safeArray(history?.data).filter((p) => p && p.x !== undefined && p.y !== undefined);
+        const values = points.map((p) => Utils.toNumber(p.y, 0));
+        const labels = points.map((p) => Utils.shortDateTime(p.x));
+        if (!values.length) {
+          values.push(currentValue);
+          labels.push("Jetzt");
+        }
+        return {
+          label: entityIds[idx],
+          data: config.type === "scatter-chart" ? values.map((v, i) => ({x: i + 1, y: v})) : values,
+          labels,
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: config.type === "timeline-chart" ? 0 : 2,
+          fill: ["area-chart", "forecast-chart", "comparison-chart"].includes(config.type),
+          stepped: config.type === "timeline-chart",
+        };
+      });
+      const labels = datasets[0]?.labels || ["Jetzt"];
+      let chartType = "line";
+      if (["bar-chart", "stacked-bar-chart", "horizontal-bar-chart", "bullet-chart", "energy-flow-mini"].includes(config.type)) chartType = "bar";
+      if (["donut-chart", "radial-gauge-advanced"].includes(config.type)) chartType = "doughnut";
+      if (config.type === "pie-chart") chartType = "pie";
+      if (config.type === "radar-chart") chartType = "radar";
+      if (config.type === "scatter-chart") chartType = "scatter";
+
+      const chart = new Chart(canvas, {
+        type: chartType,
+        data: {
+          labels,
+          datasets: datasets.map((ds, idx) => ({
+            ...ds,
+            backgroundColor: chartType === "bar" ? `rgba(33,150,243,${Math.max(0.2, 0.45 - idx * 0.08)})` : `rgba(33,150,243,${Math.max(0.12, 0.26 - idx * 0.04)})`,
+            borderColor: idx === 0 ? "rgba(33,150,243,0.95)" : idx === 1 ? "rgba(76,175,80,0.95)" : idx === 2 ? "rgba(255,152,0,0.95)" : "rgba(156,39,176,0.95)",
+          }))
+        },
+        options: {
+          indexAxis: config.type === "horizontal-bar-chart" ? "y" : "x",
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 350 },
+          plugins: { legend: { display: datasets.length > 1 || ["donut-chart","pie-chart","radar-chart"].includes(config.type) }, tooltip: { enabled: true, displayColors: false } },
+          scales: chartType === "doughnut" || chartType === "pie" || chartType === "radar" ? {} : {
+            x: { stacked: config.type === "stacked-bar-chart", display: config.type !== "sparkline", grid: { display: false }, ticks: { maxTicksLimit: 4, color: "rgba(255,255,255,0.45)" } },
+            y: { stacked: config.type === "stacked-bar-chart", display: true, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: 4, color: "rgba(255,255,255,0.45)" } }
+          }
+        }
+      });
+      this._chartInstances.push(chart);
+    } catch (e) {
+      console.warn("Advanced chart build failed:", e);
+    }
+  }
+
+  _cameraSourceUrl(config, entityId, bustCache = false) {
+    const mode = config.config?.camera_source || "auto";
+    const state = this.app.entityStates[entityId] || {};
+    const attrs = state.attributes || {};
+    let url = `${this.app.apiBase}/api/image/camera/${entityId}`;
+    if (mode === "entity_picture" && attrs.entity_picture) url = attrs.entity_picture;
+    else if (mode === "camera_proxy") url = `/api/camera_proxy/${entityId}`;
+    else if (mode === "stream" && attrs.access_token) url = `/api/camera_proxy_stream/${entityId}?token=${attrs.access_token}`;
+    else if (mode === "stream") url = `/api/camera_proxy_stream/${entityId}`;
+    if (bustCache) url += `${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+    return url;
+  }
+
+  _attachCameraFallback(img, config, entityId) {
+    if (!img || img.dataset.fallbackBound === "1") return;
+    img.dataset.fallbackBound = "1";
+    img.addEventListener("error", () => {
+      const order = ["entity_picture", "camera_proxy", "stream"];
+      const current = config.config?.camera_source || "auto";
+      const idx = Math.max(order.indexOf(current), -1);
+      const next = order[idx + 1] || "entity_picture";
+      config.config = { ...(config.config || {}), camera_source: next };
+      img.src = this._cameraSourceUrl(config, entityId, true);
+    });
+  }
+
+  _applyScreenStyle(screen, config) {
+    if (!screen || !config) return;
+    if (config.backgroundColor) screen.style.background = config.backgroundColor;
+    if (config.backgroundImage) screen.style.setProperty("--td-screen-bg-image", `url('${config.backgroundImage}')`);
+    if (config.backgroundSize) screen.style.setProperty("--td-screen-bg-size", config.backgroundSize);
+  }
+
   _applyCommonWidgetStyle(widget, config) {
     if (config.font) widget.style.fontFamily = `"${config.font}", sans-serif`;
     if (config.fontSize) {
@@ -1100,7 +1238,23 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
-      case "bar-chart": {
+      case "bar-chart":
+      case "area-chart":
+      case "line-chart":
+      case "multi-line-chart":
+      case "stacked-bar-chart":
+      case "horizontal-bar-chart":
+      case "donut-chart":
+      case "pie-chart":
+      case "radar-chart":
+      case "heatmap-mini":
+      case "timeline-chart":
+      case "scatter-chart":
+      case "forecast-chart":
+      case "energy-flow-mini":
+      case "comparison-chart":
+      case "radial-gauge-advanced":
+      case "bullet-chart": {
         const chartValue = element.querySelector(".chart-value");
         if (chartValue) {
           chartValue.innerHTML = `${Utils.text(value)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}`;
@@ -1185,6 +1339,21 @@ class ScreenManager {
       "mini-graph": "📉",
       "bar-chart": "📊",
       "sparkline": "〰️",
+      "area-chart": "🟦",
+      "multi-line-chart": "📈",
+      "stacked-bar-chart": "📚",
+      "horizontal-bar-chart": "↔️",
+      "donut-chart": "🍩",
+      "pie-chart": "🥧",
+      "radar-chart": "🕸️",
+      "heatmap-mini": "🔥",
+      "timeline-chart": "📍",
+      "scatter-chart": "✳️",
+      "forecast-chart": "🌦️",
+      "energy-flow-mini": "⚡",
+      "comparison-chart": "⚖️",
+      "radial-gauge-advanced": "🎛️",
+      "bullet-chart": "🎯",
       "trend-arrow": "📈",
       "weather": "🌤️",
       "clock": "🕐",

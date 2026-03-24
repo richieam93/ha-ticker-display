@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from aiohttp import web
+from aiohttp import ClientError, web
 from homeassistant.core import HomeAssistant
 
 from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH
@@ -205,12 +205,59 @@ class TickerDisplayAPI:
 
     async def _camera_proxy(self, request):
         entity_id = request.match_info["entity_id"]
+        state = self.hass.states.get(entity_id)
+        if not state:
+            return web.Response(status=404)
+
         try:
             image = await self.hass.components.camera.async_get_image(self.hass, entity_id)
             return web.Response(body=image.content, content_type=image.content_type)
-        except Exception as e:
-            _LOGGER.error("Camera proxy error: %s", e)
-            return web.Response(status=500)
+        except Exception as err:
+            _LOGGER.warning("Camera proxy primary fetch failed for %s: %s", entity_id, err)
+
+        attrs = state.attributes or {}
+        fallback_urls = []
+        entity_picture = attrs.get("entity_picture")
+        if entity_picture:
+            fallback_urls.append(entity_picture)
+            if "?" in entity_picture:
+                fallback_urls.append(f"{entity_picture}&t={int(datetime.now().timestamp())}")
+            else:
+                fallback_urls.append(f"{entity_picture}?t={int(datetime.now().timestamp())}")
+
+        access_token = attrs.get("access_token")
+        if access_token:
+            fallback_urls.append(f"/api/camera_proxy/{entity_id}?token={access_token}")
+            fallback_urls.append(f"/api/camera_proxy_stream/{entity_id}?token={access_token}")
+
+        fallback_urls.append(f"/api/camera_proxy/{entity_id}")
+        fallback_urls.append(f"/api/camera_proxy_stream/{entity_id}")
+
+        for url in fallback_urls:
+            try:
+                raise web.HTTPFound(url)
+            except web.HTTPFound as redirect:
+                return redirect
+            except Exception:
+                continue
+
+        try:
+            stream_source = attrs.get("entity_picture_local") or attrs.get("stream_source")
+            if stream_source:
+                return web.json_response({"status": "fallback_required", "stream_source": stream_source}, status=409)
+        except ClientError:
+            pass
+
+        _LOGGER.error("Camera proxy error: all fallbacks failed for %s", entity_id)
+        return web.json_response(
+            {
+                "error": "camera_proxy_failed",
+                "entity_id": entity_id,
+                "entity_picture": entity_picture,
+                "fallbacks": fallback_urls,
+            },
+            status=500,
+        )
 
     async def _history(self, request):
         entity_id = request.match_info["entity_id"]
