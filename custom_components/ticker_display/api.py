@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import unquote
 
-from aiohttp import ClientError, web
+from aiohttp import web
 from homeassistant.core import HomeAssistant
 
 from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH
@@ -205,59 +206,60 @@ class TickerDisplayAPI:
 
     async def _camera_proxy(self, request):
         entity_id = request.match_info["entity_id"]
+        entity_id = unquote(entity_id)
         state = self.hass.states.get(entity_id)
         if not state:
-            return web.Response(status=404)
+            return web.Response(status=404, text="Camera entity not found")
 
-        try:
+        src = request.query.get("src", "auto")
+        failures = []
+
+        async def _try_snapshot():
             image = await self.hass.components.camera.async_get_image(self.hass, entity_id)
             return web.Response(body=image.content, content_type=image.content_type)
-        except Exception as err:
-            _LOGGER.warning("Camera proxy primary fetch failed for %s: %s", entity_id, err)
 
-        attrs = state.attributes or {}
-        fallback_urls = []
-        entity_picture = attrs.get("entity_picture")
-        if entity_picture:
-            fallback_urls.append(entity_picture)
-            if "?" in entity_picture:
-                fallback_urls.append(f"{entity_picture}&t={int(datetime.now().timestamp())}")
+        async def _try_entity_picture():
+            entity_picture = state.attributes.get("entity_picture")
+            if not entity_picture:
+                raise ValueError("No entity_picture")
+            if entity_picture.startswith("http://") or entity_picture.startswith("https://"):
+                url = entity_picture
             else:
-                fallback_urls.append(f"{entity_picture}?t={int(datetime.now().timestamp())}")
+                url = self.hass.config.api.base_url.rstrip("/") + entity_picture if getattr(self.hass.config, 'api', None) and getattr(self.hass.config.api, 'base_url', None) else entity_picture
+            session = self.hass.helpers.aiohttp_client.async_get_clientsession(self.hass)
+            async with session.get(url) as resp:
+                if resp.status >= 400:
+                    raise ValueError(f"entity_picture HTTP {resp.status}")
+                return web.Response(body=await resp.read(), content_type=resp.headers.get("Content-Type", "image/jpeg"))
 
-        access_token = attrs.get("access_token")
-        if access_token:
-            fallback_urls.append(f"/api/camera_proxy/{entity_id}?token={access_token}")
-            fallback_urls.append(f"/api/camera_proxy_stream/{entity_id}?token={access_token}")
+        async def _try_proxy(path_attr):
+            path = f"/api/camera_proxy/{entity_id}" if path_attr == "camera_proxy" else f"/api/camera_proxy_stream/{entity_id}"
+            if path_attr == "camera_proxy_stream":
+                path += "?interval=10"
+            session = self.hass.helpers.aiohttp_client.async_get_clientsession(self.hass)
+            async with session.get(path if path.startswith('http') else f"http://127.0.0.1:{self.hass.http.server_port}{path}") as resp:
+                if resp.status >= 400:
+                    raise ValueError(f"{path_attr} HTTP {resp.status}")
+                return web.Response(body=await resp.read(), content_type=resp.headers.get("Content-Type", "image/jpeg"))
 
-        fallback_urls.append(f"/api/camera_proxy/{entity_id}")
-        fallback_urls.append(f"/api/camera_proxy_stream/{entity_id}")
+        methods = {
+            "snapshot": _try_snapshot,
+            "entity_picture": _try_entity_picture,
+            "camera_proxy": lambda: _try_proxy("camera_proxy"),
+            "stream": lambda: _try_proxy("camera_proxy_stream"),
+        }
+        order = [src] if src in methods else ["snapshot", "entity_picture", "camera_proxy", "stream"]
+        if src == "auto":
+            order = ["snapshot", "entity_picture", "camera_proxy", "stream"]
 
-        for url in fallback_urls:
+        for key in order:
             try:
-                raise web.HTTPFound(url)
-            except web.HTTPFound as redirect:
-                return redirect
-            except Exception:
-                continue
+                return await methods[key]()
+            except Exception as err:
+                failures.append(f"{key}: {err}")
 
-        try:
-            stream_source = attrs.get("entity_picture_local") or attrs.get("stream_source")
-            if stream_source:
-                return web.json_response({"status": "fallback_required", "stream_source": stream_source}, status=409)
-        except ClientError:
-            pass
-
-        _LOGGER.error("Camera proxy error: all fallbacks failed for %s", entity_id)
-        return web.json_response(
-            {
-                "error": "camera_proxy_failed",
-                "entity_id": entity_id,
-                "entity_picture": entity_picture,
-                "fallbacks": fallback_urls,
-            },
-            status=500,
-        )
+        _LOGGER.error("Camera proxy error for %s: %s", entity_id, " | ".join(failures))
+        return web.json_response({"error": "camera_fetch_failed", "entity_id": entity_id, "attempts": failures}, status=500)
 
     async def _history(self, request):
         entity_id = request.match_info["entity_id"]
