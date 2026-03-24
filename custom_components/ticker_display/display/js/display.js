@@ -1,5 +1,6 @@
 /**
- * Ticker Display – Complete Display Engine (stabilized websocket version)
+ * Ticker Display – Enhanced Display Engine
+ * Stable rendering even without WebSocket connection
  */
 
 /* ══════════════════════════════════════════════════════════
@@ -9,15 +10,18 @@
 const Utils = {
   formatNumber(v, d = 1) {
     const n = parseFloat(v);
-    return isNaN(n) ? v : n.toFixed(d);
+    return Number.isNaN(n) ? v : n.toFixed(d);
   },
+
   relativeTime(iso) {
-    const s = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (s < 60) return "gerade eben";
-    if (s < 3600) return `vor ${Math.floor(s / 60)} Min`;
-    if (s < 86400) return `vor ${Math.floor(s / 3600)} Std`;
-    return `vor ${Math.floor(s / 86400)} Tagen`;
+    if (!iso) return "";
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return "gerade eben";
+    if (diff < 3600) return `vor ${Math.floor(diff / 60)} Min`;
+    if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std`;
+    return `vor ${Math.floor(diff / 86400)} Tagen`;
   },
+
   debounce(fn, ms) {
     let t;
     return (...a) => {
@@ -25,6 +29,24 @@ const Utils = {
       t = setTimeout(() => fn(...a), ms);
     };
   },
+
+  clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  },
+
+  safeArray(v) {
+    return Array.isArray(v) ? v : [];
+  },
+
+  text(v, fallback = "—") {
+    if (v === null || v === undefined || v === "") return fallback;
+    return String(v);
+  },
+
+  toNumber(v, fallback = 0) {
+    const n = parseFloat(v);
+    return Number.isNaN(n) ? fallback : n;
+  }
 };
 
 class DataManager {
@@ -34,14 +56,14 @@ class DataManager {
   }
 
   async fetchHistory(entityId, hours = 24) {
-    const k = `h_${entityId}_${hours}`;
-    const c = this._cache[k];
-    if (c && Date.now() - c.t < 60000) return c.d;
+    const key = `h_${entityId}_${hours}`;
+    const cached = this._cache[key];
+    if (cached && Date.now() - cached.t < 60000) return cached.d;
 
     try {
       const r = await fetch(`${this.apiBase}/api/history/${entityId}?hours=${hours}`);
       const d = await r.json();
-      this._cache[k] = { d, t: Date.now() };
+      this._cache[key] = { d, t: Date.now() };
       return d;
     } catch (e) {
       return { entity_id: entityId, data: [] };
@@ -50,7 +72,8 @@ class DataManager {
 
   async fetchWeather(entityId) {
     try {
-      return await (await fetch(`${this.apiBase}/api/weather/${entityId}`)).json();
+      const r = await fetch(`${this.apiBase}/api/weather/${entityId}`);
+      return await r.json();
     } catch (e) {
       return null;
     }
@@ -78,68 +101,87 @@ class BridgeWrapper {
   }
 
   setScreenBrightness(v) {
-    if (this._bridge) this._bridge.setScreenBrightness(Math.round(v));
-  }
-
-  setScreenPower(on) {
-    if (this._bridge) this._bridge.setScreenPower(on);
-  }
-
-  playSound(url, volume = 100, loop = false) {
-    if (this._bridge) {
-      loop ? this._bridge.playSoundLoop(url) : this._bridge.playSound(url);
-      if (volume !== undefined) this._bridge.setVolume(volume);
-    } else {
-      try {
-        if (this._audioElement) this._audioElement.pause();
-        this._audioElement = new Audio(url);
-        this._audioElement.volume = volume / 100;
-        this._audioElement.loop = loop;
-        this._audioElement.play().catch(() => {});
-      } catch (e) {}
+    if (this._bridge?.setScreenBrightness) {
+      this._bridge.setScreenBrightness(Math.round(v));
     }
   }
 
+  setScreenPower(on) {
+    if (this._bridge?.setScreenPower) {
+      this._bridge.setScreenPower(!!on);
+    }
+  }
+
+  playSound(url, volume = 100, loop = false) {
+    if (!url) return;
+
+    if (this._bridge) {
+      try {
+        loop ? this._bridge.playSoundLoop(url) : this._bridge.playSound(url);
+        if (volume !== undefined) this._bridge.setVolume(volume);
+      } catch (e) {}
+      return;
+    }
+
+    try {
+      if (this._audioElement) this._audioElement.pause();
+      this._audioElement = new Audio(url);
+      this._audioElement.volume = Utils.clamp(volume / 100, 0, 1);
+      this._audioElement.loop = loop;
+      this._audioElement.play().catch(() => {});
+    } catch (e) {}
+  }
+
   stopSound() {
-    if (this._bridge) this._bridge.stopSound();
-    else if (this._audioElement) {
+    if (this._bridge?.stopSound) {
+      try { this._bridge.stopSound(); } catch (e) {}
+      return;
+    }
+    if (this._audioElement) {
       this._audioElement.pause();
       this._audioElement = null;
     }
   }
 
-  ttsSpeak(text, lang = "de", volume = 70) {
-    if (this._bridge) this._bridge.ttsSpeak(text, lang);
+  ttsSpeak(text, lang = "de") {
+    if (this._bridge?.ttsSpeak) {
+      try { this._bridge.ttsSpeak(text, lang); } catch (e) {}
+    }
   }
 
   setVolume(v) {
-    if (this._bridge) this._bridge.setVolume(v);
+    if (this._bridge?.setVolume) {
+      try { this._bridge.setVolume(v); } catch (e) {}
+    }
   }
 
   vibrate(ms = 500) {
-    if (this._bridge) this._bridge.vibrate(ms);
-    else if (navigator.vibrate) navigator.vibrate(ms);
+    if (this._bridge?.vibrate) {
+      try { this._bridge.vibrate(ms); } catch (e) {}
+    } else if (navigator.vibrate) {
+      navigator.vibrate(ms);
+    }
   }
 
   getAllSensorData() {
     if (!this._bridge) return null;
     try {
       return {
-        battery_level: this._bridge.getBatteryLevel(),
-        battery_charging: this._bridge.isBatteryCharging(),
-        battery_temperature: this._bridge.getBatteryTemperature(),
-        wifi_signal: this._bridge.getWifiSignal(),
-        wifi_ssid: this._bridge.getWifiSsid(),
-        ip_address: this._bridge.getIpAddress(),
-        light_level: this._bridge.getLightLevel(),
-        motion_detected: this._bridge.isMotionDetected(),
+        battery_level: this._bridge.getBatteryLevel?.(),
+        battery_charging: this._bridge.isBatteryCharging?.(),
+        battery_temperature: this._bridge.getBatteryTemperature?.(),
+        wifi_signal: this._bridge.getWifiSignal?.(),
+        wifi_ssid: this._bridge.getWifiSsid?.(),
+        ip_address: this._bridge.getIpAddress?.(),
+        light_level: this._bridge.getLightLevel?.(),
+        motion_detected: this._bridge.isMotionDetected?.(),
         proximity_near: false,
         ambient_noise_db: 0,
-        screen_on: this._bridge.isScreenOn(),
-        screen_brightness: this._bridge.getScreenBrightness(),
-        memory_free_mb: this._bridge.getMemoryFree(),
+        screen_on: this._bridge.isScreenOn?.(),
+        screen_brightness: this._bridge.getScreenBrightness?.(),
+        memory_free_mb: this._bridge.getMemoryFree?.(),
         cpu_usage: 0,
-        app_version: this._bridge.getAppVersion(),
+        app_version: this._bridge.getAppVersion?.(),
         uptime_seconds: 0,
       };
     } catch (e) {
@@ -154,11 +196,16 @@ class BridgeWrapper {
 
 class ThemeManager {
   applyDynamic(data) {
-    const r = document.documentElement;
-    if (data.accent_color) r.style.setProperty("--td-accent", data.accent_color);
+    if (!data) return;
+    const root = document.documentElement;
+
+    if (data.accent_color) {
+      root.style.setProperty("--td-accent", data.accent_color);
+    }
+
     if (data.vars) {
       Object.entries(data.vars).forEach(([k, v]) => {
-        r.style.setProperty(`--td-${k}`, v);
+        root.style.setProperty(`--td-${k}`, v);
       });
     }
   }
@@ -212,12 +259,8 @@ class WebSocketClient {
 
           this.send({
             type: "subscribe",
-            entities: this.app.neededEntities || [],
+            entities: this.app.neededEntities || []
           });
-
-          if (this.app && typeof this.app.reportSensorsNow === "function") {
-            this.app.reportSensorsNow();
-          }
 
           resolve();
         };
@@ -227,19 +270,23 @@ class WebSocketClient {
           try {
             this._handleMessage(JSON.parse(e.data));
           } catch (err) {
-            console.error("WebSocket message parse error", err);
+            console.error("WebSocket parse error:", err);
           }
         };
 
         ws.onclose = () => {
-          if (seq !== this._connectSeq || ws !== this.ws) {
-            return;
-          }
+          if (seq !== this._connectSeq || ws !== this.ws) return;
 
           this._connected = false;
 
           const offline = document.getElementById("offline-screen");
-          if (offline) offline.hidden = false;
+          if (offline) {
+            if (this.app?.isPreview) {
+              offline.hidden = true;
+            } else {
+              offline.hidden = false;
+            }
+          }
 
           if (!this._manuallyClosed) {
             this._scheduleReconnect();
@@ -259,12 +306,10 @@ class WebSocketClient {
   disconnect() {
     this._manuallyClosed = true;
     this._connected = false;
-
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
-
     if (this.ws) {
       try { this.ws.close(); } catch (e) {}
     }
@@ -289,7 +334,7 @@ class WebSocketClient {
         this.app.onCommand(msg.command, msg.data || {});
         break;
       case "alert":
-        this.app.onAlert(msg.data);
+        this.app.onAlert(msg.data || {});
         break;
       case "ticker":
         this.app.onTickerMessages(msg.messages || []);
@@ -316,6 +361,7 @@ class WebSocketClient {
   }
 
   _scheduleReconnect() {
+    if (this.app?.isPreview) return;
     if (this._reconnectTimer) return;
 
     this._reconnectTimer = setTimeout(() => {
@@ -335,31 +381,38 @@ class WebSocketClient {
 class ScreenManager {
   constructor(app) {
     this.app = app;
-    this.screens = app.config.screens || [];
+    this.screens = Utils.safeArray(app.config.screens);
     this.currentIndex = 0;
     this.rotationTimer = null;
     this.isPaused = false;
     this.temporaryScreen = null;
     this.container = document.getElementById("screen-container");
     this._widgetElements = {};
-    this._clockInterval = null;
-    this._cameraInterval = null;
+    this._clockIntervals = [];
+    this._cameraIntervals = [];
+    this._countdownIntervals = [];
   }
 
   start() {
-    if (this.screens.length === 0) {
-      this.container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;color:var(--td-text-secondary)">
-        <div style="font-size:48px;margin-bottom:16px">📱</div>
-        <div style="font-size:18px">Warte auf Konfiguration...</div>
-        <div style="font-size:14px;margin-top:8px;opacity:.5">${this.app.deviceId}</div></div>`;
+    if (!this.container) return;
+
+    if (!this.screens.length) {
+      this.container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📱</div>
+          <div class="empty-state-title">Warte auf Konfiguration...</div>
+          <div class="empty-state-subtitle">${this.app.deviceId}</div>
+        </div>
+      `;
       return;
     }
+
     this._showScreen(0);
     this._startRotation();
   }
 
   rebuild() {
-    this.screens = this.app.config.screens || [];
+    this.screens = Utils.safeArray(this.app.config.screens);
     this.currentIndex = 0;
     this.temporaryScreen = null;
     this._stopRotation();
@@ -407,7 +460,7 @@ class ScreenManager {
       show_clock: "clock",
       show_status_board: "status-board",
       show_image: "image",
-      show_template: "dashboard",
+      show_template: "dashboard"
     };
 
     const tempConfig = { type: typeMap[command] || "dashboard", ...data };
@@ -427,7 +480,9 @@ class ScreenManager {
   onEntityUpdate(entityId, newState) {
     const widgets = this._widgetElements[entityId];
     if (widgets) {
-      for (const w of widgets) this._updateWidget(w, entityId, newState);
+      for (const w of widgets) {
+        this._updateWidget(w, entityId, newState);
+      }
     }
   }
 
@@ -436,91 +491,103 @@ class ScreenManager {
     this.currentIndex = index;
     this._renderScreen(this.screens[index]);
 
-    if (this.app.wsClient) {
+    if (this.app.wsClient?.isConnected()) {
       this.app.wsClient.send({
         type: "status",
-        screen: this.screens[index].name || `screen_${index}`,
+        screen: this.screens[index].name || `screen_${index}`
       });
     }
   }
 
   _renderScreen(config) {
     this._widgetElements = {};
+    this._clearIntervals();
+
     const screen = document.createElement("div");
     screen.className = "screen";
 
     switch (config.type) {
       case "clock":
-        this._buildClock(screen, config);
+        this._buildClockScreen(screen, config);
         break;
       case "weather":
-        this._buildWeather(screen, config);
+        this._buildWeatherScreen(screen, config);
         break;
       case "camera":
-        this._buildCamera(screen, config);
+        this._buildCameraScreen(screen, config);
+        break;
+      case "image":
+        this._buildImageScreen(screen, config);
         break;
       default:
-        this._buildDashboard(screen, config);
+        this._buildDashboardScreen(screen, config);
         break;
     }
 
-    const transition =
-      config.transition || this.app.config.rotation?.transition || "fade";
+    const transition = config.transition || this.app.config.rotation?.transition || "fade";
     this._doTransition(screen, transition);
   }
 
-  _buildDashboard(screen, config) {
+  _buildDashboardScreen(screen, config) {
     const grid = document.createElement("div");
     grid.className = "dashboard-grid";
+
     const cols = config.grid?.columns || 3;
     const rows = config.grid?.rows || 2;
-    grid.style.gridTemplateColumns = `repeat(${cols},1fr)`;
-    grid.style.gridTemplateRows = `repeat(${rows},1fr)`;
 
-    for (const wc of config.widgets || []) {
-      const widget = this._createWidget(wc);
-      widget.style.gridColumn = `${(wc.col || 0) + 1}/span ${wc.colspan || 1}`;
-      widget.style.gridRow = `${(wc.row || 0) + 1}/span ${wc.rowspan || 1}`;
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+    for (const widgetConfig of Utils.safeArray(config.widgets)) {
+      const widget = this._createWidget(widgetConfig);
+      widget.style.gridColumn = `${(widgetConfig.col || 0) + 1}/span ${widgetConfig.colspan || 1}`;
+      widget.style.gridRow = `${(widgetConfig.row || 0) + 1}/span ${widgetConfig.rowspan || 1}`;
       grid.appendChild(widget);
     }
 
     screen.appendChild(grid);
   }
 
-  _buildClock(screen) {
-    screen.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column">
-      <div id="clock-time" style="font-size:120px;font-weight:300;color:var(--td-text-primary)">--:--</div>
-      <div id="clock-date" style="font-size:24px;color:var(--td-text-secondary);margin-top:8px"></div></div>`;
+  _buildClockScreen(screen, config) {
+    screen.innerHTML = `
+      <div class="full-screen-center">
+        <div id="clock-time" class="clock-time-large">--:--</div>
+        <div id="clock-date" class="clock-date-large"></div>
+      </div>
+    `;
 
     const update = () => {
-      const n = new Date();
+      const now = new Date();
       const t = screen.querySelector("#clock-time");
       const d = screen.querySelector("#clock-date");
       if (t) {
-        t.textContent = n.toLocaleTimeString("de-DE", {
+        t.textContent = now.toLocaleTimeString("de-DE", {
           hour: "2-digit",
-          minute: "2-digit",
+          minute: "2-digit"
         });
       }
       if (d) {
-        d.textContent = n.toLocaleDateString("de-DE", {
+        d.textContent = now.toLocaleDateString("de-DE", {
           weekday: "long",
           day: "numeric",
           month: "long",
-          year: "numeric",
+          year: "numeric"
         });
       }
     };
 
     update();
-    this._clockInterval = setInterval(update, 1000);
+    this._clockIntervals.push(setInterval(update, 1000));
   }
 
-  _buildWeather(screen, config) {
-    screen.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column">
-      <div style="font-size:64px">🌤️</div>
-      <div id="weather-temp" style="font-size:72px;font-weight:300;margin:12px 0">--°C</div>
-      <div id="weather-condition" style="font-size:20px;color:var(--td-text-secondary)">Laden...</div></div>`;
+  _buildWeatherScreen(screen, config) {
+    screen.innerHTML = `
+      <div class="full-screen-center">
+        <div class="weather-emoji-large">🌤️</div>
+        <div id="weather-temp" class="weather-temp-large">--°C</div>
+        <div id="weather-condition" class="weather-cond-large">Laden...</div>
+      </div>
+    `;
 
     if (config.entity_id) {
       const s = this.app.entityStates[config.entity_id];
@@ -533,18 +600,27 @@ class ScreenManager {
     }
   }
 
-  _buildCamera(screen, config) {
+  _buildCameraScreen(screen, config) {
     const eid = config.entity_id || "";
-    screen.innerHTML = `<img id="camera-img" src="${this.app.apiBase}/api/image/camera/${eid}" style="width:100%;height:100%;object-fit:contain" onerror="this.style.opacity=0.3">
-      <div style="position:absolute;bottom:12px;left:16px;font-size:14px;color:white;text-shadow:0 1px 4px rgba(0,0,0,.8)">${config.title || eid}</div>`;
+    screen.innerHTML = `
+      <img id="camera-img" src="${this.app.apiBase}/api/image/camera/${eid}" class="screen-image-contain" alt="Camera">
+      <div class="screen-caption">${config.title || eid || "Kamera"}</div>
+    `;
 
     const ms = (config.refresh_interval || 5) * 1000;
-    this._cameraInterval = setInterval(() => {
+    this._cameraIntervals.push(setInterval(() => {
       const img = screen.querySelector("#camera-img");
-      if (img) {
-        img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
-      }
-    }, ms);
+      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+    }, ms));
+  }
+
+  _buildImageScreen(screen, config) {
+    const src = config.image_url || config.imageUrl || config.url || "";
+    screen.innerHTML = `
+      <div class="image-screen-wrap">
+        ${src ? `<img src="${src}" class="screen-image-contain" alt="Image">` : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild gesetzt</div></div>`}
+      </div>
+    `;
   }
 
   _createWidget(config) {
@@ -559,80 +635,291 @@ class ScreenManager {
     }
 
     const state = this.app.entityStates[config.entity_id] || {};
-    const value = state.state || "—";
-    const unit = state.attributes?.unit_of_measurement || config.unit || "";
-    const name = config.name || state.attributes?.friendly_name || "";
-    const icon = config.icon || "📊";
+    const value = state.state ?? "—";
+    const attrs = state.attributes || {};
+    const unit = attrs.unit_of_measurement || config.unit || "";
+    const name = config.name || attrs.friendly_name || "";
+    const icon = config.icon || this._defaultIconForType(config.type);
 
     switch (config.type) {
-      case "gauge": {
-        const min = config.config?.min || 0;
-        const max = config.config?.max || 100;
-        const nv = parseFloat(value) || 0;
-        const pct = Math.max(0, Math.min(100, ((nv - min) / (max - min)) * 100));
-        const color = this._getZoneColor(nv, config.config?.zones);
-        widget.innerHTML = `<svg viewBox="0 0 200 130"><path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-bg"/><path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-value" stroke="${color}" stroke-dasharray="${pct * 2.51} 251"/><text x="100" y="95" class="gauge-text-value">${nv}${unit}</text><text x="100" y="118" class="gauge-text-label">${name}</text></svg>`;
+      case "gauge":
+        this._renderGaugeWidget(widget, config, value, unit, name);
         break;
-      }
 
-      case "progress-bar": {
-        const pMin = config.config?.min || 0;
-        const pMax = config.config?.max || 100;
-        const pv = parseFloat(value) || 0;
-        const pp = Math.max(0, Math.min(100, ((pv - pMin) / (pMax - pMin)) * 100));
-        widget.innerHTML = `<div class="w-name" style="margin-bottom:4px">${name}</div><div><span class="w-value" style="font-size:24px">${pv}</span><span class="w-unit">${unit}</span></div><div class="progress-container"><div class="progress-fill" style="width:${pp}%;background:${config.config?.color || "var(--td-accent)"}"></div></div>`;
+      case "progress-bar":
+        this._renderProgressBarWidget(widget, config, value, unit, name);
         break;
-      }
 
-      case "status-dot": {
-        const isOn = ["on", "true", "home", "open", "detected"].includes(
-          String(value).toLowerCase()
-        );
-        const dc = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
-        widget.innerHTML = `<div class="status-dot-indicator ${isOn ? "on" : ""}" style="background:${dc};color:${dc}"></div><div class="w-name">${name}</div><div style="font-size:13px;color:var(--td-text-secondary);margin-top:2px">${value}</div>`;
+      case "status-dot":
+        this._renderStatusDotWidget(widget, config, value, name);
         break;
-      }
 
-      case "camera": {
-        widget.classList.add("widget-camera");
-        const ceid = config.entity_id || "";
-        widget.innerHTML = `<img src="${this.app.apiBase}/api/image/camera/${ceid}" alt="Camera" onerror="this.style.opacity=0.2"><div class="camera-overlay">${name || ceid}</div>`;
-        setInterval(() => {
-          const img = widget.querySelector("img");
-          if (img) {
-            img.src = `${this.app.apiBase}/api/image/camera/${ceid}?t=${Date.now()}`;
-          }
-        }, (config.config?.refresh_interval || 5) * 1000);
+      case "camera":
+        this._renderCameraWidget(widget, config, name);
         break;
-      }
+
+      case "weather":
+        this._renderWeatherWidget(widget, config, state);
+        break;
+
+      case "clock":
+        this._renderClockWidget(widget, config);
+        break;
+
+      case "countdown":
+        this._renderCountdownWidget(widget, config);
+        break;
+
+      case "image":
+        this._renderImageWidget(widget, config, name);
+        break;
+
+      case "qr-code":
+        this._renderQrWidget(widget, config);
+        break;
+
+      case "color-block":
+        this._renderColorBlockWidget(widget, config, name);
+        break;
+
+      case "button":
+        this._renderButtonWidget(widget, config, name);
+        break;
 
       default:
-        widget.innerHTML = `<div class="w-icon"><span style="font-size:24px">${icon}</span></div><div><span class="w-value">${value}</span><span class="w-unit">${unit}</span></div><div class="w-name">${name}</div>`;
+        this._renderDefaultWidget(widget, config, value, unit, name, icon);
+        break;
     }
 
-    if (config.font) widget.style.fontFamily = `"${config.font}",sans-serif`;
+    this._applyCommonWidgetStyle(widget, config);
+    return widget;
+  }
+
+  _renderDefaultWidget(widget, config, value, unit, name, icon) {
+    widget.innerHTML = `
+      <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
+      <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
+      <div class="w-name">${name}</div>
+    `;
+  }
+
+  _renderGaugeWidget(widget, config, value, unit, name) {
+    const min = config.config?.min ?? 0;
+    const max = config.config?.max ?? 100;
+    const nv = Utils.toNumber(value, 0);
+    const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
+    const color = this._getZoneColor(nv, config.config?.zones);
+
+    widget.innerHTML = `
+      <svg viewBox="0 0 200 130">
+        <path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-bg"></path>
+        <path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-value" stroke="${color}" stroke-dasharray="${pct * 2.51} 251"></path>
+        <text x="100" y="95" class="gauge-text-value">${nv}${unit}</text>
+        <text x="100" y="118" class="gauge-text-label">${name}</text>
+      </svg>
+    `;
+  }
+
+  _renderProgressBarWidget(widget, config, value, unit, name) {
+    const min = config.config?.min ?? 0;
+    const max = config.config?.max ?? 100;
+    const nv = Utils.toNumber(value, 0);
+    const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
+    const color = config.config?.color || "var(--td-accent)";
+
+    widget.innerHTML = `
+      <div class="w-name" style="margin-bottom:4px">${name}</div>
+      <div><span class="w-value">${nv}</span><span class="w-unit">${unit}</span></div>
+      <div class="progress-container">
+        <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+    `;
+  }
+
+  _renderStatusDotWidget(widget, config, value, name) {
+    const isOn = ["on", "true", "home", "open", "detected"].includes(String(value).toLowerCase());
+    const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
+    widget.innerHTML = `
+      <div class="status-dot-indicator ${isOn ? "on" : ""}" style="background:${color};color:${color}"></div>
+      <div class="w-name">${name}</div>
+      <div class="widget-subvalue">${Utils.text(value)}</div>
+    `;
+  }
+
+  _renderCameraWidget(widget, config, name) {
+    widget.classList.add("widget-camera");
+    const eid = config.entity_id || "";
+    widget.innerHTML = `
+      <img src="${this.app.apiBase}/api/image/camera/${eid}" alt="Camera" class="widget-camera-image">
+      <div class="camera-overlay">${name || eid}</div>
+    `;
+
+    const ms = (config.config?.refresh_interval || 5) * 1000;
+    const interval = setInterval(() => {
+      const img = widget.querySelector("img");
+      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+    }, ms);
+    this._cameraIntervals.push(interval);
+  }
+
+  _renderWeatherWidget(widget, config, state) {
+    const attrs = state?.attributes || {};
+    const temp = attrs.temperature ?? "—";
+    const condition = state?.state || "—";
+    widget.innerHTML = `
+      <div class="w-icon"><span style="font-size:24px">🌤️</span></div>
+      <div><span class="w-value">${temp}</span><span class="w-unit">°C</span></div>
+      <div class="w-name">${config.name || attrs.friendly_name || "Wetter"}</div>
+      <div class="widget-subvalue">${condition}</div>
+    `;
+  }
+
+  _renderClockWidget(widget) {
+    widget.innerHTML = `
+      <div class="w-icon"><span style="font-size:24px">🕐</span></div>
+      <div><span class="w-value js-clock-time">--:--</span></div>
+      <div class="w-name js-clock-date">--</div>
+    `;
+
+    const update = () => {
+      const now = new Date();
+      const t = widget.querySelector(".js-clock-time");
+      const d = widget.querySelector(".js-clock-date");
+      if (t) {
+        t.textContent = now.toLocaleTimeString("de-DE", {
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      }
+      if (d) {
+        d.textContent = now.toLocaleDateString("de-DE", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        });
+      }
+    };
+
+    update();
+    this._clockIntervals.push(setInterval(update, 1000));
+  }
+
+  _renderCountdownWidget(widget, config) {
+    const target = config.target_date || config.targetDate || config.date || null;
+
+    widget.innerHTML = `
+      <div class="w-icon"><span style="font-size:24px">⏱️</span></div>
+      <div><span class="w-value js-countdown-value">--</span></div>
+      <div class="w-name">${config.name || "Countdown"}</div>
+    `;
+
+    const update = () => {
+      const el = widget.querySelector(".js-countdown-value");
+      if (!el || !target) {
+        if (el) el.textContent = "—";
+        return;
+      }
+
+      const diff = new Date(target).getTime() - Date.now();
+      if (diff <= 0) {
+        el.textContent = "00:00";
+        return;
+      }
+
+      const totalSec = Math.floor(diff / 1000);
+      const hrs = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const secs = totalSec % 60;
+
+      if (hrs > 0) {
+        el.textContent = `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+      } else {
+        el.textContent = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+      }
+    };
+
+    update();
+    this._countdownIntervals.push(setInterval(update, 1000));
+  }
+
+  _renderImageWidget(widget, config, name) {
+    const src = config.image_url || config.imageUrl || config.url || "";
+    widget.classList.add("widget-image");
+    widget.innerHTML = src
+      ? `<img src="${src}" class="widget-image-tag" alt="${name || "Bild"}"><div class="camera-overlay">${name || "Bild"}</div>`
+      : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild</div></div>`;
+  }
+
+  _renderQrWidget(widget, config) {
+    const value = config.text || config.value || config.qr_value || config.qrValue || "QR";
+    widget.classList.add("widget-qr");
+
+    const holder = document.createElement("div");
+    holder.className = "widget-qr-holder";
+    widget.appendChild(holder);
+
+    if (window.QRCode?.toString) {
+      window.QRCode.toString(value, { width: 192 })
+        .then((svg) => {
+          holder.innerHTML = svg;
+        })
+        .catch(() => {
+          holder.innerHTML = `<div class="qr-fallback">QR</div>`;
+        });
+    } else {
+      holder.innerHTML = `<div class="qr-fallback">QR</div>`;
+    }
+
+    const label = document.createElement("div");
+    label.className = "w-name";
+    label.textContent = config.name || "QR-Code";
+    widget.appendChild(label);
+  }
+
+  _renderColorBlockWidget(widget, config, name) {
+    widget.style.background = config.bgColor || config.color || "var(--td-accent)";
+    widget.innerHTML = `
+      <div class="w-value">${name || "Block"}</div>
+    `;
+  }
+
+  _renderButtonWidget(widget, config, name) {
+    widget.innerHTML = `
+      <div class="widget-button-face">
+        <div class="w-icon"><span style="font-size:24px">${config.icon || "🔘"}</span></div>
+        <div class="w-name">${name || "Button"}</div>
+      </div>
+    `;
+  }
+
+  _applyCommonWidgetStyle(widget, config) {
+    if (config.font) widget.style.fontFamily = `"${config.font}", sans-serif`;
     if (config.fontSize) {
       const ve = widget.querySelector(".w-value");
-      if (ve) ve.style.fontSize = config.fontSize + "px";
+      if (ve) ve.style.fontSize = `${config.fontSize}px`;
     }
     if (config.textColor) widget.style.color = config.textColor;
-    if (config.bgColor) widget.style.background = config.bgColor;
-    if (config.borderRadius) widget.style.borderRadius = config.borderRadius + "px";
+    if (config.bgColor && !widget.classList.contains("widget-color-block")) {
+      widget.style.background = config.bgColor;
+    }
+    if (config.borderRadius) widget.style.borderRadius = `${config.borderRadius}px`;
 
-    return widget;
+    if (config.customCss) {
+      widget.style.cssText += `;${config.customCss}`;
+    }
   }
 
   _updateWidget(widgetInfo, entityId, newState) {
     const { element, config } = widgetInfo;
-    const value = newState.state || "—";
-    const unit = newState.attributes?.unit_of_measurement || config.unit || "";
+    const value = newState?.state ?? "—";
+    const unit = newState?.attributes?.unit_of_measurement || config.unit || "";
 
     switch (config.type) {
       case "gauge": {
-        const min = config.config?.min || 0;
-        const max = config.config?.max || 100;
-        const nv = parseFloat(value) || 0;
-        const pct = Math.max(0, Math.min(100, ((nv - min) / (max - min)) * 100));
+        const min = config.config?.min ?? 0;
+        const max = config.config?.max ?? 100;
+        const nv = Utils.toNumber(value, 0);
+        const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
         const arc = element.querySelector(".gauge-arc-value");
         const txt = element.querySelector(".gauge-text-value");
         if (arc) {
@@ -644,21 +931,42 @@ class ScreenManager {
       }
 
       case "progress-bar": {
-        const pm = config.config?.min || 0;
-        const px = config.config?.max || 100;
-        const pv = parseFloat(value) || 0;
+        const min = config.config?.min ?? 0;
+        const max = config.config?.max ?? 100;
+        const nv = Utils.toNumber(value, 0);
+        const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
         const fill = element.querySelector(".progress-fill");
         const ve = element.querySelector(".w-value");
-        if (fill) {
-          fill.style.width = `${Math.max(0, Math.min(100, ((pv - pm) / (px - pm)) * 100))}%`;
+        if (fill) fill.style.width = `${pct}%`;
+        if (ve) ve.textContent = nv;
+        break;
+      }
+
+      case "status-dot": {
+        const isOn = ["on", "true", "home", "open", "detected"].includes(String(value).toLowerCase());
+        const dot = element.querySelector(".status-dot-indicator");
+        const sub = element.querySelector(".widget-subvalue");
+        const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
+        if (dot) {
+          dot.style.background = color;
+          dot.style.color = color;
+          dot.classList.toggle("on", isOn);
         }
-        if (ve) ve.textContent = pv;
+        if (sub) sub.textContent = Utils.text(value);
+        break;
+      }
+
+      case "weather": {
+        const val = element.querySelector(".w-value");
+        const sub = element.querySelector(".widget-subvalue");
+        if (val) val.textContent = newState?.attributes?.temperature ?? "—";
+        if (sub) sub.textContent = newState?.state || "—";
         break;
       }
 
       default: {
         const wv = element.querySelector(".w-value");
-        if (wv) wv.textContent = value;
+        if (wv) wv.textContent = Utils.text(value);
       }
     }
 
@@ -669,10 +977,12 @@ class ScreenManager {
 
   _doTransition(newScreen, type) {
     const oldScreen = this.container.querySelector(".screen");
+
     if (oldScreen && type !== "none") {
       newScreen.classList.add(`screen-enter-${type}`);
       oldScreen.classList.add(`screen-exit-${type}`);
       this.container.appendChild(newScreen);
+
       setTimeout(() => {
         oldScreen.remove();
         newScreen.classList.remove(`screen-enter-${type}`);
@@ -684,7 +994,7 @@ class ScreenManager {
   }
 
   _startRotation() {
-    this._stopRotation();
+    this._stopRotation(false);
     if (this.screens.length <= 1 || this.isPaused) return;
 
     const ms = (this.screens[this.currentIndex]?.duration || 15) * 1000;
@@ -694,13 +1004,21 @@ class ScreenManager {
     }, ms);
   }
 
-  _stopRotation() {
+  _stopRotation(clearTemps = true) {
     if (this.rotationTimer) {
       clearTimeout(this.rotationTimer);
       this.rotationTimer = null;
     }
-    if (this._clockInterval) clearInterval(this._clockInterval);
-    if (this._cameraInterval) clearInterval(this._cameraInterval);
+    if (clearTemps) this._clearIntervals();
+  }
+
+  _clearIntervals() {
+    this._clockIntervals.forEach(clearInterval);
+    this._cameraIntervals.forEach(clearInterval);
+    this._countdownIntervals.forEach(clearInterval);
+    this._clockIntervals = [];
+    this._cameraIntervals = [];
+    this._countdownIntervals = [];
   }
 
   _getZoneColor(value, zones) {
@@ -709,6 +1027,25 @@ class ScreenManager {
       if (value >= z.from && value <= z.to) return z.color;
     }
     return "var(--td-accent)";
+  }
+
+  _defaultIconForType(type) {
+    const map = {
+      "simple-value": "🔢",
+      "icon-value": "ℹ️",
+      "mini-graph": "📉",
+      "bar-chart": "📊",
+      "sparkline": "〰️",
+      "trend-arrow": "📈",
+      "weather": "🌤️",
+      "clock": "🕐",
+      "image": "🖼️",
+      "camera": "📹",
+      "qr-code": "🔳",
+      "countdown": "⏱️",
+      "button": "🔘"
+    };
+    return map[type] || "📊";
   }
 }
 
@@ -726,36 +1063,37 @@ class TickerManager {
   }
 
   init() {
-    const tc = this.app.config.ticker || {};
-    if (!tc.enabled) {
+    const tickerConfig = this.app.config.ticker || {};
+    if (!tickerConfig.enabled) {
       if (this.bar) this.bar.hidden = true;
       document.querySelector(".screen-container")?.classList.add("no-ticker");
       return;
     }
-    this.entityTemplates = tc.entities || [];
+
+    this.entityTemplates = Utils.safeArray(tickerConfig.entities);
     this._rebuild();
   }
 
   rebuild() {
-    this.entityTemplates = (this.app.config.ticker || {}).entities || [];
+    this.entityTemplates = Utils.safeArray(this.app.config.ticker?.entities);
     this._rebuild();
   }
 
   addMessages(msgs) {
-    for (const m of msgs) {
+    for (const m of Utils.safeArray(msgs)) {
       this.messages.push({
         text: m.text || m.message || "",
         color: m.color,
         icon: m.icon,
         timestamp: Date.now(),
-        duration: m.duration || 300,
+        duration: m.duration || 300
       });
     }
     this._rebuild();
   }
 
   setEntities(data) {
-    this.entityTemplates = data.entities || [];
+    this.entityTemplates = Utils.safeArray(data.entities);
     this._rebuild();
   }
 
@@ -765,12 +1103,8 @@ class TickerManager {
     this._rebuild();
   }
 
-  onEntityUpdate(entityId, newState) {
-    if (
-      this.entityTemplates.some((t) =>
-        (typeof t === "string" ? t : t.entity_id) === entityId
-      )
-    ) {
+  onEntityUpdate(entityId) {
+    if (this.entityTemplates.some((t) => (typeof t === "string" ? t : t.entity_id) === entityId)) {
       this._rebuild();
     }
   }
@@ -784,8 +1118,9 @@ class TickerManager {
       const tpl = typeof tmpl === "string" ? "{friendly_name}: {state}" : (tmpl.template || "{state}");
       const color = typeof tmpl === "object" ? tmpl.color : null;
       const state = this.app.entityStates[eid];
+
       if (state) {
-        let text = tpl
+        const text = tpl
           .replace("{state}", state.state || "")
           .replace("{friendly_name}", state.attributes?.friendly_name || eid)
           .replace("{unit}", state.attributes?.unit_of_measurement || "");
@@ -794,39 +1129,30 @@ class TickerManager {
     }
 
     const now = Date.now();
-    this.messages = this.messages.filter(
-      (m) => (now - m.timestamp) / 1000 < m.duration
-    );
+    this.messages = this.messages.filter((m) => (now - m.timestamp) / 1000 < m.duration);
+
     for (const m of this.messages) {
       items.push({ text: m.text, color: m.color, icon: m.icon });
     }
 
-    if (items.length === 0) {
+    if (!items.length) {
       this.container.innerHTML = "";
       this.container.classList.remove("scrolling");
       return;
     }
 
-    const build = (list) =>
-      list
-        .map((item, i) => {
-          const s = item.color ? `color:${item.color}` : "";
-          return `<span class="ticker-item" style="${s}">${item.text}</span>` +
-            (i < list.length - 1 ? `<span class="ticker-separator">│</span>` : "");
-        })
-        .join("");
+    const build = (list) => list.map((item, i) => {
+      const style = item.color ? `color:${item.color}` : "";
+      return `<span class="ticker-item" style="${style}">${item.icon ? `<span class="ticker-icon">${item.icon}</span>` : ""}${item.text}</span>` +
+        (i < list.length - 1 ? `<span class="ticker-separator">│</span>` : "");
+    }).join("");
 
-    this.container.innerHTML =
-      build(items) + `<span class="ticker-separator">│</span>` + build(items);
-
+    this.container.innerHTML = build(items) + `<span class="ticker-separator">│</span>` + build(items);
     this.container.classList.add("scrolling");
 
     const speed = this.app.config.ticker?.speed || "normal";
     const mult = { slow: 1.5, normal: 1, fast: 0.6 }[speed] || 1;
-    this.container.style.setProperty(
-      "--ticker-duration",
-      `${Math.max(10, items.length * 5 * mult)}s`
-    );
+    this.container.style.setProperty("--ticker-duration", `${Math.max(10, items.length * 5 * mult)}s`);
   }
 }
 
@@ -847,6 +1173,7 @@ class AlertManager {
 
   show(data) {
     const mode = data.mode || "fullscreen";
+
     switch (mode) {
       case "fullscreen":
         this._showFullscreen(data);
@@ -866,13 +1193,11 @@ class AlertManager {
     }
 
     if (data.sound_url) {
-      this.app.bridge.playSound(
-        data.sound_url,
-        data.volume || 100,
-        data.sound_loop || false
-      );
+      this.app.bridge.playSound(data.sound_url, data.volume || 100, data.sound_loop || false);
     }
-    if (data.vibrate) this.app.bridge.vibrate(500);
+    if (data.vibrate) {
+      this.app.bridge.vibrate(500);
+    }
   }
 
   clearAll() {
@@ -880,52 +1205,61 @@ class AlertManager {
     if (this.banner) this.banner.hidden = true;
     if (this.toastContainer) this.toastContainer.hidden = true;
     if (this.pipContainer) this.pipContainer.hidden = true;
+
     this.app.bridge.stopSound();
 
-    for (const t of this._timers) clearTimeout(t);
+    this._timers.forEach(clearTimeout);
     this._timers = [];
 
     if (this._pipInterval) clearInterval(this._pipInterval);
+    this._pipInterval = null;
   }
 
   _showFullscreen(data) {
     const sev = data.severity || "info";
     const icons = { info: "ℹ️", warning: "⚠️", critical: "🚨" };
+
     this.overlay.className = `alert-overlay severity-${sev}`;
-    this.overlay.innerHTML = `<div class="alert-icon">${data.icon || icons[sev] || "ℹ️"}</div>
-      <div class="alert-title">${data.title || ""}</div><div class="alert-message">${data.message || ""}</div>
-      ${data.duration ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}`;
+    this.overlay.innerHTML = `
+      <div class="alert-card">
+        <div class="alert-icon">${data.icon || icons[sev] || "ℹ️"}</div>
+        <div class="alert-title">${data.title || ""}</div>
+        <div class="alert-message">${data.message || ""}</div>
+        ${data.duration ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}
+      </div>
+    `;
     this.overlay.hidden = false;
 
     if (data.duration && data.duration > 0 && !data.persistent) {
-      this._timers.push(
-        setTimeout(() => {
-          this.overlay.hidden = true;
-        }, data.duration * 1000)
-      );
+      this._timers.push(setTimeout(() => {
+        this.overlay.hidden = true;
+      }, data.duration * 1000));
     }
   }
 
   _showBanner(data) {
     this.banner.style.background = data.color || "var(--td-accent)";
-    this.banner.innerHTML = `<span style="font-size:20px">${data.icon || "ℹ️"}</span>
-      <div><div style="font-weight:600">${data.title || ""}</div><div style="font-size:14px;opacity:.9">${data.message || ""}</div></div>`;
+    this.banner.innerHTML = `
+      <span style="font-size:20px">${data.icon || "ℹ️"}</span>
+      <div>
+        <div style="font-weight:600">${data.title || ""}</div>
+        <div style="font-size:14px;opacity:.9">${data.message || ""}</div>
+      </div>
+    `;
     this.banner.hidden = false;
-    this._timers.push(
-      setTimeout(() => {
-        this.banner.hidden = true;
-      }, (data.duration || 10) * 1000)
-    );
+
+    this._timers.push(setTimeout(() => {
+      this.banner.hidden = true;
+    }, (data.duration || 10) * 1000));
   }
 
   _showToast(data) {
     this.toastContainer.innerHTML = `<div class="toast-message">${data.message || ""}</div>`;
     this.toastContainer.hidden = false;
-    this._timers.push(
-      setTimeout(() => {
-        this.toastContainer.hidden = true;
-      }, (data.duration || 5) * 1000)
-    );
+
+    this._timers.push(setTimeout(() => {
+      this.toastContainer.hidden = true;
+    }, (data.duration || 5) * 1000));
   }
 
   _showPip(data) {
@@ -946,12 +1280,11 @@ class AlertManager {
     this.pipContainer.hidden = false;
 
     if (data.duration && data.duration > 0) {
-      this._timers.push(
-        setTimeout(() => {
-          this.pipContainer.hidden = true;
-          if (this._pipInterval) clearInterval(this._pipInterval);
-        }, data.duration * 1000)
-      );
+      this._timers.push(setTimeout(() => {
+        this.pipContainer.hidden = true;
+        if (this._pipInterval) clearInterval(this._pipInterval);
+        this._pipInterval = null;
+      }, data.duration * 1000));
     }
   }
 }
@@ -969,10 +1302,12 @@ class TickerDisplayApp {
     this.neededEntities = window.TICKER_ENTITIES || [];
     this.entityStates = {};
     this.dataManager = new DataManager(this.apiBase);
+    this.isPreview = location.pathname.includes("/preview/");
   }
 
   async init() {
     console.log("🚀 Ticker Display starting...", this.deviceId);
+
     try {
       this.bridge = new BridgeWrapper();
       this.themeManager = new ThemeManager();
@@ -981,14 +1316,33 @@ class TickerDisplayApp {
       this.alertManager = new AlertManager(this);
       this.wsClient = new WebSocketClient(this);
 
-      await this.wsClient.connect();
-
+      // Sofort rendern, auch ohne WebSocket
       this.screenManager.start();
       this.tickerManager.init();
-      this._startSensorReporting();
 
-      const l = document.getElementById("loading-screen");
-      if (l) l.style.display = "none";
+      const loading = document.getElementById("loading-screen");
+      if (loading) loading.style.display = "none";
+
+      const offline = document.getElementById("offline-screen");
+      if (offline && this.isPreview) {
+        offline.hidden = true;
+      }
+
+      // WebSocket nur zusätzlich verbinden
+      this.wsClient.connect()
+        .then(() => {
+          console.log("✅ WebSocket connected");
+          if (offline) offline.hidden = true;
+          this.reportSensorsNow?.();
+        })
+        .catch((e) => {
+          console.warn("⚠️ WebSocket connect failed, running in offline mode:", e);
+          if (offline && this.isPreview) {
+            offline.hidden = true;
+          }
+        });
+
+      this._startSensorReporting();
 
       console.log("✅ Ticker Display ready!");
     } catch (e) {
@@ -1012,7 +1366,7 @@ class TickerDisplayApp {
       "show_clock",
       "show_status_board",
       "show_image",
-      "show_template",
+      "show_template"
     ];
 
     if (screenCmds.includes(cmd)) {
@@ -1040,10 +1394,15 @@ class TickerDisplayApp {
   }
 
   onAudio(data) {
-    if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
-    else if (data.action === "tts") this.bridge.ttsSpeak(data.text, data.language, data.volume);
-    else if (data.action === "stop") this.bridge.stopSound();
-    else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
+    if (data.action === "play") {
+      this.bridge.playSound(data.url, data.volume, data.loop);
+    } else if (data.action === "tts") {
+      this.bridge.ttsSpeak(data.text, data.language, data.volume);
+    } else if (data.action === "stop") {
+      this.bridge.stopSound();
+    } else if (data.action === "set_volume") {
+      this.bridge.setVolume(data.volume);
+    }
   }
 
   onNavigate(data) {
@@ -1057,11 +1416,18 @@ class TickerDisplayApp {
   onConfigChanged(cfg) {
     console.log("📥 Config changed", cfg);
     this.config = cfg || {};
+    this.neededEntities = window.TICKER_ENTITIES || this.neededEntities;
     this.screenManager.rebuild();
     this.tickerManager.rebuild();
 
     const offline = document.getElementById("offline-screen");
-    if (offline) offline.hidden = true;
+    if (offline) {
+      if (this.isPreview) {
+        offline.hidden = true;
+      } else if (this.wsClient?.isConnected()) {
+        offline.hidden = true;
+      }
+    }
 
     try {
       localStorage.setItem("ticker_config_cache", JSON.stringify(cfg));
@@ -1079,7 +1445,7 @@ class TickerDisplayApp {
     if (d && this.wsClient?.isConnected()) {
       this.wsClient.send({
         type: "sensor_update",
-        data: { device_id: this.deviceId, ...d },
+        data: { device_id: this.deviceId, ...d }
       });
     }
   }
@@ -1091,11 +1457,24 @@ class TickerDisplayApp {
   }
 
   _showIdentify() {
-    const o = document.createElement("div");
-    o.style.cssText = "position:fixed;inset:0;background:var(--td-accent);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;animation:blink .5s ease 6";
-    o.innerHTML = `<div style="font-size:48px;font-weight:700;color:white">${this.config.name || this.deviceId}</div><div style="font-size:20px;color:rgba(255,255,255,.7);margin-top:12px">${this.deviceId}</div>`;
-    document.body.appendChild(o);
-    setTimeout(() => o.remove(), 3000);
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `
+      position:fixed;
+      inset:0;
+      background:var(--td-accent);
+      z-index:10000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+      animation:blink .5s ease 6;
+    `;
+    overlay.innerHTML = `
+      <div style="font-size:48px;font-weight:700;color:white">${this.config.name || this.deviceId}</div>
+      <div style="font-size:20px;color:rgba(255,255,255,.7);margin-top:12px">${this.deviceId}</div>
+    `;
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.remove(), 3000);
   }
 }
 
