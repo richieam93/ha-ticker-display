@@ -1,12 +1,15 @@
 """REST API for Ticker Display."""
 
+from __future__ import annotations
+
 import logging
-import json
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
+
 from aiohttp import web
 from homeassistant.core import HomeAssistant
-from .const import DOMAIN, API_BASE, ASSETS_PATH, MEDIA_PATH
+
+from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,8 +22,12 @@ class TickerDisplayAPI:
         self.media = media_manager
         self.ws = websocket
         self._integration_path = Path(hass.config.path(f"custom_components/{DOMAIN}"))
+        self._registered = False
 
     def register_routes(self):
+        if self._registered:
+            return
+
         app = self.hass.http.app
 
         # Device API
@@ -38,6 +45,7 @@ class TickerDisplayAPI:
         display_path = self._integration_path / "display"
         if display_path.exists():
             app.router.add_static(f"{ASSETS_PATH}/", display_path)
+
         frontend_path = self._integration_path / "frontend" / "dist"
         if frontend_path.exists():
             app.router.add_static(f"{ASSETS_PATH}/panel/", frontend_path)
@@ -50,6 +58,7 @@ class TickerDisplayAPI:
         # Media Management
         for res in ["sounds", "fonts", "images"]:
             app.router.add_get(f"{API_BASE}/api/media/{res}", self._list_media)
+
         app.router.add_post(f"{API_BASE}/api/media/sound/upload", self._upload_media)
         app.router.add_post(f"{API_BASE}/api/media/font/upload", self._upload_media)
         app.router.add_post(f"{API_BASE}/api/media/image/upload", self._upload_media)
@@ -83,6 +92,7 @@ class TickerDisplayAPI:
         app.router.add_post(f"{API_BASE}/api/config/backup", self._config_backup)
         app.router.add_post(f"{API_BASE}/api/config/restore", self._config_restore)
 
+        self._registered = True
         _LOGGER.info("API routes registered")
 
     # ── Device API ──
@@ -92,9 +102,19 @@ class TickerDisplayAPI:
         device_id = data.get("device_id")
         if not device_id:
             return web.json_response({"error": "device_id required"}, status=400)
+
+        existing = self.store.get_device(device_id)
         await self.store.async_add_device(device_id, data)
-        return web.json_response({"status": "ok", "device_id": device_id,
-            "display_url": f"{API_BASE}/{device_id}", "ws_url": f"/ticker-display/ws/{device_id}"})
+
+        return web.json_response(
+            {
+                "status": "ok",
+                "device_id": device_id,
+                "existing": existing is not None,
+                "display_url": f"{API_BASE}/{device_id}",
+                "ws_url": f"/ticker-display/ws/{device_id}",
+            }
+        )
 
     async def _device_heartbeat(self, request):
         data = await request.json()
@@ -141,8 +161,10 @@ class TickerDisplayAPI:
             path = self.media.get_font_path(filename)
         else:
             path = self.media.get_image_path(filename)
+
         if not path:
             return web.Response(status=404)
+
         return web.FileResponse(path)
 
     # ── Media Management ──
@@ -198,11 +220,16 @@ class TickerDisplayAPI:
         try:
             history = await self.hass.async_add_executor_job(
                 self.hass.components.recorder.history.state_changes_during_period,
-                start_time, end_time, entity_id)
+                start_time,
+                end_time,
+                entity_id,
+            )
             data_points = []
             for state in history.get(entity_id, []):
                 try:
-                    data_points.append({"x": state.last_changed.isoformat(), "y": float(state.state)})
+                    data_points.append(
+                        {"x": state.last_changed.isoformat(), "y": float(state.state)}
+                    )
                 except (ValueError, TypeError):
                     continue
             return web.json_response({"entity_id": entity_id, "data": data_points})
@@ -215,26 +242,48 @@ class TickerDisplayAPI:
         if not state:
             return web.json_response({"error": "not found"}, status=404)
         a = state.attributes
-        return web.json_response({"entity_id": entity_id, "state": state.state,
-            "temperature": a.get("temperature"), "humidity": a.get("humidity"),
-            "pressure": a.get("pressure"), "wind_speed": a.get("wind_speed"),
-            "wind_bearing": a.get("wind_bearing"), "forecast": a.get("forecast", [])})
+        return web.json_response(
+            {
+                "entity_id": entity_id,
+                "state": state.state,
+                "temperature": a.get("temperature"),
+                "humidity": a.get("humidity"),
+                "pressure": a.get("pressure"),
+                "wind_speed": a.get("wind_speed"),
+                "wind_bearing": a.get("wind_bearing"),
+                "forecast": a.get("forecast", []),
+            }
+        )
 
     async def _states(self, request):
         entity_id = request.match_info["entity_id"]
         state = self.hass.states.get(entity_id)
         if not state:
             return web.json_response({"error": "not found"}, status=404)
-        return web.json_response({"entity_id": entity_id, "state": state.state,
-            "attributes": dict(state.attributes), "last_changed": state.last_changed.isoformat()})
+        return web.json_response(
+            {
+                "entity_id": entity_id,
+                "state": state.state,
+                "attributes": dict(state.attributes),
+                "last_changed": state.last_changed.isoformat(),
+            }
+        )
 
     async def _persons(self, request):
         persons = []
         for s in self.hass.states.async_all("person"):
             a = s.attributes
-            persons.append({"entity_id": s.entity_id, "name": a.get("friendly_name", s.entity_id),
-                "state": s.state, "latitude": a.get("latitude"), "longitude": a.get("longitude"),
-                "entity_picture": a.get("entity_picture"), "source": a.get("source")})
+            persons.append(
+                {
+                    "entity_id": s.entity_id,
+                    "name": a.get("friendly_name", s.entity_id),
+                    "state": s.state,
+                    "latitude": a.get("latitude"),
+                    "longitude": a.get("longitude"),
+                    "entity_picture": a.get("entity_picture"),
+                    "source": a.get("source"),
+                }
+            )
         return web.json_response(persons)
 
     async def _entities_list(self, request):
@@ -242,8 +291,16 @@ class TickerDisplayAPI:
         entities = []
         for s in self.hass.states.async_all(domain_filter):
             a = s.attributes
-            entities.append({"entity_id": s.entity_id, "name": a.get("friendly_name", s.entity_id),
-                "state": s.state, "domain": s.domain, "icon": a.get("icon"), "unit": a.get("unit_of_measurement")})
+            entities.append(
+                {
+                    "entity_id": s.entity_id,
+                    "name": a.get("friendly_name", s.entity_id),
+                    "state": s.state,
+                    "domain": s.domain,
+                    "icon": a.get("icon"),
+                    "unit": a.get("unit_of_measurement"),
+                }
+            )
         return web.json_response(entities)
 
     # ── Config API ──
@@ -252,9 +309,10 @@ class TickerDisplayAPI:
         devices = self.store.get_devices()
         result = []
         for did, config in devices.items():
-            config["online"] = self.coordinator.is_device_online(did)
-            config["connected"] = self.ws.is_device_connected(did)
-            result.append(config)
+            item = dict(config)
+            item["online"] = self.coordinator.is_device_online(did)
+            item["connected"] = self.ws.is_device_connected(did)
+            result.append(item)
         return web.json_response(result)
 
     async def _config_device_get(self, request):
@@ -267,7 +325,10 @@ class TickerDisplayAPI:
         device_id = request.match_info["device_id"]
         config = await request.json()
         await self.store.async_update_device(device_id, config)
-        await self.ws.send_to_device(device_id, {"type": "config_changed", "config": self.store.get_device(device_id)})
+        await self.ws.send_to_device(
+            device_id,
+            {"type": "config_changed", "config": self.store.get_device(device_id)},
+        )
         return web.json_response({"status": "ok"})
 
     async def _config_templates(self, request):

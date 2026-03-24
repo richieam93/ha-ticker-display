@@ -1,10 +1,14 @@
 """Storage manager for Ticker Display."""
 
+from __future__ import annotations
+
 import logging
 from copy import deepcopy
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from .const import STORAGE_KEY, STORAGE_VERSION, DEFAULT_THEME
+
+from .const import DEFAULT_THEME, STORAGE_KEY, STORAGE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +34,10 @@ class TickerDisplayStore:
         data = await self._store.async_load()
         if data:
             self._data = data
-        _LOGGER.debug("Loaded store with %d devices", len(self._data.get("devices", {})))
+        _LOGGER.debug(
+            "Loaded store with %d devices",
+            len(self._data.get("devices", {})),
+        )
 
     async def async_save(self):
         await self._store.async_save(deepcopy(self._data))
@@ -43,7 +50,33 @@ class TickerDisplayStore:
         return self._data.get("devices", {}).get(device_id)
 
     async def async_add_device(self, device_id: str, device_info: dict):
-        self._data.setdefault("devices", {})[device_id] = {
+        devices = self._data.setdefault("devices", {})
+
+        if device_id in devices:
+            existing = devices[device_id]
+
+            # Nur Geräte-Metadaten aktualisieren, KEINE Screens/Config überschreiben
+            existing.update(
+                {
+                    "id": device_id,
+                    "name": device_info.get("name", existing.get("name", device_id)),
+                    "model": device_info.get("model", existing.get("model", "Unknown")),
+                    "android_version": device_info.get(
+                        "android_version",
+                        existing.get("android_version", ""),
+                    ),
+                    "screen_resolution": device_info.get(
+                        "screen_resolution",
+                        existing.get("screen_resolution", ""),
+                    ),
+                }
+            )
+
+            await self.async_save()
+            _LOGGER.info("Device metadata updated: %s", device_id)
+            return
+
+        devices[device_id] = {
             "id": device_id,
             "name": device_info.get("name", device_id),
             "model": device_info.get("model", "Unknown"),
@@ -51,7 +84,13 @@ class TickerDisplayStore:
             "screen_resolution": device_info.get("screen_resolution", ""),
             "screens": [],
             "rotation": {"enabled": True, "transition": "fade"},
-            "ticker": {"enabled": True, "position": "bottom", "speed": "normal", "entities": [], "messages": []},
+            "ticker": {
+                "enabled": True,
+                "position": "bottom",
+                "speed": "normal",
+                "entities": [],
+                "messages": [],
+            },
             "theme": DEFAULT_THEME,
             "font": "roboto",
             "created_at": None,
