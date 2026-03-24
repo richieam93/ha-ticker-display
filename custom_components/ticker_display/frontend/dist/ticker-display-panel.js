@@ -1,5 +1,5 @@
 /**
- * Ticker Display Panel – Enhanced Admin UI
+ * Ticker Display Panel - Enhanced Admin UI
  * Improved entity pickers, clipboard handling, editor UX, media tools, and stability.
  * Drop-in replacement for frontend/dist/ticker-display-panel.js
  */
@@ -77,9 +77,9 @@ function downloadJson(filename, data) {
   URL.revokeObjectURL(url);
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: TOAST NOTIFICATION
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdToast extends LitElement {
   static get properties() {
@@ -113,9 +113,9 @@ class TdToast extends LitElement {
 }
 customElements.define("td-toast", TdToast);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: CONFIRM DIALOG
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdConfirm extends LitElement {
   static get properties() {
@@ -165,9 +165,9 @@ class TdConfirm extends LitElement {
 }
 customElements.define("td-confirm", TdConfirm);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: ENTITY PICKER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdEntityPicker extends LitElement {
   static get properties() {
@@ -280,9 +280,9 @@ class TdEntityPicker extends LitElement {
 }
 customElements.define("td-entity-picker", TdEntityPicker);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: ICON PICKER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdIconPicker extends LitElement {
   static get properties() {
@@ -338,9 +338,9 @@ class TdIconPicker extends LitElement {
 }
 customElements.define("td-icon-picker", TdIconPicker);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: COLOR PICKER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdColorPicker extends LitElement {
   static get properties() {
@@ -381,9 +381,9 @@ class TdColorPicker extends LitElement {
 }
 customElements.define("td-color-picker", TdColorPicker);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: FONT PICKER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdFontPicker extends LitElement {
   static get properties() {
@@ -415,9 +415,9 @@ class TdFontPicker extends LitElement {
 }
 customElements.define("td-font-picker", TdFontPicker);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SHARED: SOUND PICKER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdSoundPicker extends LitElement {
   static get properties() {
@@ -474,9 +474,9 @@ class TdSoundPicker extends LitElement {
 }
 customElements.define("td-sound-picker", TdSoundPicker);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    DEVICE LIST
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdDeviceList extends LitElement {
   static get properties() {
@@ -563,9 +563,9 @@ class TdDeviceList extends LitElement {
 }
 customElements.define("td-device-list", TdDeviceList);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    DEVICE EDITOR
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdDeviceEditor extends LitElement {
   static get properties() {
@@ -755,9 +755,9 @@ class TdDeviceEditor extends LitElement {
 }
 customElements.define("td-device-editor", TdDeviceEditor);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SCREEN EDITOR
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdScreenEditor extends LitElement {
   static get properties() {
@@ -777,6 +777,11 @@ class TdScreenEditor extends LitElement {
       _redo: { type: Array },
       _dwt: { type: String },
       _pt: { type: Number },
+      _palSearch: { type: String },
+      _tpl: { type: String },
+      _multi: { type: Array },
+      _clipWidgets: { type: Array },
+      _showGuides: { type: Boolean },
     };
   }
   constructor() {
@@ -789,15 +794,34 @@ class TdScreenEditor extends LitElement {
     this._redo = [];
     this._dwt = null;
     this._pt = 0;
+    this._palSearch = "";
+    this._tpl = "";
+    this._multi = [];
+    this._clipWidgets = [];
+    this._showGuides = true;
+    this._pointerCleanup = null;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this._onKeyDown = (e) => this._handleKeyDown(e);
+    window.addEventListener("keydown", this._onKeyDown);
+  }
+  disconnectedCallback() {
+    if (this._onKeyDown) window.removeEventListener("keydown", this._onKeyDown);
+    if (this._pointerCleanup) this._pointerCleanup();
+    super.disconnectedCallback();
   }
   updated(c) {
-    if (c.has("screenConfig") && this.screenConfig) this._cfg = deepClone(this.screenConfig);
+    if (c.has("screenConfig") && this.screenConfig) {
+      this._cfg = deepClone(this.screenConfig);
+      this._multi = [];
+    }
   }
 
   static get styles() {
     return css`
-      :host { display:grid; grid-template-columns:220px 1fr 320px; grid-template-rows:52px 1fr; height:100vh; overflow:hidden; }
-      .tb { grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:0 12px; background:var(--app-header-background-color,#1e1e1e); border-bottom:1px solid var(--divider-color); overflow-x:auto; }
+      :host { display:grid; grid-template-columns:280px 1fr 380px; grid-template-rows:72px 1fr; height:100vh; overflow:hidden; background:radial-gradient(circle at top left, rgba(77,171,247,.12), transparent 28%), radial-gradient(circle at top right, rgba(147,51,234,.12), transparent 26%), linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,0)); }
+      .tb { grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:0 16px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), var(--app-header-background-color,#151822); border-bottom:1px solid rgba(255,255,255,.08); overflow-x:auto; box-shadow:0 18px 42px rgba(0,0,0,.24); backdrop-filter:blur(18px); }
       .tb button { padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; background:none; color:var(--primary-text-color); font-size:13px; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:4px; }
       .tb button:hover { background:rgba(255,255,255,.05); }
       .tb button.p { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
@@ -806,14 +830,14 @@ class TdScreenEditor extends LitElement {
       .tb select { padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
       .tb .sp { flex:1; }
       .tb .lb { font-size:12px; color:var(--secondary-text-color); white-space:nowrap; }
-      .pal { overflow-y:auto; padding:8px; border-right:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
+      .pal { overflow-y:auto; padding:14px; border-right:1px solid rgba(255,255,255,.08); background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,0)), var(--sidebar-background-color,#0f1118); }
       .pc { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--secondary-text-color); padding:12px 8px 6px; }
       .pi { display:flex; align-items:center; gap:8px; padding:8px 10px; margin:2px 0; border-radius:8px; cursor:grab; font-size:13px; color:var(--primary-text-color); transition:background .15s; }
       .pi:hover { background:rgba(255,255,255,.06); }
       .pi:active { cursor:grabbing; opacity:.6; }
       .pi .pp { font-size:18px; opacity:.7; width:22px; text-align:center; }
       .pva { display:flex; align-items:center; justify-content:center; background:#0a0a0a; padding:20px; overflow:hidden; }
-      .pf { background:#121212; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,.5); display:flex; flex-direction:column; overflow:hidden; position:relative; }
+      .pf { background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.015)), #0f1118; border-radius:22px; box-shadow:0 18px 60px rgba(0,0,0,.5); display:flex; flex-direction:column; overflow:hidden; position:relative; border:1px solid rgba(255,255,255,.08); }
       .pf.l { width:min(100%,720px); aspect-ratio:16/10; }
       .pf.p { height:min(100%,520px); aspect-ratio:10/16; }
       .pg { display:grid; gap:6px; padding:6px; flex:1; min-height:0; }
@@ -822,7 +846,7 @@ class TdScreenEditor extends LitElement {
       .gc.sg { border-color:rgba(255,255,255,.06); }
       .gc.do { border-color:var(--primary-color); background:rgba(33,150,243,.08); }
       .wb {
-        background:rgba(255,255,255,.06); border-radius:8px; padding:8px; display:flex; flex-direction:column;
+        background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.04)); border-radius:18px; padding:10px; display:flex; flex-direction:column;
         align-items:center; justify-content:center; cursor:pointer; position:relative; overflow:hidden; border:2px solid transparent; transition:border-color .15s;
       }
       .wb:hover { border-color:rgba(255,255,255,.15); }
@@ -830,7 +854,7 @@ class TdScreenEditor extends LitElement {
       .wb .wi { font-size:20px; opacity:.5; }
       .wb .wv { font-size:22px; font-weight:500; color:#fff; margin:2px 0; }
       .wb .wn { font-size:10px; color:rgba(255,255,255,.5); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
-      .props { overflow-y:auto; padding:12px; border-left:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
+      .props { overflow-y:auto; padding:18px; border-left:1px solid rgba(255,255,255,.08); background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,0)), var(--sidebar-background-color,#0f1118); }
       .pe { display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; color:var(--secondary-text-color); text-align:center; font-size:14px; gap:8px; }
       .ptabs { display:flex; border-bottom:1px solid var(--divider-color); margin-bottom:12px; }
       .ptab { flex:1; padding:8px 4px; text-align:center; font-size:12px; font-weight:500; cursor:pointer; border-bottom:2px solid transparent; color:var(--secondary-text-color); background:none; border-top:none; border-left:none; border-right:none; }
@@ -839,16 +863,34 @@ class TdScreenEditor extends LitElement {
       .pf2 { margin-bottom:10px; }
       .pf2 label { display:block; font-size:12px; color:var(--secondary-text-color); margin-bottom:4px; }
       .pf2 input,.pf2 select {
-        width:100%; padding:7px 10px; border:1px solid var(--divider-color); border-radius:6px;
-        background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px;
+        width:100%; padding:9px 11px; border:1px solid rgba(255,255,255,.08); border-radius:10px;
+        background:color-mix(in srgb, var(--primary-background-color) 80%, rgba(255,255,255,.04)); color:var(--primary-text-color); font-size:13px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
       }
       .pf2 input[type=color] { height:36px; padding:2px; cursor:pointer; }
       .delb { width:100%; padding:10px; border:1px solid #F44336; border-radius:8px; background:none; color:#F44336; cursor:pointer; font-size:13px; margin-top:16px; }
       .delb:hover { background:rgba(244,67,54,.1); }
       textarea {
         width:100%; font-family:monospace; font-size:12px; background:var(--primary-background-color); color:var(--primary-text-color);
-        border:1px solid var(--divider-color); border-radius:6px; padding:8px; resize:vertical;
+        border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; resize:vertical;
       }
+      .hint { font-size:11px; color:var(--secondary-text-color); margin-top:4px; line-height:1.35; }
+      .sec { padding:12px; border-radius:16px; border:1px solid rgba(255,255,255,.06); background:rgba(255,255,255,.025); margin-bottom:14px; }
+      .wb { user-select:none; }
+      .wb .wh { position:absolute; inset:0 auto auto 0; padding:4px 6px; font-size:11px; color:rgba(255,255,255,.7); cursor:grab; background:rgba(0,0,0,.22); border-bottom-right-radius:10px; }
+      .wb .wr { position:absolute; right:6px; bottom:6px; width:14px; height:14px; border-right:2px solid rgba(255,255,255,.65); border-bottom:2px solid rgba(255,255,255,.65); cursor:nwse-resize; opacity:.7; }
+      .wb .wz { position:absolute; top:6px; right:8px; font-size:10px; color:rgba(255,255,255,.55); padding:2px 6px; border-radius:999px; background:rgba(255,255,255,.08); }
+      .wb .wvb { position:absolute; left:8px; bottom:8px; font-size:10px; color:#ffd7a6; padding:2px 6px; border-radius:999px; background:rgba(92,53,0,.45); }
+      .tpgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      .miniBtn { padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04); color:var(--primary-text-color); cursor:pointer; font-size:12px; }
+      .miniBtn:hover { background:rgba(255,255,255,.08); }
+      .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      .wb.multi { border-color: rgba(77,171,247,.55); box-shadow: 0 0 0 1px rgba(77,171,247,.35) inset; }
+      .wb.guide-x::after { content:""; position:absolute; top:0; bottom:0; left:50%; width:1px; background:rgba(77,171,247,.35); pointer-events:none; }
+      .wb.guide-y::before { content:""; position:absolute; left:0; right:0; top:50%; height:1px; background:rgba(77,171,247,.35); pointer-events:none; }
+      .msel { margin-top:12px; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03); }
+      .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+      .chip { padding:5px 8px; border-radius:999px; font-size:11px; background:rgba(77,171,247,.14); color:var(--primary-text-color); border:1px solid rgba(77,171,247,.25); }
     `;
   }
 
@@ -867,12 +909,26 @@ class TdScreenEditor extends LitElement {
         <span>×</span>
         <select .value=${String(this._cfg.grid?.rows || 2)} @change=${(e) => this._sg("rows", +e.target.value)}>${[1,2,3,4].map((n) => html`<option value=${n}>${n}</option>`)}</select>
         <button @click=${() => this._grid = !this._grid}>${this._grid ? "▦" : "▢"}</button>
+        <button @click=${() => this._showGuides = !this._showGuides}>${this._showGuides ? "🧲 Guides" : "🧲 Aus"}</button>
+        <button @click=${() => this._copySelected()} ?disabled=${!this._selectedWidgets().length}>📋 Copy</button>
+        <button @click=${() => this._pasteWidgets()} ?disabled=${!this._clipWidgets.length}>📥 Paste</button>
+        <button @click=${() => this._selectAllWidgets()} ?disabled=${!(this._cfg.widgets || []).length}>☑ Alle</button>
+        <button @click=${() => this._cfg = { ...this._cfg, backgroundColor: "#0f172a", backgroundImage: "", backgroundSize: "cover" }}>🌑 Dark</button>
+        <button @click=${() => this._cfg = { ...this._cfg, backgroundColor: "#08121d", backgroundImage: "linear-gradient(135deg, rgba(77,171,247,.22), rgba(147,51,234,.18))", backgroundSize: "cover" }}>✨ Premium</button>
         <div class="sp"></div>
         <button ?disabled=${!this._undo.length} @click=${() => this._doUndo()}>↩</button>
         <button ?disabled=${!this._redo.length} @click=${() => this._doRedo()}>↪</button>
         <button @click=${() => this._prev = this._prev === "landscape" ? "portrait" : "landscape"}>${this._prev === "landscape" ? "🖥" : "📱"}</button>
         <select .value=${String(this._cfg.duration || 15)} @change=${(e) => this._cfg = { ...this._cfg, duration: +e.target.value }}>${[5,10,15,20,30,60].map((n) => html`<option value=${n}>${n}s</option>`)}</select>
         <button @click=${() => window.open(`/ticker-display/preview/${this.deviceId}`, "_blank")}>👁️</button>
+        <select .value=${this._tpl || ""} @change=${(e) => this._tpl = e.target.value}>
+          <option value="">Vorlage laden…</option>
+          <option value="weather_station">Wetter</option>
+          <option value="energy_dashboard">Energie</option>
+          <option value="camera_wall">Kamera</option>
+          <option value="room_status">Raumstatus</option>
+        </select>
+        <button @click=${() => this._applyBuiltInTemplate(this._tpl)} ?disabled=${!this._tpl}>⚡ Anwenden</button>
         <button @click=${() => {
           const n = prompt("Vorlagenname:", this._cfg.name || "Vorlage");
           if (n) this._e("save-as-template", { name: n, screenConfig: this._cfg });
@@ -896,6 +952,21 @@ class TdScreenEditor extends LitElement {
         { t: "mini-graph", i: "📉", l: "Mini Graph" },
         { t: "bar-chart", i: "📊", l: "Balken" },
         { t: "sparkline", i: "〰️", l: "Sparkline" },
+        { t: "area-chart", i: "🌊", l: "Area" },
+        { t: "multi-line-chart", i: "📈", l: "Multi Line" },
+        { t: "stacked-bar-chart", i: "🧱", l: "Stacked Bar" },
+        { t: "horizontal-bar-chart", i: "↔️", l: "Horizontal Bar" },
+        { t: "donut-chart", i: "🍩", l: "Donut" },
+        { t: "pie-chart", i: "🥧", l: "Pie" },
+        { t: "radar-chart", i: "🕸️", l: "Radar" },
+        { t: "heatmap-mini", i: "🟧", l: "Heatmap" },
+        { t: "timeline-chart", i: "🕒", l: "Timeline" },
+        { t: "scatter-chart", i: "✳️", l: "Scatter" },
+        { t: "forecast-chart", i: "☁️", l: "Forecast" },
+        { t: "energy-flow-mini", i: "⚡", l: "Energy Flow" },
+        { t: "comparison-chart", i: "⚖️", l: "Comparison" },
+        { t: "radial-gauge-advanced", i: "🎯", l: "Radial Gauge" },
+        { t: "bullet-chart", i: "🎚️", l: "Bullet" },
       ]},
       { n: "Media", items: [
         { t: "camera", i: "📹", l: "Kamera" },
@@ -912,9 +983,12 @@ class TdScreenEditor extends LitElement {
       ]},
     ];
 
+    const q = (this._palSearch || "").toLowerCase().trim();
+    const filtered = cats.map((c) => ({ ...c, items: c.items.filter((it) => !q || `${it.t} ${it.l}`.toLowerCase().includes(q)) })).filter((c) => c.items.length);
     return html`
       <div class="pal">
-        ${cats.map((c) => html`
+        <div class="pf2"><label>Widget suchen</label><input .value=${this._palSearch || ""} placeholder="z. B. Kamera, Donut, Gauge" @input=${(e) => this._palSearch = e.target.value}></div>
+        ${filtered.map((c) => html`
           <div class="pc">${c.n}</div>
           ${c.items.map((it) => html`
             <div class="pi" draggable="true"
@@ -950,13 +1024,17 @@ class TdScreenEditor extends LitElement {
       const u = st?.attributes?.unit_of_measurement || "";
       const nm = w.name || st?.attributes?.friendly_name || w.type || "";
       els.push(html`
-        <div class="wb ${this._sel === i ? "sel" : ""}" style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1}"
-          @click=${() => this._sel = i} draggable="true"
+        <div class="wb ${this._sel === i ? "sel" : ""} ${this._multi.includes(i) ? "multi" : ""} ${(this._showGuides && this._sel === i) ? "guide-x guide-y" : ""}" style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1};z-index:${w.zIndex || i + 1}"
+          @click=${(e) => this._selectWidget(i, e)} draggable="true"
           @dragstart=${(e) => { e.dataTransfer.setData("widget-index", String(i)); e.dataTransfer.effectAllowed = "move"; }}
         >
+          <span class="wh" @mousedown=${(e) => this._startDragWidget(e, i)}>✥</span>
+          <span class="wz">z ${w.zIndex || i + 1}</span>
+          ${w.visibilityEntity || w.visibleWhen ? html`<span class="wvb">👁 Regel</span>` : ""}
           <span class="wi">${ti[w.type] || "📊"}</span>
           <span class="wv">${v}${u ? ` ${u}` : ""}</span>
           <span class="wn">${nm}</span>
+          <span class="wr" @mousedown=${(e) => this._startResizeWidget(e, i)}></span>
         </div>
       `);
     }
@@ -977,8 +1055,9 @@ class TdScreenEditor extends LitElement {
 
     return html`
       <div class="pva">
-        <div class="pf ${this._prev === "landscape" ? "l" : "p"}">
-          <div class="pg" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${els}</div>
+        <div class="pf ${this._prev === "landscape" ? "l" : "p"}" style=${`background:${this._cfg.backgroundColor || "#0f1118"};background-image:${this._cfg.backgroundImage ? `url(${this._cfg.backgroundImage})` : "none"};background-size:${this._cfg.backgroundSize || "cover"};position:relative;overflow:hidden;`}>
+          <div style=${`position:absolute;inset:0;background:${this._cfg.overlayColor || "transparent"};opacity:${this._cfg.overlayOpacity ?? 0};pointer-events:none;`}></div>
+          <div class="pg" style=${`grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr);gap:${this._cfg.widgetSpacing ?? 10}px;padding:${this._cfg.widgetSpacing ?? 10}px;position:relative;z-index:1;`}>${els}</div>
           <div class="ptk">▶ Ticker-Leiste</div>
         </div>
       </div>
@@ -987,7 +1066,29 @@ class TdScreenEditor extends LitElement {
 
   _properties() {
     if (this._sel < 0 || !this._cfg.widgets?.[this._sel]) {
-      return html`<div class="props"><div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div></div>`;
+      return html`<div class="props">
+        <div class="sec"><div class="pg4">Screen Style</div>
+        <div class="pf2"><label>Hintergrundfarbe</label><input .value=${this._cfg.backgroundColor || "#121212"} @input=${(e) => this._cfg = { ...this._cfg, backgroundColor: e.target.value }}></div>
+        <div class="pf2"><label>Hintergrundbild URL</label><input .value=${this._cfg.backgroundImage || ""} placeholder="/ticker-display/media/images/dein-bild.png" @input=${(e) => this._cfg = { ...this._cfg, backgroundImage: e.target.value }}></div>
+        <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.backgroundSize || "cover"} @change=${(e) => this._cfg = { ...this._cfg, backgroundSize: e.target.value }}><option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option></select></div>
+        <div class="pf2"><label>Overlay-Farbe</label><input .value=${this._cfg.overlayColor || "rgba(0,0,0,.0)"} @input=${(e) => this._cfg = { ...this._cfg, overlayColor: e.target.value }}></div>
+        <div class="pf2"><label>Overlay-Opacity: ${this._cfg.overlayOpacity ?? 0}</label><input type="range" min="0" max="1" step="0.05" .value=${this._cfg.overlayOpacity ?? 0} @input=${(e) => this._cfg = { ...this._cfg, overlayOpacity: +e.target.value }}></div>
+        <div class="pf2"><label>Widget-Abstand</label><input type="number" min="0" max="40" .value=${this._cfg.widgetSpacing ?? 10} @change=${(e) => this._cfg = { ...this._cfg, widgetSpacing: +e.target.value }}></div>
+        <div class="pf2"><label>Transition</label><select .value=${this._cfg.transition || "fade"} @change=${(e) => this._cfg = { ...this._cfg, transition: e.target.value }}><option value="fade">fade</option><option value="slide-left">slide-left</option><option value="slide-right">slide-right</option><option value="zoom">zoom</option></select></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Spalten</label><input type="number" min="1" max="8" .value=${this._cfg.grid?.columns || 3} @change=${(e) => this._cfg = { ...this._cfg, grid: { ...(this._cfg.grid || {}), columns: +e.target.value } }}></div><div class="pf2"><label>Zeilen</label><input type="number" min="1" max="6" .value=${this._cfg.grid?.rows || 2} @change=${(e) => this._cfg = { ...this._cfg, grid: { ...(this._cfg.grid || {}), rows: +e.target.value } }}></div></div>
+        <div class="msel">
+          <div class="pg4">Mehrfachauswahl</div>
+          <div class="hint">${this._multi.length ? `${this._multi.length} Widgets markiert` : "Noch nichts markiert. Mit Strg oder Shift mehrere Widgets auswählen."}</div>
+          ${this._multi.length ? html`<div class="chips">${this._multi.map((idx) => html`<span class="chip">${this._cfg.widgets?.[idx]?.name || this._cfg.widgets?.[idx]?.type || `Widget ${idx+1}`}</span>`)}</div>
+          <div class="tpgrid" style="margin-top:10px">
+            <button class="miniBtn" @click=${() => this._bulkMove(1,0)}>Alle →</button>
+            <button class="miniBtn" @click=${() => this._bulkMove(0,1)}>Alle ↓</button>
+            <button class="miniBtn" @click=${() => this._copySelected()}>Kopieren</button>
+            <button class="miniBtn" @click=${() => this._deleteSelected()}>Löschen</button>
+          </div>` : ""}
+        </div>
+        <div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div>
+      </div>`;
     }
 
     const w = this._cfg.widgets[this._sel];
@@ -1005,13 +1106,28 @@ class TdScreenEditor extends LitElement {
       { v: "color-block", l: "Farbblock" },
       { v: "countdown", l: "Countdown" },
       { v: "button", l: "Button" },
+      { v: "area-chart", l: "Area Chart" },
+      { v: "multi-line-chart", l: "Multi Line Chart" },
+      { v: "stacked-bar-chart", l: "Stacked Bar Chart" },
+      { v: "horizontal-bar-chart", l: "Horizontal Bar Chart" },
+      { v: "donut-chart", l: "Donut Chart" },
+      { v: "pie-chart", l: "Pie Chart" },
+      { v: "radar-chart", l: "Radar Chart" },
+      { v: "heatmap-mini", l: "Heatmap Mini" },
+      { v: "timeline-chart", l: "Timeline Chart" },
+      { v: "scatter-chart", l: "Scatter Chart" },
+      { v: "forecast-chart", l: "Forecast Chart" },
+      { v: "energy-flow-mini", l: "Energy Flow Mini" },
+      { v: "comparison-chart", l: "Comparison Chart" },
+      { v: "radial-gauge-advanced", l: "Radial Gauge Advanced" },
+      { v: "bullet-chart", l: "Bullet Chart" },
     ];
 
     return html`
       <div class="props">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <strong style="font-size:15px">Widget</strong>
-          <button class="ib" style="font-size:14px" @click=${() => this._delW()}>🗑️</button>
+          <div style="display:flex;gap:8px"><button class="ib" style="font-size:14px" @click=${() => this._dupW()}>⧉</button><button class="ib" style="font-size:14px" @click=${() => this._delW()}>🗑️</button></div>
         </div>
         <div class="ptabs">
           <button class="ptab ${this._pt === 0 ? "a" : ""}" @click=${() => this._pt = 0}>Allgemein</button>
@@ -1043,6 +1159,7 @@ class TdScreenEditor extends LitElement {
             <div class="pf2"><label>Breite</label><input type="number" min="1" .value=${w.colspan || 1} @change=${(e) => this._uw("colspan", +e.target.value)}></div>
             <div class="pf2"><label>Höhe</label><input type="number" min="1" .value=${w.rowspan || 1} @change=${(e) => this._uw("rowspan", +e.target.value)}></div>
           </div>
+          <div class="pf2"><label>Schnell verschieben</label><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"><button class="ib" @click=${() => this._moveSel(0,-1)}>↑</button><button class="ib" @click=${() => this._moveSel(-1,0)}>←</button><button class="ib" @click=${() => this._moveSel(1,0)}>→</button><button class="ib" @click=${() => this._moveSel(0,1)}>↓</button></div></div>
           ${w.type === "gauge" ? html`
             <div class="pg4">Gauge</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1053,24 +1170,91 @@ class TdScreenEditor extends LitElement {
           ${w.type === "camera" ? html`
             <div class="pg4">Kamera</div>
             <div class="pf2"><label>Refresh (s)</label><input type="number" min="1" .value=${w.config?.refresh_interval || 5} @change=${(e) => this._uwc("refresh_interval", +e.target.value)}></div>
+            <div class="pf2"><label>Kamera-Quelle</label><select .value=${w.config?.camera_source || "auto"} @change=${(e) => this._uwc("camera_source", e.target.value)}><option value="auto">Auto</option><option value="snapshot">Snapshot</option><option value="entity_picture">entity_picture</option><option value="camera_proxy">camera_proxy</option><option value="stream">Stream Snapshot</option></select></div>
           ` : ""}
           ${w.type === "image" ? html`
             <div class="pg4">Bild</div>
             <div class="pf2"><label>Bild-URL</label><input .value=${w.imageUrl || ""} placeholder="/ticker-display/media/images/xyz.png" @input=${(e) => this._uw("imageUrl", e.target.value)}></div>
           ` : ""}
+          ${["mini-graph","sparkline","bar-chart","area-chart","multi-line-chart","stacked-bar-chart","horizontal-bar-chart","donut-chart","pie-chart","radar-chart","heatmap-mini","timeline-chart","scatter-chart","forecast-chart","energy-flow-mini","comparison-chart","bullet-chart"].includes(w.type) ? html`
+            <div class="pg4">Chart</div>
+            <div class="pf2"><label>Weitere Entities (kommagetrennt)</label><input .value=${(w.config?.entities || w.entities || []).join(", ")} placeholder="sensor.a, sensor.b" @change=${(e) => { const vals = e.target.value.split(",").map(v => v.trim()).filter(Boolean); this._uwc("entities", vals); this._uw("entities", vals); }}></div>
+            <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
+          ` : ""}
+
+        ${w.type === "energy-flow-mini" ? html`
+          <div class="sec"><div class="pg4">Energy Flow</div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.config?.solar_entity || ""} label="PV Entity" @value-changed=${(e) => this._uwc("solar_entity", e.detail.value)}></td-entity-picker></div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.config?.battery_entity || ""} label="Akku Entity" @value-changed=${(e) => this._uwc("battery_entity", e.detail.value)}></td-entity-picker></div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.config?.grid_entity || ""} label="Netz Entity" @value-changed=${(e) => this._uwc("grid_entity", e.detail.value)}></td-entity-picker></div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.config?.load_entity || ""} label="Haus/Load Entity" @value-changed=${(e) => this._uwc("load_entity", e.detail.value)}></td-entity-picker></div></div>
         ` : ""}
 
+        ${w.type === "bullet-chart" ? html`
+          <div class="sec"><div class="pg4">Bullet</div>
+          <div class="pf2"><label>Zielwert</label><input type="number" .value=${w.config?.target ?? 100} @change=${(e) => this._uwc("target", +e.target.value)}></div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.config?.target_entity || ""} label="Optional Ziel-Entity" @value-changed=${(e) => this._uwc("target_entity", e.detail.value)}></td-entity-picker></div>
+          <div class="pf2"><label>Maximum</label><input type="number" .value=${w.config?.max ?? 100} @change=${(e) => this._uwc("max", +e.target.value)}></div>
+          <div class="pf2"><label>Schwelle niedrig</label><input type="number" .value=${w.config?.threshold_low ?? 40} @change=${(e) => this._uwc("threshold_low", +e.target.value)}></div>
+          <div class="pf2"><label>Schwelle mittel</label><input type="number" .value=${w.config?.threshold_mid ?? 70} @change=${(e) => this._uwc("threshold_mid", +e.target.value)}></div></div>
+        ` : ""}
+
+        ${w.type === "comparison-chart" ? html`
+          <div class="sec"><div class="pg4">Vergleich</div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.config?.comparison_entity || ""} label="Vergleichs-Entity" @value-changed=${(e) => this._uwc("comparison_entity", e.detail.value)}></td-entity-picker><div class="hint">Beispiel: heute vs gestern, Netz heute vs gestern, etc.</div></div></div>
+        ` : ""}
+        ` : ""}
+
+          <div class="pg4">Aktion</div>
+          <div class="pf2"><label>Tap-Action</label><select .value=${w.tapAction || "none"} @change=${(e) => this._uw("tapAction", e.target.value)}><option value="none">Keine</option><option value="navigate">Navigation</option><option value="url">URL öffnen</option><option value="service">Home Assistant Service</option></select></div>
+          ${(w.tapAction || "none") === "navigate" ? html`<div class="pf2"><label>Pfad</label><input .value=${w.navigationPath || ""} placeholder="/lovelace/0" @input=${(e) => this._uw("navigationPath", e.target.value)}></div>` : ""}
+          ${(w.tapAction || "none") === "url" ? html`<div class="pf2"><label>URL</label><input .value=${w.url || ""} placeholder="https://..." @input=${(e) => this._uw("url", e.target.value)}></div><div class="pf2"><label><input type="checkbox" .checked=${w.openInNewTab !== false} @change=${(e) => this._uw("openInNewTab", e.target.checked)}> In neuem Tab öffnen</label></div>` : ""}
+          ${(w.tapAction || "none") === "service" ? html`<div class="pf2"><label>Service</label><input .value=${w.service || ""} placeholder="light.turn_on" @input=${(e) => this._uw("service", e.target.value)}></div><div class="pf2"><label>Service JSON</label><textarea rows="4" .value=${w.serviceData || "{}"} @input=${(e) => this._uw("serviceData", e.target.value)}></textarea></div>` : ""}
+
         ${this._pt === 1 ? html`
-          <div class="pg4">Darstellung</div>
+          <div class="sec"><div class="pg4">Darstellung</div>
           <div class="pf2"><td-font-picker .value=${w.font || ""} .fonts=${this.fonts || []} label="Schriftart" @value-changed=${(e) => this._uw("font", e.detail.value)}></td-font-picker></div>
           <div class="pf2"><label>Schriftgröße: ${w.fontSize || 28}px</label><input type="range" min="12" max="72" step="2" .value=${w.fontSize || 28} @input=${(e) => this._uw("fontSize", +e.target.value)}></div>
           <div class="pf2"><td-color-picker .value=${w.textColor || "#FFFFFF"} label="Textfarbe" @value-changed=${(e) => this._uw("textColor", e.detail.value)}></td-color-picker></div>
           <div class="pf2"><td-color-picker .value=${w.bgColor || "#1E1E1E"} label="Hintergrundfarbe" @value-changed=${(e) => this._uw("bgColor", e.detail.value)}></td-color-picker></div>
           <div class="pf2"><label>Ecken-Radius: ${w.borderRadius || 12}px</label><input type="range" min="0" max="32" step="2" .value=${w.borderRadius || 12} @input=${(e) => this._uw("borderRadius", +e.target.value)}></div>
+          <div class="pf2"><label>Transparenz: ${Math.round((w.opacity ?? 1) * 100)}%</label><input type="range" min="0" max="1" step="0.05" .value=${w.opacity ?? 1} @input=${(e) => this._uw("opacity", +e.target.value)}></div>
+          <div class="pf2"><label>Blur: ${w.blur || 0}px</label><input type="range" min="0" max="24" step="1" .value=${w.blur || 0} @input=${(e) => this._uw("blur", +e.target.value)}></div>
+          <div class="pf2"><label>Rahmenfarbe</label><input .value=${w.borderColor || "rgba(255,255,255,.06)"} @input=${(e) => this._uw("borderColor", e.target.value)}></div>
+          <div class="pf2"><label>Box-Shadow</label><input .value=${w.boxShadow || "0 10px 24px rgba(0,0,0,.18)"} @input=${(e) => this._uw("boxShadow", e.target.value)}></div>
+          <div class="pf2"><label>Style-Preset</label><select @change=${(e) => { const v = e.target.value; if (v === "glass") { this._uw("bgColor", "rgba(18,24,32,.38)"); this._uw("opacity", .72); this._uw("blur", 10); this._uw("borderRadius", 18); } if (v === "solid") { this._uw("bgColor", "#1E1E1E"); this._uw("opacity", 1); this._uw("blur", 0); this._uw("borderRadius", 12); } if (v === "accent") { this._uw("bgColor", "rgba(77,171,247,.18)"); this._uw("opacity", .95); this._uw("blur", 6); this._uw("borderRadius", 20); } e.target.value = ""; }}><option value="">- wählen -</option><option value="glass">Glass</option><option value="solid">Solid</option><option value="accent">Accent</option></select></div>
+        </div>
         ` : ""}
 
         ${this._pt === 2 ? html`
-          <div class="pg4">Erweitert</div>
+          <div class="sec"><div class="pg4">Erweitert</div>
+          <div class="sec"><div class="pg4">Layout & Ebene</div>
+          <div class="row2">
+            <div class="pf2"><label>Breite (Spalten)</label><input type="number" min="1" max="8" .value=${w.colspan || 1} @change=${(e) => this._uw("colspan", +e.target.value)}></div>
+            <div class="pf2"><label>Höhe (Zeilen)</label><input type="number" min="1" max="6" .value=${w.rowspan || 1} @change=${(e) => this._uw("rowspan", +e.target.value)}></div>
+          </div>
+          <div class="row2">
+            <div class="pf2"><label>Ebene / Z-Index</label><input type="number" min="1" max="99" .value=${w.zIndex || this._sel + 1} @change=${(e) => this._uw("zIndex", +e.target.value)}></div>
+            <div class="pf2"><label>CSS Klasse</label><input .value=${w.className || ""} placeholder="z. B. highlight-card" @input=${(e) => this._uw("className", e.target.value)}></div>
+          </div>
+          <div class="row2">
+            <div class="pf2"><label>Gruppe / Tag</label><input .value=${w.groupId || ""} placeholder="z. B. wetter" @input=${(e) => this._uw("groupId", e.target.value)}></div>
+            <div class="pf2"><label>Animation</label><select .value=${w.animationPreset || "none"} @change=${(e) => this._applyAnimationPreset(e.target.value)}><option value="none">keine</option><option value="float">float</option><option value="pulse">pulse</option><option value="shimmer">shimmer</option></select></div>
+          </div>
+          <div class="tpgrid">
+            <button class="miniBtn" @click=${() => this._bringToFront()}>Nach vorne</button>
+            <button class="miniBtn" @click=${() => this._sendToBack()}>Nach hinten</button>
+          </div></div>
+          <div class="sec"><div class="pg4">Sichtbarkeit</div>
+          <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.visibilityEntity || ""} label="Regel-Entity" @value-changed=${(e) => this._uw("visibilityEntity", e.detail.value)}></td-entity-picker></div>
+          <div class="row2">
+            <div class="pf2"><label>Operator</label><select .value=${w.visibilityOperator || "eq"} @change=${(e) => this._uw("visibilityOperator", e.target.value)}><option value="eq">gleich</option><option value="neq">ungleich</option><option value="gt">größer</option><option value="gte">größer/gleich</option><option value="lt">kleiner</option><option value="lte">kleiner/gleich</option><option value="contains">enthält</option><option value="truthy">ist aktiv</option><option value="falsy">ist inaktiv</option></select></div>
+            <div class="pf2"><label>Vergleichswert</label><input .value=${w.visibilityValue || w.visibleWhen || ""} placeholder="on, home, 50 ..." @input=${(e) => { this._uw("visibilityValue", e.target.value); this._uw("visibleWhen", e.target.value); }}></div>
+          </div>
+          <div class="hint">Für komplexere Regeln kannst du eine andere Entity als die Haupt-Entity des Widgets verwenden.</div></div>
+          <div class="sec"><div class="pg4">Aktion Builder</div>
+          ${(w.tapAction || "none") === "service" ? html`<div class="row2"><div class="pf2"><label>Domain</label><input .value=${w.serviceDomain || ""} placeholder="light" @input=${(e) => this._syncServiceField("serviceDomain", e.target.value)}></div><div class="pf2"><label>Service</label><input .value=${w.serviceName || ""} placeholder="turn_on" @input=${(e) => this._syncServiceField("serviceName", e.target.value)}></div></div><div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.serviceTargetEntity || ""} label="Target Entity" @value-changed=${(e) => this._syncServiceField("serviceTargetEntity", e.detail.value)}></td-entity-picker></div>` : ""}
+          <div class="hint">Bei Service-Aktionen werden Domain und Service automatisch zu <code>domain.service</code> kombiniert.</div></div>
           <div class="pf2"><label>Benutzerdefiniertes CSS</label><textarea rows="4" .value=${w.customCss || ""} @input=${(e) => this._uw("customCss", e.target.value)} placeholder="box-shadow: 0 0 10px #2196F3;"></textarea></div>
           <div class="pf2"><label>Widget JSON</label><textarea rows="8" .value=${JSON.stringify(w, null, 2)} @change=${(e) => {
             const parsed = safeJsonParse(e.target.value, null);
@@ -1080,10 +1264,221 @@ class TdScreenEditor extends LitElement {
               this._cfg = { ...this._cfg, widgets: ws };
             }
           }}></textarea></div>
+          <div class="pf2"><label>Legacy visibleWhen</label><input .value=${w.visibleWhen || ""} placeholder="optional" @input=${(e) => this._uw("visibleWhen", e.target.value)}><div class="hint">Kompatibilitätsfeld. Bevorzugt wird oben die neue Regel-Konfiguration.</div></div>
           <button class="delb" @click=${() => this._delW()}>🗑️ Widget löschen</button>
+        </div>
         ` : ""}
       </div>
     `;
+  }
+
+
+  _selectedWidgets() {
+    const selected = new Set(this._multi || []);
+    if (this._sel >= 0) selected.add(this._sel);
+    return [...selected].sort((a,b) => a-b).filter((i) => this._cfg?.widgets?.[i]);
+  }
+
+  _selectWidget(i, e) {
+    if (e?.ctrlKey || e?.metaKey) {
+      this._sel = i;
+      this._multi = this._multi.includes(i) ? this._multi.filter((x) => x !== i) : [...this._multi, i];
+      return;
+    }
+    if (e?.shiftKey && this._sel >= 0) {
+      const start = Math.min(this._sel, i);
+      const end = Math.max(this._sel, i);
+      this._multi = Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
+      this._sel = i;
+      return;
+    }
+    this._sel = i;
+    this._multi = [];
+  }
+
+  _selectAllWidgets() {
+    this._multi = Array.from({ length: (this._cfg.widgets || []).length }, (_, i) => i);
+    this._sel = this._multi[0] ?? -1;
+  }
+
+  _copySelected() {
+    const items = this._selectedWidgets().map((i) => deepClone(this._cfg.widgets[i]));
+    this._clipWidgets = items;
+  }
+
+  _pasteWidgets() {
+    if (!this._clipWidgets.length) return;
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    const pasted = this._clipWidgets.map((w, idx) => ({ ...deepClone(w), id: `w_${Date.now()}_${idx}`, col: Math.max(0, (w.col || 0) + 1), row: Math.max(0, (w.row || 0) + 1), zIndex: (w.zIndex || ws.length + idx + 1) + 1 }));
+    ws.push(...pasted);
+    this._cfg = { ...this._cfg, widgets: ws };
+    this._multi = pasted.map((_, idx) => ws.length - pasted.length + idx);
+    this._sel = this._multi[0] ?? -1;
+  }
+
+  _deleteSelected() {
+    const selected = new Set(this._selectedWidgets());
+    if (!selected.size) return;
+    this._push();
+    const ws = (this._cfg.widgets || []).filter((_, idx) => !selected.has(idx));
+    this._cfg = { ...this._cfg, widgets: ws };
+    this._multi = [];
+    this._sel = -1;
+  }
+
+  _bulkMove(dx, dy) {
+    const selected = new Set(this._selectedWidgets());
+    if (!selected.size) return;
+    this._push();
+    const ws = [...(this._cfg.widgets || [])].map((w, idx) => selected.has(idx) ? ({ ...w, col: Math.max(0, (w.col || 0) + dx), row: Math.max(0, (w.row || 0) + dy) }) : w);
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _applyAnimationPreset(preset) {
+    const presets = {
+      none: '',
+      float: 'animation: tdFloat 4s ease-in-out infinite;',
+      pulse: 'animation: tdPulse 2.4s ease-in-out infinite;',
+      shimmer: 'animation: tdShimmer 3s linear infinite; background-size: 200% 100%;'
+    };
+    this._uw('animationPreset', preset);
+    const current = this._cfg.widgets[this._sel]?.customCss || '';
+    const cleaned = String(current).replace(/animation\s*:[^;]+;?/g, '').replace(/background-size\s*:[^;]+;?/g, '').trim();
+    const css = `${cleaned}${cleaned && !cleaned.endsWith(';') ? ';' : ''}${presets[preset] || ''}`;
+    this._uw('customCss', css.trim());
+  }
+
+  _handleKeyDown(e) {
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); this._copySelected(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); this._pasteWidgets(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); this._selectAllWidgets(); return; }
+    if (e.key === 'Delete') { e.preventDefault(); this._deleteSelected(); return; }
+    if (this._sel < 0) return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); this._bulkMove(0, -1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); this._bulkMove(0, 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); this._bulkMove(-1, 0); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); this._bulkMove(1, 0); }
+  }
+
+  _gridMetrics() {
+    const cols = this._cfg.grid?.columns || 3;
+    const rows = this._cfg.grid?.rows || 2;
+    const frame = this.renderRoot?.querySelector('.pf');
+    const grid = this.renderRoot?.querySelector('.pg');
+    if (!frame || !grid) return null;
+    const fr = frame.getBoundingClientRect();
+    const gr = grid.getBoundingClientRect();
+    return { cols, rows, cellW: gr.width / cols, cellH: gr.height / rows, left: gr.left, top: gr.top };
+  }
+
+  _attachPointerSession(onMove, onEnd) {
+    if (this._pointerCleanup) this._pointerCleanup();
+    const mm = (ev) => onMove(ev);
+    const mu = (ev) => {
+      window.removeEventListener('mousemove', mm);
+      window.removeEventListener('mouseup', mu);
+      this._pointerCleanup = null;
+      if (onEnd) onEnd(ev);
+    };
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', mu);
+    this._pointerCleanup = () => {
+      window.removeEventListener('mousemove', mm);
+      window.removeEventListener('mouseup', mu);
+      this._pointerCleanup = null;
+    };
+  }
+
+  _startDragWidget(e, idx) {
+    e.preventDefault();
+    e.stopPropagation();
+    this._sel = idx;
+    const m = this._gridMetrics();
+    if (!m) return;
+    const start = deepClone(this._cfg.widgets[idx]);
+    this._push();
+    this._attachPointerSession((ev) => {
+      const col = Math.max(0, Math.min(m.cols - (start.colspan || 1), Math.floor((ev.clientX - m.left) / m.cellW)));
+      const row = Math.max(0, Math.min(m.rows - (start.rowspan || 1), Math.floor((ev.clientY - m.top) / m.cellH)));
+      const ws = [...(this._cfg.widgets || [])];
+      ws[idx] = { ...ws[idx], col, row };
+      this._cfg = { ...this._cfg, widgets: ws };
+    });
+  }
+
+  _startResizeWidget(e, idx) {
+    e.preventDefault();
+    e.stopPropagation();
+    this._sel = idx;
+    const m = this._gridMetrics();
+    if (!m) return;
+    const start = deepClone(this._cfg.widgets[idx]);
+    this._push();
+    this._attachPointerSession((ev) => {
+      const spanX = Math.max(1, Math.min(m.cols - (start.col || 0), Math.ceil((ev.clientX - m.left) / m.cellW) - (start.col || 0)));
+      const spanY = Math.max(1, Math.min(m.rows - (start.row || 0), Math.ceil((ev.clientY - m.top) / m.cellH) - (start.row || 0)));
+      const ws = [...(this._cfg.widgets || [])];
+      ws[idx] = { ...ws[idx], colspan: spanX, rowspan: spanY };
+      this._cfg = { ...this._cfg, widgets: ws };
+    });
+  }
+
+  _bringToFront() {
+    if (this._sel < 0) return;
+    const maxZ = Math.max(...(this._cfg.widgets || []).map((w, i) => w.zIndex || i + 1), 1);
+    this._uw('zIndex', maxZ + 1);
+  }
+
+  _sendToBack() {
+    if (this._sel < 0) return;
+    const minZ = Math.min(...(this._cfg.widgets || []).map((w, i) => w.zIndex || i + 1), 1);
+    this._uw('zIndex', Math.max(1, minZ - 1));
+  }
+
+  _syncServiceField(key, value) {
+    if (this._sel < 0) return;
+    const w = this._cfg.widgets[this._sel];
+    const next = { ...w, [key]: value };
+    const domain = key === 'serviceDomain' ? value : (next.serviceDomain || '');
+    const name = key === 'serviceName' ? value : (next.serviceName || '');
+    if (domain && name) next.service = `${domain}.${name}`;
+    const target = key === 'serviceTargetEntity' ? value : (next.serviceTargetEntity || '');
+    if (target) {
+      let data = safeJsonParse(next.serviceData || '{}', {});
+      if (typeof data !== 'object' || Array.isArray(data) || !data) data = {};
+      data.entity_id = target;
+      next.serviceData = JSON.stringify(data, null, 2);
+    }
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    ws[this._sel] = next;
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _applyBuiltInTemplate(name) {
+    if (!name) return;
+    const mk = (type, col, row, extra = {}) => ({ id: `w_${Date.now()}_${Math.random().toString(16).slice(2,8)}`, type, col, row, colspan: 1, rowspan: 1, entity_id: '', name: '', icon: '', config: {}, ...extra });
+    const base = { ...this._cfg, widgets: [], grid: { columns: 3, rows: 2 }, widgetSpacing: 10 };
+    if (name === 'weather_station') {
+      base.name = 'Wetter Übersicht';
+      base.widgets = [mk('weather',0,0,{colspan:2}), mk('forecast-chart',2,0,{entity_id:'weather.home'}), mk('clock',0,1), mk('simple-value',1,1,{name:'Außen Temp'}), mk('area-chart',2,1,{name:'Temperatur Verlauf'})];
+    } else if (name === 'energy_dashboard') {
+      base.name = 'Energie Dashboard';
+      base.widgets = [mk('energy-flow-mini',0,0,{colspan:2, config:{}}), mk('bullet-chart',2,0,{name:'Verbrauch'}), mk('donut-chart',0,1,{name:'Batterie'}), mk('comparison-chart',1,1,{name:'Heute vs Gestern'}), mk('multi-line-chart',2,1,{name:'PV / Netz'})];
+    } else if (name === 'camera_wall') {
+      base.name = 'Kamera Wand';
+      base.grid = { columns: 3, rows: 2 };
+      base.widgets = [mk('camera',0,0), mk('camera',1,0), mk('camera',2,0), mk('camera',0,1), mk('camera',1,1), mk('clock',2,1)];
+    } else if (name === 'room_status') {
+      base.name = 'Raumstatus';
+      base.widgets = [mk('simple-value',0,0,{name:'Temperatur'}), mk('simple-value',1,0,{name:'Luftfeuchte'}), mk('status-dot',2,0,{name:'Fenster'}), mk('timeline-chart',0,1,{colspan:2,name:'Bewegung'}), mk('button',2,1,{name:'Licht'})];
+    }
+    this._push();
+    this._cfg = base;
+    this._sel = -1;
   }
 
   _entityDomainForWidget(type) {
@@ -1114,13 +1509,34 @@ class TdScreenEditor extends LitElement {
     ws[this._sel] = { ...w, config: { ...(w.config || {}), [k]: v } };
     this._cfg = { ...this._cfg, widgets: ws };
   }
+  _moveSel(dx, dy) {
+    if (this._selectedWidgets().length > 1) return this._bulkMove(dx, dy);
+    if (this._sel < 0) return;
+    const ws = [...(this._cfg.widgets || [])];
+    const w = ws[this._sel];
+    ws[this._sel] = { ...w, col: Math.max(0, (w.col || 0) + dx), row: Math.max(0, (w.row || 0) + dy) };
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+  _dupW() {
+    if (this._sel < 0) return;
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    const src = JSON.parse(JSON.stringify(ws[this._sel]));
+    src.id = `w_${Date.now()}`;
+    src.col = (src.col || 0) + 1;
+    ws.push(src);
+    this._cfg = { ...this._cfg, widgets: ws };
+    this._sel = ws.length - 1;
+  }
   _delW() {
+    if (this._selectedWidgets().length > 1) return this._deleteSelected();
     if (this._sel < 0) return;
     this._push();
     const ws = [...(this._cfg.widgets || [])];
     ws.splice(this._sel, 1);
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = -1;
+    this._multi = [];
   }
   _sg(k, v) { this._cfg = { ...this._cfg, grid: { ...(this._cfg.grid || { columns: 3, rows: 2 }), [k]: v } }; }
   _push() { this._undo = [...this._undo, JSON.stringify(this._cfg)]; this._redo = []; }
@@ -1130,9 +1546,9 @@ class TdScreenEditor extends LitElement {
 }
 customElements.define("td-screen-editor", TdScreenEditor);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    TEMPLATE GALLERY
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdTemplateGallery extends LitElement {
   static get properties() {
@@ -1215,9 +1631,9 @@ class TdTemplateGallery extends LitElement {
 }
 customElements.define("td-template-gallery", TdTemplateGallery);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    TEMPLATE EDITOR
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdTemplateEditor extends LitElement {
   static get properties() {
@@ -1318,9 +1734,9 @@ class TdTemplateEditor extends LitElement {
 }
 customElements.define("td-template-editor", TdTemplateEditor);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    ALERTS
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdAlertList extends LitElement {
   static get properties() {
@@ -1502,9 +1918,9 @@ class TdAlertEditor extends LitElement {
 }
 customElements.define("td-alert-editor", TdAlertEditor);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    THEMES
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdThemeList extends LitElement {
   static get properties() {
@@ -1619,9 +2035,9 @@ class TdThemeEditor extends LitElement {
 }
 customElements.define("td-theme-editor", TdThemeEditor);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    MEDIA MANAGERS
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdSoundManager extends LitElement {
   static get properties() {
@@ -1820,9 +2236,9 @@ class TdImageManager extends LitElement {
 }
 customElements.define("td-image-manager", TdImageManager);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    GLOBAL SETTINGS
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TdGlobalSettings extends LitElement {
   static get properties() {
@@ -1878,9 +2294,9 @@ class TdGlobalSettings extends LitElement {
 }
 customElements.define("td-global-settings", TdGlobalSettings);
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    MAIN PANEL
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TickerDisplayPanel extends LitElement {
   static get properties() {
@@ -1987,8 +2403,8 @@ class TickerDisplayPanel extends LitElement {
 
   static get styles() {
     return css`
-      :host { display:block; height:100vh; background:var(--primary-background-color); color:var(--primary-text-color); --td-accent:var(--primary-color,#2196f3); }
-      .top { display:flex; align-items:center; height:56px; padding:0 16px; background:var(--app-header-background-color,#1e1e1e); color:var(--app-header-text-color,#fff); box-shadow:0 2px 4px rgba(0,0,0,.2); z-index:10; position:relative; }
+      :host { display:block; height:100vh; background:radial-gradient(circle at top, rgba(33,150,243,.08), transparent 35%), var(--primary-background-color); color:var(--primary-text-color); --td-accent:var(--primary-color,#2196f3); }
+      .top { display:flex; align-items:center; height:64px; padding:0 18px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.01)), var(--app-header-background-color,#1e1e1e); color:var(--app-header-text-color,#fff); box-shadow:0 10px 30px rgba(0,0,0,.18); z-index:10; position:relative; backdrop-filter: blur(12px); }
       .top .t { font-size:20px; font-weight:500; margin-left:12px; flex:1; }
       .top .bb { cursor:pointer; opacity:.8; font-size:24px; padding:8px; border-radius:50%; border:none; background:none; color:inherit; }
       .top .bb:hover { opacity:1; background:rgba(255,255,255,.1); }

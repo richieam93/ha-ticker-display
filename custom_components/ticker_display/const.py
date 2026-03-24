@@ -20,6 +20,11 @@ WIDGET_TYPES = [
     "status-dot", "icon-value", "trend-arrow", "mini-graph",
     "bar-chart", "sparkline", "donut", "clock", "weather",
     "camera", "color-block", "image", "countdown", "button",
+    "area-chart", "multi-line-chart", "stacked-bar-chart",
+    "horizontal-bar-chart", "donut-chart", "pie-chart", "radar-chart",
+    "heatmap-mini", "timeline-chart", "scatter-chart", "forecast-chart",
+    "energy-flow-mini", "comparison-chart", "radial-gauge-advanced",
+    "bullet-chart", "line-chart", "radial-gauge"
 ]
 
 SCREEN_TYPES = [
