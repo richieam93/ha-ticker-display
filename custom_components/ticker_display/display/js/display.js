@@ -1,11 +1,11 @@
 /**
- * Ticker Display – Enhanced Display Engine
+ * Ticker Display - Enhanced Display Engine
  * Stable rendering, websocket-tolerant, better widgets and chart support
  */
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    UTILS
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 const Utils = {
   formatNumber(v, d = 1) {
@@ -108,9 +108,9 @@ class DataManager {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    BRIDGE WRAPPER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class BridgeWrapper {
   constructor() {
@@ -214,9 +214,9 @@ class BridgeWrapper {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    THEME MANAGER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class ThemeManager {
   applyDynamic(data) {
@@ -235,9 +235,9 @@ class ThemeManager {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    WEBSOCKET CLIENT
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class WebSocketClient {
   constructor(app) {
@@ -401,9 +401,9 @@ class WebSocketClient {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    SCREEN MANAGER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class ScreenManager {
   constructor(app) {
@@ -566,6 +566,9 @@ class ScreenManager {
 
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    const gap = config.widgetSpacing ?? config.widgetGap ?? 10;
+    grid.style.gap = `${gap}px`;
+    grid.style.padding = `${gap}px`;
 
     for (const widgetConfig of Utils.safeArray(config.widgets)) {
       const widget = this._createWidget(widgetConfig);
@@ -581,9 +584,13 @@ class ScreenManager {
     const bg = config.backgroundColor || config.bgColor || config.screenBgColor;
     const bgImage = config.backgroundImage || config.screenBackgroundImage || config.bgImage || "";
     const bgSize = config.backgroundSize || "cover";
+    const overlay = config.overlayColor || "rgba(0,0,0,.0)";
+    const overlayOpacity = config.overlayOpacity ?? 0;
     if (bg) screen.style.setProperty("--td-screen-bg", bg);
     if (bgImage) screen.style.setProperty("--td-screen-bg-image", `url(${bgImage})`);
     if (bgSize) screen.style.setProperty("--td-screen-bg-size", bgSize);
+    screen.style.setProperty("--td-screen-overlay", overlay);
+    screen.style.setProperty("--td-screen-overlay-opacity", String(overlayOpacity));
   }
 
   _cameraSourceOrder(config) {
@@ -664,10 +671,12 @@ class ScreenManager {
     `;
 
     const ms = (config.refresh_interval || 5) * 1000;
-    this._cameraIntervals.push(setInterval(() => {
+    const update = () => {
       const img = screen.querySelector("#camera-img");
-      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
-    }, ms));
+      if (img) this._setCameraImageWithFallback(img, eid, config);
+    };
+    update();
+    this._cameraIntervals.push(setInterval(update, ms));
   }
 
   _buildImageScreen(screen, config) {
@@ -689,7 +698,9 @@ class ScreenManager {
       config.config?.grid_entity,
       config.config?.load_entity,
       config.config?.target_entity,
-      config.config?.comparison_entity
+      config.config?.comparison_entity,
+      config.visibilityEntity,
+      config.serviceTargetEntity
     ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
     for (const entityId of ids) {
       if (!this._widgetElements[entityId]) this._widgetElements[entityId] = [];
@@ -700,6 +711,8 @@ class ScreenManager {
   _createWidget(config) {
     const widget = document.createElement("div");
     widget.className = `widget widget-${config.type || "simple-value"}`;
+    if (config.className) widget.classList.add(...String(config.className).split(/\s+/).filter(Boolean));
+    if (config.zIndex !== undefined) widget.style.zIndex = String(config.zIndex);
 
     this._registerWidgetEntities(widget, config);
 
@@ -709,6 +722,10 @@ class ScreenManager {
     const unit = attrs.unit_of_measurement || config.unit || "";
     const name = config.name || attrs.friendly_name || "";
     const icon = config.icon || this._defaultIconForType(config.type);
+
+    if (!this._isWidgetVisible(config)) {
+      widget.style.display = "none";
+    }
 
     switch (config.type) {
       case "gauge":
@@ -812,6 +829,7 @@ class ScreenManager {
     }
 
     this._applyCommonWidgetStyle(widget, config);
+    this._attachWidgetAction(widget, config);
     return widget;
   }
 
@@ -1014,10 +1032,12 @@ class ScreenManager {
   }
 
   _renderButtonWidget(widget, config, name) {
+    const actionLabel = config.tapAction && config.tapAction !== "none" ? `<div class="widget-subvalue">${config.tapAction}</div>` : "";
     widget.innerHTML = `
       <div class="widget-button-face">
         <div class="w-icon"><span style="font-size:24px">${config.icon || "🔘"}</span></div>
         <div class="w-name">${name || "Button"}</div>
+        ${actionLabel}
       </div>
     `;
   }
@@ -1361,14 +1381,78 @@ class ScreenManager {
     if (config.blur !== undefined) widget.style.setProperty("--td-widget-blur", `${config.blur}px`);
     if (config.borderColor) widget.style.setProperty("--td-widget-border", config.borderColor);
     if (config.boxShadow) widget.style.setProperty("--td-widget-shadow", config.boxShadow);
+    if (config.zIndex !== undefined) widget.style.zIndex = String(config.zIndex);
+    if (config.tapAction && config.tapAction !== "none") widget.style.cursor = "pointer";
 
     if (config.customCss) {
       widget.style.cssText += `;${config.customCss}`;
     }
   }
 
+  _isWidgetVisible(config) {
+    const legacyEntity = config.entity_id;
+    const ruleEntity = config.visibilityEntity || legacyEntity;
+    if (!ruleEntity && !config.visibleWhen) return true;
+    const stateObj = this.app.entityStates[ruleEntity];
+    const current = stateObj?.state ?? '';
+    const expected = config.visibilityValue ?? config.visibleWhen ?? '';
+    const op = config.visibilityOperator || 'eq';
+    const numCurrent = Utils.toNumber(current, Number.NaN);
+    const numExpected = Utils.toNumber(expected, Number.NaN);
+    switch (op) {
+      case 'neq': return String(current) !== String(expected);
+      case 'gt': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent > numExpected;
+      case 'gte': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent >= numExpected;
+      case 'lt': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent < numExpected;
+      case 'lte': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent <= numExpected;
+      case 'contains': return String(current).toLowerCase().includes(String(expected).toLowerCase());
+      case 'truthy': return Utils.isTruthyState(current);
+      case 'falsy': return !Utils.isTruthyState(current);
+      case 'eq':
+      default: return expected === '' ? true : String(current) === String(expected);
+    }
+  }
+
+  _attachWidgetAction(widget, config) {
+    const action = config.tapAction || 'none';
+    if (!action || action === 'none') return;
+    widget.classList.add('widget-actionable');
+    widget.tabIndex = 0;
+    const run = async (ev) => {
+      ev.preventDefault();
+      try {
+        if (action === 'navigate' && config.navigationPath) {
+          window.location.assign(config.navigationPath);
+        } else if (action === 'url' && config.url) {
+          window.open(config.url, config.openInNewTab === false ? '_self' : '_blank');
+        } else if (action === 'service' && config.service) {
+          let serviceData = {};
+          try { serviceData = JSON.parse(config.serviceData || '{}'); } catch (e) { console.warn('Invalid service JSON', e); }
+          if (!serviceData.entity_id && config.serviceTargetEntity) serviceData.entity_id = config.serviceTargetEntity;
+          const [domain, service] = String(config.service).split('.');
+          if (domain && service) {
+            if (window.hassConnection?.sendMessagePromise) {
+              await window.hassConnection.sendMessagePromise({ type: 'call_service', domain, service, service_data: serviceData });
+            } else {
+              await fetch(`/api/services/${domain}/${service}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(serviceData || {}) });
+            }
+          } else {
+            console.warn('Service action unavailable', config.service);
+          }
+        }
+      } catch (e) {
+        console.warn('Widget action failed', e);
+      }
+    };
+    widget.addEventListener('click', run);
+    widget.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') run(ev);
+    });
+  }
+
   _updateWidget(widgetInfo, entityId, newState) {
     const { element, config } = widgetInfo;
+    element.style.display = this._isWidgetVisible(config) ? "" : "none";
     const value = newState?.state ?? "—";
     const unit = newState?.attributes?.unit_of_measurement || config.unit || "";
 
@@ -1548,9 +1632,9 @@ class ScreenManager {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    TICKER MANAGER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TickerManager {
   constructor(app) {
@@ -1655,9 +1739,9 @@ class TickerManager {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    ALERT MANAGER
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class AlertManager {
   constructor(app) {
@@ -1788,9 +1872,9 @@ class AlertManager {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
+/* ----------------------------------------------------------
    MAIN APP
-   ══════════════════════════════════════════════════════════ */
+   ---------------------------------------------------------- */
 
 class TickerDisplayApp {
   constructor() {
