@@ -1,6 +1,6 @@
 /**
  * Ticker Display – Enhanced Display Engine
- * Stable rendering even without WebSocket connection
+ * Stable rendering, websocket-tolerant, better widgets and chart support
  */
 
 /* ══════════════════════════════════════════════════════════
@@ -46,6 +46,19 @@ const Utils = {
   toNumber(v, fallback = 0) {
     const n = parseFloat(v);
     return Number.isNaN(n) ? fallback : n;
+  },
+
+  isTruthyState(v) {
+    return ["on", "true", "home", "open", "detected", "playing"].includes(String(v).toLowerCase());
+  },
+
+  shortDateTime(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    } catch (e) {
+      return "";
+    }
   }
 };
 
@@ -224,6 +237,7 @@ class WebSocketClient {
     this._reconnectTimer = null;
     this._connectSeq = 0;
     this._manuallyClosed = false;
+    this._hadSuccessfulConnection = false;
   }
 
   async connect() {
@@ -247,6 +261,7 @@ class WebSocketClient {
           }
 
           this._connected = true;
+          this._hadSuccessfulConnection = true;
           this._reconnectDelay = 1000;
 
           if (this._reconnectTimer) {
@@ -284,7 +299,8 @@ class WebSocketClient {
             if (this.app?.isPreview) {
               offline.hidden = true;
             } else {
-              offline.hidden = false;
+              // Nur anzeigen, wenn es vorher wirklich mal verbunden war
+              offline.hidden = !this._hadSuccessfulConnection;
             }
           }
 
@@ -391,6 +407,7 @@ class ScreenManager {
     this._clockIntervals = [];
     this._cameraIntervals = [];
     this._countdownIntervals = [];
+    this._chartInstances = [];
   }
 
   start() {
@@ -548,7 +565,7 @@ class ScreenManager {
     screen.appendChild(grid);
   }
 
-  _buildClockScreen(screen, config) {
+  _buildClockScreen(screen) {
     screen.innerHTML = `
       <div class="full-screen-center">
         <div id="clock-time" class="clock-time-large">--:--</div>
@@ -686,6 +703,19 @@ class ScreenManager {
         this._renderButtonWidget(widget, config, name);
         break;
 
+      case "mini-graph":
+      case "sparkline":
+        this._renderLineChartWidget(widget, config, state, name, false);
+        break;
+
+      case "bar-chart":
+        this._renderLineChartWidget(widget, config, state, name, true);
+        break;
+
+      case "icon-value":
+        this._renderIconValueWidget(widget, value, unit, name, icon);
+        break;
+
       default:
         this._renderDefaultWidget(widget, config, value, unit, name, icon);
         break;
@@ -698,6 +728,14 @@ class ScreenManager {
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
+      <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
+      <div class="w-name">${name}</div>
+    `;
+  }
+
+  _renderIconValueWidget(widget, value, unit, name, icon) {
+    widget.innerHTML = `
+      <div class="w-icon"><span style="font-size:28px">${icon}</span></div>
       <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
       <div class="w-name">${name}</div>
     `;
@@ -737,7 +775,7 @@ class ScreenManager {
   }
 
   _renderStatusDotWidget(widget, config, value, name) {
-    const isOn = ["on", "true", "home", "open", "detected"].includes(String(value).toLowerCase());
+    const isOn = Utils.isTruthyState(value);
     const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
     widget.innerHTML = `
       <div class="status-dot-indicator ${isOn ? "on" : ""}" style="background:${color};color:${color}"></div>
@@ -892,6 +930,102 @@ class ScreenManager {
     `;
   }
 
+  _renderLineChartWidget(widget, config, state, name, asBar = false) {
+    const currentValue = Utils.toNumber(state?.state, 0);
+    const unit = state?.attributes?.unit_of_measurement || config.unit || "";
+    const title = name || state?.attributes?.friendly_name || config.entity_id || (asBar ? "Balken" : "Graph");
+    const hours = config.config?.hours || 24;
+
+    widget.classList.add("widget-chart");
+    widget.innerHTML = `
+      <div class="chart-header">
+        <div class="chart-title">${title}</div>
+        <div class="chart-value">${Utils.text(state?.state)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}</div>
+      </div>
+      <div class="chart-body">
+        <canvas class="chart-canvas"></canvas>
+      </div>
+    `;
+
+    const canvas = widget.querySelector(".chart-canvas");
+    if (!canvas || !window.Chart || !config.entity_id) return;
+
+    this._buildChart(canvas, config.entity_id, hours, asBar, currentValue);
+  }
+
+  async _buildChart(canvas, entityId, hours, asBar, currentValue) {
+    try {
+      const history = await this.app.dataManager.fetchHistory(entityId, hours);
+      const points = Utils.safeArray(history?.data).filter((p) => p && p.x !== undefined && p.y !== undefined);
+
+      const labels = points.map((p) => Utils.shortDateTime(p.x));
+      const values = points.map((p) => Utils.toNumber(p.y, 0));
+
+      if (!values.length) {
+        labels.push("Jetzt");
+        values.push(currentValue);
+      }
+
+      const type = asBar ? "bar" : "line";
+      const chart = new Chart(canvas, {
+        type,
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: asBar ? 0 : 0,
+            pointHoverRadius: 3,
+            fill: !asBar,
+            backgroundColor: asBar ? "rgba(33,150,243,0.35)" : "rgba(33,150,243,0.18)",
+            borderColor: "rgba(33,150,243,0.95)",
+            barPercentage: 0.8,
+            categoryPercentage: 0.9
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 350
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: true,
+              displayColors: false
+            }
+          },
+          scales: {
+            x: {
+              display: !asBar,
+              grid: { display: false },
+              ticks: {
+                maxTicksLimit: 4,
+                color: "rgba(255,255,255,0.45)"
+              }
+            },
+            y: {
+              display: true,
+              grid: {
+                color: "rgba(255,255,255,0.06)"
+              },
+              ticks: {
+                maxTicksLimit: 4,
+                color: "rgba(255,255,255,0.45)"
+              }
+            }
+          }
+        }
+      });
+
+      this._chartInstances.push(chart);
+    } catch (e) {
+      console.warn("Chart build failed:", e);
+    }
+  }
+
   _applyCommonWidgetStyle(widget, config) {
     if (config.font) widget.style.fontFamily = `"${config.font}", sans-serif`;
     if (config.fontSize) {
@@ -943,7 +1077,7 @@ class ScreenManager {
       }
 
       case "status-dot": {
-        const isOn = ["on", "true", "home", "open", "detected"].includes(String(value).toLowerCase());
+        const isOn = Utils.isTruthyState(value);
         const dot = element.querySelector(".status-dot-indicator");
         const sub = element.querySelector(".widget-subvalue");
         const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
@@ -961,6 +1095,16 @@ class ScreenManager {
         const sub = element.querySelector(".widget-subvalue");
         if (val) val.textContent = newState?.attributes?.temperature ?? "—";
         if (sub) sub.textContent = newState?.state || "—";
+        break;
+      }
+
+      case "mini-graph":
+      case "sparkline":
+      case "bar-chart": {
+        const chartValue = element.querySelector(".chart-value");
+        if (chartValue) {
+          chartValue.innerHTML = `${Utils.text(value)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}`;
+        }
         break;
       }
 
@@ -1016,9 +1160,14 @@ class ScreenManager {
     this._clockIntervals.forEach(clearInterval);
     this._cameraIntervals.forEach(clearInterval);
     this._countdownIntervals.forEach(clearInterval);
+    this._chartInstances.forEach((c) => {
+      try { c.destroy(); } catch (e) {}
+    });
+
     this._clockIntervals = [];
     this._cameraIntervals = [];
     this._countdownIntervals = [];
+    this._chartInstances = [];
   }
 
   _getZoneColor(value, zones) {
@@ -1316,7 +1465,6 @@ class TickerDisplayApp {
       this.alertManager = new AlertManager(this);
       this.wsClient = new WebSocketClient(this);
 
-      // Sofort rendern, auch ohne WebSocket
       this.screenManager.start();
       this.tickerManager.init();
 
@@ -1328,7 +1476,6 @@ class TickerDisplayApp {
         offline.hidden = true;
       }
 
-      // WebSocket nur zusätzlich verbinden
       this.wsClient.connect()
         .then(() => {
           console.log("✅ WebSocket connected");
