@@ -1,11 +1,11 @@
 /**
- * Ticker Display - Enhanced Display Engine
+ * Ticker Display – Enhanced Display Engine
  * Stable rendering, websocket-tolerant, better widgets and chart support
  */
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    UTILS
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 const Utils = {
   formatNumber(v, d = 1) {
@@ -59,17 +59,6 @@ const Utils = {
     } catch (e) {
       return "";
     }
-  },
-
-  rgbaFromHex(hex, alpha = 1) {
-    const value = String(hex || "#4dabf7").replace("#", "").trim();
-    const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value;
-    const int = parseInt(full, 16);
-    if (Number.isNaN(int) || full.length !== 6) return `rgba(77,171,247,${alpha})`;
-    const r = (int >> 16) & 255;
-    const g = (int >> 8) & 255;
-    const b = int & 255;
-    return `rgba(${r},${g},${b},${alpha})`;
   }
 };
 
@@ -103,14 +92,14 @@ class DataManager {
     }
   }
 
-  getCameraUrl(entityId, src = "auto") {
-    return `${this.apiBase}/api/image/camera/${encodeURIComponent(entityId)}?src=${encodeURIComponent(src)}&t=${Date.now()}`;
+  getCameraUrl(entityId, mode = "auto") {
+    return `${this.apiBase}/api/image/camera/${entityId}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    BRIDGE WRAPPER
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class BridgeWrapper {
   constructor() {
@@ -214,9 +203,9 @@ class BridgeWrapper {
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    THEME MANAGER
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class ThemeManager {
   applyDynamic(data) {
@@ -235,9 +224,9 @@ class ThemeManager {
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    WEBSOCKET CLIENT
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class WebSocketClient {
   constructor(app) {
@@ -401,9 +390,9 @@ class WebSocketClient {
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    SCREEN MANAGER
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class ScreenManager {
   constructor(app) {
@@ -533,7 +522,6 @@ class ScreenManager {
 
     const screen = document.createElement("div");
     screen.className = "screen";
-    this._applyScreenStyle(screen, config);
 
     switch (config.type) {
       case "clock":
@@ -566,9 +554,6 @@ class ScreenManager {
 
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-    const gap = config.widgetSpacing ?? config.widgetGap ?? 10;
-    grid.style.gap = `${gap}px`;
-    grid.style.padding = `${gap}px`;
 
     for (const widgetConfig of Utils.safeArray(config.widgets)) {
       const widget = this._createWidget(widgetConfig);
@@ -578,37 +563,6 @@ class ScreenManager {
     }
 
     screen.appendChild(grid);
-  }
-
-  _applyScreenStyle(screen, config) {
-    const bg = config.backgroundColor || config.bgColor || config.screenBgColor;
-    const bgImage = config.backgroundImage || config.screenBackgroundImage || config.bgImage || "";
-    const bgSize = config.backgroundSize || "cover";
-    const overlay = config.overlayColor || "rgba(0,0,0,.0)";
-    const overlayOpacity = config.overlayOpacity ?? 0;
-    if (bg) screen.style.setProperty("--td-screen-bg", bg);
-    if (bgImage) screen.style.setProperty("--td-screen-bg-image", `url(${bgImage})`);
-    if (bgSize) screen.style.setProperty("--td-screen-bg-size", bgSize);
-    screen.style.setProperty("--td-screen-overlay", overlay);
-    screen.style.setProperty("--td-screen-overlay-opacity", String(overlayOpacity));
-  }
-
-  _cameraSourceOrder(config) {
-    const src = config.config?.camera_source || config.camera_source || "auto";
-    if (src && src !== "auto") return [src];
-    return ["snapshot", "entity_picture", "camera_proxy", "stream"];
-  }
-
-  _setCameraImageWithFallback(img, entityId, config) {
-    const order = this._cameraSourceOrder(config);
-    let idx = 0;
-    const tryNext = () => {
-      if (!img || idx >= order.length) return;
-      const src = order[idx++];
-      img.onerror = tryNext;
-      img.src = this.app.dataManager.getCameraUrl(entityId, src);
-    };
-    tryNext();
   }
 
   _buildClockScreen(screen) {
@@ -666,17 +620,15 @@ class ScreenManager {
   _buildCameraScreen(screen, config) {
     const eid = config.entity_id || "";
     screen.innerHTML = `
-      <img id="camera-img" class="screen-image-contain" alt="Camera">
+      <img id="camera-img" src="${this.app.apiBase}/api/image/camera/${eid}" class="screen-image-contain" alt="Camera">
       <div class="screen-caption">${config.title || eid || "Kamera"}</div>
     `;
 
     const ms = (config.refresh_interval || 5) * 1000;
-    const update = () => {
+    this._cameraIntervals.push(setInterval(() => {
       const img = screen.querySelector("#camera-img");
-      if (img) this._setCameraImageWithFallback(img, eid, config);
-    };
-    update();
-    this._cameraIntervals.push(setInterval(update, ms));
+      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+    }, ms));
   }
 
   _buildImageScreen(screen, config) {
@@ -688,33 +640,16 @@ class ScreenManager {
     `;
   }
 
-  _registerWidgetEntities(widget, config) {
-    const ids = [
-      config.entity_id,
-      ...(config.entities || []),
-      ...((config.config && config.config.entities) || []),
-      config.config?.solar_entity,
-      config.config?.battery_entity,
-      config.config?.grid_entity,
-      config.config?.load_entity,
-      config.config?.target_entity,
-      config.config?.comparison_entity,
-      config.visibilityEntity,
-      config.serviceTargetEntity
-    ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-    for (const entityId of ids) {
-      if (!this._widgetElements[entityId]) this._widgetElements[entityId] = [];
-      this._widgetElements[entityId].push({ element: widget, config });
-    }
-  }
-
   _createWidget(config) {
     const widget = document.createElement("div");
     widget.className = `widget widget-${config.type || "simple-value"}`;
-    if (config.className) widget.classList.add(...String(config.className).split(/\s+/).filter(Boolean));
-    if (config.zIndex !== undefined) widget.style.zIndex = String(config.zIndex);
 
-    this._registerWidgetEntities(widget, config);
+    if (config.entity_id) {
+      if (!this._widgetElements[config.entity_id]) {
+        this._widgetElements[config.entity_id] = [];
+      }
+      this._widgetElements[config.entity_id].push({ element: widget, config });
+    }
 
     const state = this.app.entityStates[config.entity_id] || {};
     const value = state.state ?? "—";
@@ -722,10 +657,6 @@ class ScreenManager {
     const unit = attrs.unit_of_measurement || config.unit || "";
     const name = config.name || attrs.friendly_name || "";
     const icon = config.icon || this._defaultIconForType(config.type);
-
-    if (!this._isWidgetVisible(config)) {
-      widget.style.display = "none";
-    }
 
     switch (config.type) {
       case "gauge":
@@ -742,30 +673,6 @@ class ScreenManager {
 
       case "camera":
         this._renderCameraWidget(widget, config, name);
-        break;
-
-      case "forecast-chart":
-        this._renderForecastWidget(widget, config, state, name);
-        break;
-
-      case "energy-flow-mini":
-        this._renderEnergyFlowWidget(widget, config, state, name);
-        break;
-
-      case "bullet-chart":
-        this._renderBulletChartWidget(widget, config, state, name);
-        break;
-
-      case "heatmap-mini":
-        this._renderHeatmapWidget(widget, config, state, name);
-        break;
-
-      case "timeline-chart":
-        this._renderTimelineWidget(widget, config, state, name);
-        break;
-
-      case "comparison-chart":
-        this._renderComparisonWidget(widget, config, state, name);
         break;
 
       case "weather":
@@ -798,25 +705,11 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
-      case "line-chart":
-      case "area-chart":
-      case "multi-line-chart":
-      case "stacked-bar-chart":
-      case "horizontal-bar-chart":
-      case "donut-chart":
-      case "pie-chart":
-      case "radar-chart":
-      case "scatter-chart":
-        this._renderAdvancedChartWidget(widget, config, state, name);
+        this._renderLineChartWidget(widget, config, state, name, false);
         break;
 
       case "bar-chart":
         this._renderLineChartWidget(widget, config, state, name, true);
-        break;
-
-      case "radial-gauge-advanced":
-      case "radial-gauge":
-        this._renderGaugeWidget(widget, config, value, unit, name);
         break;
 
       case "icon-value":
@@ -829,7 +722,6 @@ class ScreenManager {
     }
 
     this._applyCommonWidgetStyle(widget, config);
-    this._attachWidgetAction(widget, config);
     return widget;
   }
 
@@ -896,16 +788,14 @@ class ScreenManager {
     widget.classList.add("widget-camera");
     const eid = config.entity_id || "";
     widget.innerHTML = `
-      <img alt="Camera" class="widget-camera-image">
+      <img src="${this.app.apiBase}/api/image/camera/${eid}" alt="Camera" class="widget-camera-image">
       <div class="camera-overlay">${name || eid}</div>
     `;
 
-    const img = widget.querySelector("img");
-    if (img) this._setCameraImageWithFallback(img, eid, config);
     const ms = (config.config?.refresh_interval || 5) * 1000;
     const interval = setInterval(() => {
       const img = widget.querySelector("img");
-      if (img) this._setCameraImageWithFallback(img, eid, config);
+      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
     }, ms);
     this._cameraIntervals.push(interval);
   }
@@ -1032,12 +922,10 @@ class ScreenManager {
   }
 
   _renderButtonWidget(widget, config, name) {
-    const actionLabel = config.tapAction && config.tapAction !== "none" ? `<div class="widget-subvalue">${config.tapAction}</div>` : "";
     widget.innerHTML = `
       <div class="widget-button-face">
         <div class="w-icon"><span style="font-size:24px">${config.icon || "🔘"}</span></div>
         <div class="w-name">${name || "Button"}</div>
-        ${actionLabel}
       </div>
     `;
   }
@@ -1138,234 +1026,6 @@ class ScreenManager {
     }
   }
 
-  _chartEntityIds(config) {
-    return [config.entity_id, ...(config.entities || []), ...((config.config && config.config.entities) || [])]
-      .filter(Boolean)
-      .filter((v, i, a) => a.indexOf(v) === i);
-  }
-
-
-  _renderForecastWidget(widget, config, state, name) {
-    const title = name || state?.attributes?.friendly_name || config.entity_id || "Forecast";
-    widget.classList.add("widget-forecast");
-    const forecast = state?.attributes?.forecast || [];
-    const rows = forecast.slice(0, 5).map((item) => {
-      const temp = item.temperature ?? item.templow ?? "—";
-      const label = item.datetime ? new Date(item.datetime).toLocaleDateString("de-DE", { weekday: "short" }) : "—";
-      const precip = item.precipitation_probability ?? item.precipitation ?? null;
-      return `<div class="forecast-row"><span class="forecast-day">${label}</span><span class="forecast-icon">${this._weatherEmoji(item.condition || item.state || "sunny")}</span><span class="forecast-temp">${temp}°</span><span class="forecast-extra">${precip !== null ? `${precip}%` : ""}</span></div>`;
-    }).join("");
-    widget.innerHTML = `
-      <div class="special-card-head"><div class="special-title">${title}</div><div class="special-badge">${state?.state || "Forecast"}</div></div>
-      <div class="forecast-list">${rows || '<div class="empty-mini">Keine Forecast-Daten</div>'}</div>
-    `;
-  }
-
-  async _renderHeatmapWidget(widget, config, state, name) {
-    const title = name || state?.attributes?.friendly_name || config.entity_id || "Heatmap";
-    widget.classList.add("widget-heatmap");
-    widget.innerHTML = `
-      <div class="special-card-head"><div class="special-title">${title}</div><div class="special-badge">${Utils.text(state?.state)}</div></div>
-      <div class="heatmap-grid"><div class="empty-mini">Lade Verlauf…</div></div>
-    `;
-    const container = widget.querySelector('.heatmap-grid');
-    if (!config.entity_id || !container) return;
-    try {
-      const hours = config.config?.hours || 24;
-      const history = await this.app.dataManager.fetchHistory(config.entity_id, hours);
-      const points = Utils.safeArray(history?.data).filter((p) => p && p.y !== undefined).slice(-24);
-      const values = points.map((p) => Utils.toNumber(p.y, 0));
-      const min = Math.min(...values, 0);
-      const max = Math.max(...values, 1);
-      container.innerHTML = points.map((p, idx) => {
-        const v = Utils.toNumber(p.y, 0);
-        const n = max === min ? 0.8 : (v - min) / (max - min);
-        return `<div class="heat-cell" title="${Utils.shortDateTime(p.x)} · ${v}" style="opacity:${0.2 + n * 0.8}"><span>${new Date(p.x).getHours().toString().padStart(2, '0')}</span></div>`;
-      }).join('') || '<div class="empty-mini">Keine Verlaufsdaten</div>';
-    } catch (e) {
-      container.innerHTML = '<div class="empty-mini">Heatmap konnte nicht geladen werden</div>';
-    }
-  }
-
-  async _renderTimelineWidget(widget, config, state, name) {
-    const title = name || state?.attributes?.friendly_name || config.entity_id || "Timeline";
-    widget.classList.add("widget-timeline");
-    widget.innerHTML = `
-      <div class="special-card-head"><div class="special-title">${title}</div><div class="special-badge">${Utils.text(state?.state)}</div></div>
-      <div class="timeline-strip"><div class="empty-mini">Lade Verlauf…</div></div>
-    `;
-    const container = widget.querySelector('.timeline-strip');
-    if (!config.entity_id || !container) return;
-    try {
-      const hours = config.config?.hours || 24;
-      const history = await this.app.dataManager.fetchHistory(config.entity_id, hours);
-      const points = Utils.safeArray(history?.data).filter((p) => p && p.y !== undefined).slice(-32);
-      container.innerHTML = points.map((p) => {
-        const on = Utils.isTruthyState(p.y) || Utils.toNumber(p.y, 0) > 0;
-        const lbl = Utils.shortDateTime(p.x);
-        return `<div class="timeline-seg ${on ? 'on' : 'off'}" title="${lbl} · ${p.y}"></div>`;
-      }).join('') || '<div class="empty-mini">Keine Zustandsdaten</div>';
-    } catch (e) {
-      container.innerHTML = '<div class="empty-mini">Timeline konnte nicht geladen werden</div>';
-    }
-  }
-
-  _renderEnergyFlowWidget(widget, config, state, name) {
-    const c = config.config || {};
-    const getVal = (id) => Utils.toNumber(this.app.entityStates[id]?.state, 0);
-    const solar = getVal(c.solar_entity);
-    const battery = getVal(c.battery_entity);
-    const grid = getVal(c.grid_entity);
-    const load = getVal(c.load_entity || config.entity_id);
-    const title = name || "Energy Flow";
-    const total = Math.max(Math.abs(solar), Math.abs(battery), Math.abs(grid), Math.abs(load), 1);
-    const sw = 2 + (Math.abs(solar) / total) * 8;
-    const bw = 2 + (Math.abs(battery) / total) * 8;
-    const gw = 2 + (Math.abs(grid) / total) * 8;
-    widget.classList.add('widget-energy-flow');
-    widget.innerHTML = `
-      <div class="special-card-head"><div class="special-title">${title}</div><div class="special-badge">${load.toFixed(0)} W</div></div>
-      <svg class="energy-svg" viewBox="0 0 320 180">
-        <defs><linearGradient id="flowA" x1="0" x2="1"><stop offset="0%" stop-color="rgba(255,215,64,.95)"/><stop offset="100%" stop-color="rgba(77,171,247,.95)"/></linearGradient></defs>
-        <rect x="18" y="22" width="72" height="42" rx="14" class="energy-box"/><text x="54" y="48" text-anchor="middle" class="energy-label">PV</text><text x="54" y="62" text-anchor="middle" class="energy-value">${solar.toFixed(0)}W</text>
-        <rect x="18" y="116" width="72" height="42" rx="14" class="energy-box"/><text x="54" y="142" text-anchor="middle" class="energy-label">Netz</text><text x="54" y="156" text-anchor="middle" class="energy-value">${grid.toFixed(0)}W</text>
-        <rect x="124" y="68" width="72" height="42" rx="14" class="energy-box center"/><text x="160" y="94" text-anchor="middle" class="energy-label">Akku</text><text x="160" y="108" text-anchor="middle" class="energy-value">${battery.toFixed(0)}W</text>
-        <rect x="230" y="68" width="72" height="42" rx="14" class="energy-box load"/><text x="266" y="94" text-anchor="middle" class="energy-label">Haus</text><text x="266" y="108" text-anchor="middle" class="energy-value">${load.toFixed(0)}W</text>
-        <path d="M90 43 C116 43, 112 78, 124 88" class="energy-line solar" style="stroke-width:${sw}"/>
-        <path d="M90 137 C116 137, 112 98, 124 88" class="energy-line grid" style="stroke-width:${gw}"/>
-        <path d="M196 88 L230 88" class="energy-line battery" style="stroke-width:${bw}"/>
-      </svg>
-    `;
-  }
-
-  _renderBulletChartWidget(widget, config, state, name) {
-    const c = config.config || {};
-    const title = name || state?.attributes?.friendly_name || config.entity_id || "Bullet";
-    const value = Utils.toNumber(state?.state, 0);
-    const target = Utils.toNumber(c.target ?? (c.target_entity ? this.app.entityStates[c.target_entity]?.state : 0), 100);
-    const max = Utils.toNumber(c.max, Math.max(target, value, 100));
-    const pct = Utils.clamp((value / max) * 100, 0, 100);
-    const targetPct = Utils.clamp((target / max) * 100, 0, 100);
-    const s1 = Utils.clamp((Utils.toNumber(c.threshold_low, max * 0.4) / max) * 100, 0, 100);
-    const s2 = Utils.clamp((Utils.toNumber(c.threshold_mid, max * 0.7) / max) * 100, 0, 100);
-    const unit = state?.attributes?.unit_of_measurement || config.unit || "";
-    widget.classList.add('widget-bullet');
-    widget.innerHTML = `
-      <div class="special-card-head"><div class="special-title">${title}</div><div class="special-badge">${value}${unit}</div></div>
-      <div class="bullet-wrap">
-        <div class="bullet-track">
-          <div class="bullet-zone z1" style="width:${s1}%"></div>
-          <div class="bullet-zone z2" style="left:${s1}%;width:${Math.max(0, s2 - s1)}%"></div>
-          <div class="bullet-zone z3" style="left:${s2}%;width:${Math.max(0, 100 - s2)}%"></div>
-          <div class="bullet-fill" style="width:${pct}%"></div>
-          <div class="bullet-marker" style="left:${targetPct}%"></div>
-        </div>
-        <div class="bullet-meta"><span>Ist ${value}${unit}</span><span>Ziel ${target}${unit}</span><span>Max ${max}${unit}</span></div>
-      </div>
-    `;
-  }
-
-  async _renderComparisonWidget(widget, config, state, name) {
-    const title = name || state?.attributes?.friendly_name || config.entity_id || 'Vergleich';
-    const current = Utils.toNumber(state?.state, 0);
-    const comparisonEntity = config.config?.comparison_entity;
-    const previous = comparisonEntity ? Utils.toNumber(this.app.entityStates[comparisonEntity]?.state, 0) : current * 0.92;
-    const delta = previous === 0 ? 0 : ((current - previous) / Math.abs(previous)) * 100;
-    const unit = state?.attributes?.unit_of_measurement || config.unit || '';
-    widget.classList.add('widget-comparison');
-    widget.innerHTML = `
-      <div class="special-card-head"><div class="special-title">${title}</div><div class="special-badge ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}%</div></div>
-      <div class="compare-wrap">
-        <div class="compare-bar"><span>Heute</span><div><i style="width:${Utils.clamp((current / Math.max(current, previous, 1))*100, 0, 100)}%"></i></div><b>${current}${unit}</b></div>
-        <div class="compare-bar"><span>Vergleich</span><div><i style="width:${Utils.clamp((previous / Math.max(current, previous, 1))*100, 0, 100)}%"></i></div><b>${previous}${unit}</b></div>
-      </div>
-    `;
-  }
-
-  _renderAdvancedChartWidget(widget, config, state, name) {
-    widget.classList.add("widget-chart");
-    const ids = this._chartEntityIds(config);
-    const primaryId = ids[0] || config.entity_id;
-    const primaryState = this.app.entityStates[primaryId] || state || {};
-    const unit = primaryState?.attributes?.unit_of_measurement || config.unit || "";
-    const title = name || primaryState?.attributes?.friendly_name || primaryId || config.type;
-    widget.innerHTML = `
-      <div class="chart-header">
-        <div class="chart-title">${title}</div>
-        <div class="chart-value">${Utils.text(primaryState?.state)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}</div>
-      </div>
-      <div class="chart-body">
-        <canvas class="chart-canvas"></canvas>
-      </div>
-    `;
-    const canvas = widget.querySelector(".chart-canvas");
-    if (!canvas || !window.Chart || !ids.length) return;
-    this._buildAdvancedChart(canvas, config, ids, primaryState);
-  }
-
-  async _buildAdvancedChart(canvas, config, entityIds, primaryState) {
-    try {
-      const hours = config.config?.hours || 24;
-      const chartType = config.type || "line-chart";
-      const histories = await Promise.all(entityIds.map((id) => this.app.dataManager.fetchHistory(id, hours)));
-      const pointsByEntity = histories.map((history, idx) => ({
-        entityId: entityIds[idx],
-        points: Utils.safeArray(history?.data).filter((p) => p && p.x !== undefined && p.y !== undefined)
-      }));
-      const labels = [...new Set(pointsByEntity.flatMap((entry) => entry.points.map((p) => Utils.shortDateTime(p.x))))].slice(-48);
-      const baseTypeMap = {
-        "bar-chart": "bar",
-        "stacked-bar-chart": "bar",
-        "horizontal-bar-chart": "bar",
-        "donut-chart": "doughnut",
-        "pie-chart": "pie",
-        "radar-chart": "radar",
-        "scatter-chart": "scatter",
-        "bullet-chart": "bar",
-        "timeline-chart": "bar"
-      };
-      const baseType = baseTypeMap[chartType] || "line";
-      const mkColor = (i, alpha = 1) => `hsla(${(i * 67) % 360}, 80%, 60%, ${alpha})`;
-      const datasets = pointsByEntity.map((entry, idx) => {
-        const values = entry.points.map((p) => Utils.toNumber(p.y, 0));
-        const friendly = this.app.entityStates[entry.entityId]?.attributes?.friendly_name || entry.entityId;
-        if (["donut-chart", "pie-chart", "radar-chart"].includes(chartType)) {
-          const val = values.length ? values[values.length - 1] : Utils.toNumber(this.app.entityStates[entry.entityId]?.state, 0);
-          return { label: friendly, data: [val], backgroundColor: mkColor(idx, .45), borderColor: mkColor(idx, .95), borderWidth: 2, fill: chartType === 'radar-chart' };
-        }
-        if (chartType === "scatter-chart") {
-          return { label: friendly, data: entry.points.map((p, i) => ({ x: i + 1, y: Utils.toNumber(p.y, 0) })), backgroundColor: mkColor(idx, .55), borderColor: mkColor(idx, .95) };
-        }
-        const labelValues = labels.map((lbl, i) => values[i] ?? null).slice(-48);
-        const dataset = { label: friendly, data: labelValues, tension: .35, borderWidth: 2, pointRadius: chartType === 'sparkline' ? 0 : 1.5, pointHoverRadius: 3, fill: ["area-chart", "forecast-chart"].includes(chartType), backgroundColor: mkColor(idx, chartType === 'bar-chart' || chartType === 'stacked-bar-chart' || chartType === 'horizontal-bar-chart' || chartType === 'timeline-chart' || chartType === 'bullet-chart' ? .35 : .16), borderColor: mkColor(idx, .95) };
-        if (chartType === 'timeline-chart') dataset.data = labelValues.map(v => v > 0 ? 1 : 0);
-        return dataset;
-      });
-      const finalLabels = ["donut-chart", "pie-chart", "radar-chart"].includes(chartType) ? datasets.map((d) => d.label) : labels;
-      const finalDatasets = ["donut-chart", "pie-chart"].includes(chartType)
-        ? [{ data: datasets.map((d) => d.data[0] || 0), backgroundColor: datasets.map((_, i) => mkColor(i, .45)), borderColor: datasets.map((_, i) => mkColor(i, .95)), borderWidth: 2 }]
-        : datasets;
-      const chart = new Chart(canvas, {
-        type: baseType,
-        data: { labels: finalLabels.length ? finalLabels : ["Jetzt"], datasets: finalDatasets },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          indexAxis: chartType === 'horizontal-bar-chart' ? 'y' : 'x',
-          animation: { duration: 350 },
-          plugins: { legend: { display: entityIds.length > 1 || ["donut-chart","pie-chart","radar-chart"].includes(chartType), labels: { color: 'rgba(255,255,255,.68)', boxWidth: 10 } }, tooltip: { enabled: true } },
-          scales: baseType === 'doughnut' || baseType === 'pie' || baseType === 'radar' ? {} : {
-            x: { stacked: chartType === 'stacked-bar-chart', display: chartType !== 'sparkline', grid: { display: false }, ticks: { maxTicksLimit: 4, color: 'rgba(255,255,255,.45)' } },
-            y: { stacked: chartType === 'stacked-bar-chart', beginAtZero: true, grid: { color: 'rgba(255,255,255,.06)' }, ticks: { maxTicksLimit: 4, color: 'rgba(255,255,255,.45)' } }
-          }
-        }
-      });
-      this._chartInstances.push(chart);
-    } catch (e) {
-      console.warn("Advanced chart build failed:", e);
-    }
-  }
-
   _applyCommonWidgetStyle(widget, config) {
     if (config.font) widget.style.fontFamily = `"${config.font}", sans-serif`;
     if (config.fontSize) {
@@ -1377,82 +1037,14 @@ class ScreenManager {
       widget.style.background = config.bgColor;
     }
     if (config.borderRadius) widget.style.borderRadius = `${config.borderRadius}px`;
-    if (config.opacity !== undefined) { widget.classList.add("transparent-enabled"); widget.style.setProperty("--td-widget-opacity", String(Math.max(0, Math.min(1, config.opacity)))); }
-    if (config.blur !== undefined) widget.style.setProperty("--td-widget-blur", `${config.blur}px`);
-    if (config.borderColor) widget.style.setProperty("--td-widget-border", config.borderColor);
-    if (config.boxShadow) widget.style.setProperty("--td-widget-shadow", config.boxShadow);
-    if (config.zIndex !== undefined) widget.style.zIndex = String(config.zIndex);
-    if (config.tapAction && config.tapAction !== "none") widget.style.cursor = "pointer";
 
     if (config.customCss) {
       widget.style.cssText += `;${config.customCss}`;
     }
   }
 
-  _isWidgetVisible(config) {
-    const legacyEntity = config.entity_id;
-    const ruleEntity = config.visibilityEntity || legacyEntity;
-    if (!ruleEntity && !config.visibleWhen) return true;
-    const stateObj = this.app.entityStates[ruleEntity];
-    const current = stateObj?.state ?? '';
-    const expected = config.visibilityValue ?? config.visibleWhen ?? '';
-    const op = config.visibilityOperator || 'eq';
-    const numCurrent = Utils.toNumber(current, Number.NaN);
-    const numExpected = Utils.toNumber(expected, Number.NaN);
-    switch (op) {
-      case 'neq': return String(current) !== String(expected);
-      case 'gt': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent > numExpected;
-      case 'gte': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent >= numExpected;
-      case 'lt': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent < numExpected;
-      case 'lte': return !Number.isNaN(numCurrent) && !Number.isNaN(numExpected) && numCurrent <= numExpected;
-      case 'contains': return String(current).toLowerCase().includes(String(expected).toLowerCase());
-      case 'truthy': return Utils.isTruthyState(current);
-      case 'falsy': return !Utils.isTruthyState(current);
-      case 'eq':
-      default: return expected === '' ? true : String(current) === String(expected);
-    }
-  }
-
-  _attachWidgetAction(widget, config) {
-    const action = config.tapAction || 'none';
-    if (!action || action === 'none') return;
-    widget.classList.add('widget-actionable');
-    widget.tabIndex = 0;
-    const run = async (ev) => {
-      ev.preventDefault();
-      try {
-        if (action === 'navigate' && config.navigationPath) {
-          window.location.assign(config.navigationPath);
-        } else if (action === 'url' && config.url) {
-          window.open(config.url, config.openInNewTab === false ? '_self' : '_blank');
-        } else if (action === 'service' && config.service) {
-          let serviceData = {};
-          try { serviceData = JSON.parse(config.serviceData || '{}'); } catch (e) { console.warn('Invalid service JSON', e); }
-          if (!serviceData.entity_id && config.serviceTargetEntity) serviceData.entity_id = config.serviceTargetEntity;
-          const [domain, service] = String(config.service).split('.');
-          if (domain && service) {
-            if (window.hassConnection?.sendMessagePromise) {
-              await window.hassConnection.sendMessagePromise({ type: 'call_service', domain, service, service_data: serviceData });
-            } else {
-              await fetch(`/api/services/${domain}/${service}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(serviceData || {}) });
-            }
-          } else {
-            console.warn('Service action unavailable', config.service);
-          }
-        }
-      } catch (e) {
-        console.warn('Widget action failed', e);
-      }
-    };
-    widget.addEventListener('click', run);
-    widget.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') run(ev);
-    });
-  }
-
   _updateWidget(widgetInfo, entityId, newState) {
     const { element, config } = widgetInfo;
-    element.style.display = this._isWidgetVisible(config) ? "" : "none";
     const value = newState?.state ?? "—";
     const unit = newState?.attributes?.unit_of_measurement || config.unit || "";
 
@@ -1516,22 +1108,6 @@ class ScreenManager {
         break;
       }
 
-      case "forecast-chart":
-        this._renderForecastWidget(element, config, newState, config.name);
-        break;
-
-      case "energy-flow-mini":
-        this._renderEnergyFlowWidget(element, config, newState, config.name);
-        break;
-
-      case "bullet-chart":
-        this._renderBulletChartWidget(element, config, newState, config.name);
-        break;
-
-      case "comparison-chart":
-        this._renderComparisonWidget(element, config, newState, config.name);
-        break;
-
       default: {
         const wv = element.querySelector(".w-value");
         if (wv) wv.textContent = Utils.text(value);
@@ -1541,16 +1117,6 @@ class ScreenManager {
     element.classList.remove("value-changed");
     void element.offsetWidth;
     element.classList.add("value-changed");
-  }
-
-  _weatherEmoji(condition) {
-    const value = String(condition || '').toLowerCase();
-    if (value.includes('rain')) return '🌧️';
-    if (value.includes('cloud')) return '☁️';
-    if (value.includes('snow')) return '❄️';
-    if (value.includes('storm') || value.includes('lightning')) return '⛈️';
-    if (value.includes('fog')) return '🌫️';
-    return '☀️';
   }
 
   _doTransition(newScreen, type) {
@@ -1632,9 +1198,9 @@ class ScreenManager {
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    TICKER MANAGER
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class TickerManager {
   constructor(app) {
@@ -1739,9 +1305,9 @@ class TickerManager {
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    ALERT MANAGER
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class AlertManager {
   constructor(app) {
@@ -1872,9 +1438,9 @@ class AlertManager {
   }
 }
 
-/* ----------------------------------------------------------
+/* ══════════════════════════════════════════════════════════
    MAIN APP
-   ---------------------------------------------------------- */
+   ══════════════════════════════════════════════════════════ */
 
 class TickerDisplayApp {
   constructor() {
