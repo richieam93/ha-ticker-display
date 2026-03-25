@@ -743,6 +743,10 @@ class ScreenManager {
         this._renderStatusDotWidget(widget, config, value, name);
         break;
 
+      case "trend-arrow":
+        this._renderTrendArrowWidget(widget, config, state, name, icon);
+        break;
+
       case "camera":
         this._renderCameraWidget(widget, config, name);
         break;
@@ -806,6 +810,8 @@ class ScreenManager {
     }
 
     this._applyCommonWidgetStyle(widget, config);
+    widget.classList.toggle("widget-animated", config.animations !== false);
+    widget.classList.toggle(`widget-anim-${config.type || "generic"}`, config.animations !== false);
     return widget;
   }
 
@@ -941,6 +947,26 @@ class ScreenManager {
       <div class="status-dot-indicator ${isOn ? "on" : ""}" style="background:${color};color:${color}"></div>
       <div class="w-name">${name}</div>
       <div class="widget-subvalue">${Utils.text(value)}</div>
+    `;
+    this._renderExtraEntityList(widget, config);
+  }
+
+  _renderTrendArrowWidget(widget, config, state, name, icon) {
+    const current = Utils.toNumber(state?.state, null);
+    const previous = Utils.toNumber(this.app.previousEntityStates?.[config.entity_id]?.state, null);
+    const diff = (Number.isFinite(current) && Number.isFinite(previous)) ? current - previous : 0;
+    const direction = diff > 0 ? "up" : (diff < 0 ? "down" : "flat");
+    const arrow = direction === "up" ? "▲" : (direction === "down" ? "▼" : "▶");
+    const trendColor = direction === "up" ? "var(--td-positive)" : (direction === "down" ? "var(--td-danger)" : "var(--td-warning)");
+    const unit = state?.attributes?.unit_of_measurement || config.unit || "";
+    widget.classList.add("widget-trend-arrow");
+    widget.innerHTML = `
+      <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
+      <div class="trend-main">
+        <div><span class="w-value">${Utils.text(state?.state ?? "—")}</span><span class="w-unit">${unit}</span></div>
+        <div class="trend-arrow-chip ${direction}" style="color:${trendColor}">${arrow} <span class="trend-delta">${Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '0.0'}${unit}</span></div>
+      </div>
+      <div class="w-name">${name || state?.attributes?.friendly_name || config.entity_id || 'Trend'}</div>
     `;
     this._renderExtraEntityList(widget, config);
   }
@@ -1424,6 +1450,11 @@ class ScreenManager {
         break;
       }
 
+      case "trend-arrow": {
+        this._renderTrendArrowWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, config.name || "", config.icon || this._defaultIconForType(config.type));
+        break;
+      }
+
       case "mini-graph":
       case "sparkline":
       case "bar-chart":
@@ -1873,6 +1904,7 @@ class TickerDisplayApp {
     this.apiBase = window.TICKER_API_BASE || "/ticker-display";
     this.neededEntities = window.TICKER_ENTITIES || [];
     this.entityStates = {};
+    this.previousEntityStates = {};
     this.dataManager = new DataManager(this.apiBase);
     this.isPreview = location.pathname.includes("/preview/");
     this._statePollTimer = null;
@@ -1935,6 +1967,7 @@ class TickerDisplayApp {
   }
 
   onEntityStateChanged(id, state) {
+    this.previousEntityStates[id] = this.entityStates[id] || this.previousEntityStates[id] || null;
     this.entityStates[id] = state;
     this.screenManager.onEntityUpdate(id, state);
     this.tickerManager.onEntityUpdate(id, state);
@@ -2049,6 +2082,7 @@ class TickerDisplayApp {
       if (!state) return;
       const prev = this.entityStates[entityId];
       const changed = !prev || prev.state !== state.state || JSON.stringify(prev.attributes || {}) !== JSON.stringify(state.attributes || {});
+      if (changed && prev) this.previousEntityStates[entityId] = prev;
       this.entityStates[entityId] = state;
       if (emitChanges && changed) {
         this.onEntityStateChanged(entityId, state);

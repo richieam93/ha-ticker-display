@@ -135,6 +135,7 @@ function tdCreateWidget(type, col, row, settings = {}) {
     blur: d.default_widget_blur,
     borderRadius: d.default_widget_radius,
     bgColor: "#1E1E1E",
+    animations: true,
     config: {
       camera_source: d.default_camera_source,
       hours: d.default_chart_hours,
@@ -1107,7 +1108,8 @@ class TdScreenEditor extends LitElement {
       .tb select { padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
       .tb .sp { flex:1; }
       .tb .lb { font-size:12px; color:var(--secondary-text-color); white-space:nowrap; }
-      .tb details.tmenu { position:relative; }
+      .tb details.tmenu { position:relative; display:inline-block; }
+      .tb details.tmenu[open] { z-index:40; }
       .tb details.tmenu summary { list-style:none; padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; cursor:pointer; white-space:nowrap; }
       .tb details.tmenu summary::-webkit-details-marker { display:none; }
       .tb details.tmenu[open] summary { background:rgba(255,255,255,.06); }
@@ -1215,7 +1217,7 @@ class TdScreenEditor extends LitElement {
         <button ?disabled=${this._sel < 0} @click=${() => this._duplicateSelected()}>⧉</button>
         <button ?disabled=${this._sel < 0} @click=${() => this._deleteSelected()}>🗑</button>
         <details class="tmenu">
-          <summary>Werkzeuge</summary>
+          <summary>🧰 Werkzeuge ▾</summary>
           <div class="tpop">
             <div class="tsect">
               <div class="tl">Bewegen</div>
@@ -1278,7 +1280,7 @@ class TdScreenEditor extends LitElement {
 
   _palette() {
     const cats = [
-      { n: "Werte", items: [
+      { n: "🔢 Werte", items: [
         { t: "simple-value", i: "🔢", l: "Wert", d: "Klassische Zahl oder Sensorwert" },
         { t: "gauge", i: "🎯", l: "Gauge", d: "Runder Füllstand / Prozentwert" },
         { t: "progress-bar", i: "📊", l: "Fortschritt", d: "Horizontaler Fortschrittsbalken" },
@@ -1286,17 +1288,17 @@ class TdScreenEditor extends LitElement {
         { t: "trend-arrow", i: "📈", l: "Trend", d: "Tendenz nach oben oder unten" },
         { t: "icon-value", i: "ℹ️", l: "Icon+Wert", d: "Wert mit Symbol und Titel" },
       ]},
-      { n: "Graphen", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l, d: "Chart.js Widget" })) },
-      { n: "Media", items: [
+      { n: "📈 Graphen", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l, d: "Chart.js Widget" })) },
+      { n: "🖼️ Media", items: [
         { t: "camera", i: "📹", l: "Kamera", d: "Snapshot, entity_picture, Proxy, Stream" },
         { t: "image", i: "🖼️", l: "Bild", d: "Lokale oder HA-Medienbilder" },
       ]},
-      { n: "Info", items: [
+      { n: "🌤️ Info", items: [
         { t: "clock", i: "🕐", l: "Uhr", d: "Zeit und Datum" },
         { t: "weather", i: "🌤️", l: "Wetter", d: "Wetter-Entity mit Übersicht" },
         { t: "countdown", i: "⏱️", l: "Countdown", d: "Ereignis oder Zielzeit" },
       ]},
-      { n: "Home Assistant Presets", items: [
+      { n: "🏠 Home Assistant Presets", items: [
         { t: "preset-energy", i: "⚡", l: "Energie", d: "Leistungs-, Batterie- oder Energie-Sensor" },
         { t: "preset-calendar", i: "🗓️", l: "Kalender", d: "Kalender oder Countdown mit Terminen" },
         { t: "preset-person", i: "👤", l: "Personen", d: "Anwesenheit und Status" },
@@ -1304,7 +1306,7 @@ class TdScreenEditor extends LitElement {
         { t: "preset-battery", i: "🔋", l: "Batterie", d: "Batterie-Ladung oder Status" },
         { t: "preset-media", i: "🎵", l: "Medienplayer", d: "Titel, Status und Wiedergabe" },
       ]},
-      { n: "Sonstige", items: [
+      { n: "✨ Sonstige", items: [
         { t: "color-block", i: "🟦", l: "Farbblock", d: "Dekoratives Element / Fläche" },
         { t: "button", i: "🔘", l: "Button", d: "Interaktive Aktion" },
       ]},
@@ -1318,6 +1320,14 @@ class TdScreenEditor extends LitElement {
       if (this._paletteFilter === "recent" && !rec) return false;
       if (!q) return true;
       return [it.t, it.l, it.d, c.n].join(" ").toLowerCase().includes(q);
+    }).sort((a,b) => {
+      const af = (this._favoriteWidgets || []).includes(a.t) ? 1 : 0;
+      const bf = (this._favoriteWidgets || []).includes(b.t) ? 1 : 0;
+      if (af !== bf) return bf - af;
+      const ar = (this._recentWidgets || []).includes(a.t) ? 1 : 0;
+      const br = (this._recentWidgets || []).includes(b.t) ? 1 : 0;
+      if (ar !== br) return br - ar;
+      return String(a.l).localeCompare(String(b.l), "de");
     })})).filter((c) => c.items.length);
 
     const total = groups.reduce((sum, c) => sum + c.items.length, 0);
@@ -1794,6 +1804,7 @@ class TdScreenEditor extends LitElement {
           <div class="pf2"><label>Hintergrund-Transparenz: ${w.bgOpacity ?? 0.75}</label><input type="range" min="0" max="1" step="0.05" .value=${w.bgOpacity ?? 0.75} @input=${(e) => this._uw("bgOpacity", +e.target.value)}></div>
           <div class="pf2"><label>Blur: ${w.blur || 0}px</label><input type="range" min="0" max="20" step="1" .value=${w.blur || 0} @input=${(e) => this._uw("blur", +e.target.value)}></div>
           <div class="pf2"><label>Ecken-Radius: ${w.borderRadius || 12}px</label><input type="range" min="0" max="32" step="2" .value=${w.borderRadius || 12} @input=${(e) => this._uw("borderRadius", +e.target.value)}></div>
+          <div class="tog"><input type="checkbox" .checked=${w.animations !== false} @change=${(e) => this._uw("animations", e.target.checked)}><span>Animationen aktivieren</span></div>
         ` : ""}
 
         ${this._pt === 2 ? html`

@@ -34,19 +34,38 @@ class MediaManager:
                     if not target.exists():
                         shutil.copy2(f, target)
 
+    def _resolve_sound_file(self, sound_id: str, declared_filename: str | None = None) -> Path | None:
+        candidates = []
+        if declared_filename:
+            candidates.append(self._sounds_path / declared_filename)
+        for ext in [".mp3", ".wav", ".ogg"]:
+            candidates.append(self._sounds_path / f"{sound_id}{ext}")
+        for cand in candidates:
+            if cand.exists():
+                return cand
+        return None
+
     # ── SOUNDS ──
     def get_sounds(self) -> list[dict]:
         sounds = []
+        builtin_stems = set(DEFAULT_SOUNDS.keys())
         for sound_id, info in DEFAULT_SOUNDS.items():
-            fp = self._sounds_path / info["file"]
-            sounds.append({"id": sound_id, "name": info["name"], "filename": info["file"],
-                "url": f"/ticker-display/media/sounds/{info['file']}", "category": info["category"],
-                "builtin": True, "exists": fp.exists(), "size": fp.stat().st_size if fp.exists() else 0})
+            fp = self._resolve_sound_file(sound_id, info["file"])
+            filename = fp.name if fp else info["file"]
+            sounds.append({
+                "id": sound_id,
+                "name": info["name"],
+                "filename": filename,
+                "url": f"/ticker-display/media/sounds/{filename}",
+                "category": info["category"],
+                "builtin": True,
+                "exists": bool(fp),
+                "size": fp.stat().st_size if fp and fp.exists() else 0,
+            })
 
-        builtin_files = {s["file"] for s in DEFAULT_SOUNDS.values()}
         if self._sounds_path.exists():
             for f in self._sounds_path.iterdir():
-                if f.suffix.lower() in [".mp3", ".wav", ".ogg"] and f.name not in builtin_files:
+                if f.suffix.lower() in [".mp3", ".wav", ".ogg"] and f.stem not in builtin_stems:
                     sounds.append({"id": f.stem, "name": f.stem.replace("_", " ").title(),
                         "filename": f.name, "url": f"/ticker-display/media/sounds/{f.name}",
                         "category": "custom", "builtin": False, "exists": True, "size": f.stat().st_size})
@@ -58,10 +77,12 @@ class MediaManager:
 
     def get_sound_url(self, sound_id: str) -> str | None:
         if sound_id in DEFAULT_SOUNDS:
-            return f"/ticker-display/media/sounds/{DEFAULT_SOUNDS[sound_id]['file']}"
-        for ext in [".mp3", ".wav", ".ogg"]:
-            if (self._sounds_path / f"{sound_id}{ext}").exists():
-                return f"/ticker-display/media/sounds/{sound_id}{ext}"
+            fp = self._resolve_sound_file(sound_id, DEFAULT_SOUNDS[sound_id]["file"])
+            if fp:
+                return f"/ticker-display/media/sounds/{fp.name}"
+        fp = self._resolve_sound_file(sound_id)
+        if fp:
+            return f"/ticker-display/media/sounds/{fp.name}"
         return None
 
     async def async_save_sound(self, filename: str, data: bytes) -> dict:
