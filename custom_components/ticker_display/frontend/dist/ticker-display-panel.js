@@ -1103,7 +1103,7 @@ class TdScreenEditor extends LitElement {
 
   static get styles() {
     return css`
-      :host { display:grid; grid-template-columns:280px 1fr 340px; grid-template-rows:auto 1fr; height:100vh; overflow:hidden; }
+      :host { display:grid; grid-template-columns:300px minmax(0,1fr) 430px; grid-template-rows:auto 1fr; height:100vh; overflow:hidden; }
       .tb { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:8px 12px; background:var(--app-header-background-color,#1e1e1e); border-bottom:1px solid var(--divider-color); overflow:visible; position:relative; z-index:30; }
       .tb button { padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; background:none; color:var(--primary-text-color); font-size:13px; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:4px; }
       .tb button:hover { background:rgba(255,255,255,.05); }
@@ -1187,7 +1187,7 @@ class TdScreenEditor extends LitElement {
       .presetb { display:flex; align-items:center; gap:8px; padding:9px 10px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.03); color:var(--primary-text-color); cursor:pointer; }
       .presetb:hover { background:rgba(255,255,255,.06); }
       .msinfo { margin-left:8px; font-size:12px; color:var(--secondary-text-color); }
-      .props { overflow-y:auto; padding:12px; border-left:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
+      .props { overflow-y:auto; padding:14px 16px 18px; border-left:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); min-width:0; }
       .pe { display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; color:var(--secondary-text-color); text-align:center; font-size:14px; gap:8px; }
       .ptabs { display:flex; border-bottom:1px solid var(--divider-color); margin-bottom:12px; }
       .ptab { flex:1; padding:8px 4px; text-align:center; font-size:12px; font-weight:500; cursor:pointer; border-bottom:2px solid transparent; color:var(--secondary-text-color); background:none; border-top:none; border-left:none; border-right:none; }
@@ -1950,7 +1950,7 @@ class TdScreenEditor extends LitElement {
           <div class="pg4">Interaktion auf dem Display</div>
           <div class="pf2"><label>Touch-Aktion</label><select .value=${w.tap_action || "none"} @change=${(e) => this._uw("tap_action", e.target.value)}><option value="none">Keine</option><option value="expand">Widget vergrößern / Details</option><option value="toggle">Schalter ein/aus</option></select></div>
           ${w.tap_action === "expand" ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Auto schließen (s)</label><input type="number" min="0" max="120" .value=${w.tap_autoclose || 10} @change=${(e) => this._uw("tap_autoclose", +e.target.value)}></div><div class="pf2"><label>Detail-Skalierung</label><input type="number" min="1" max="2.4" step="0.1" .value=${w.tap_scale || 1.45} @change=${(e) => this._uw("tap_scale", +e.target.value)}></div></div>` : ""}
-          ${w.tap_action === "toggle" ? html`<div class="pf2"><label>Statuspunkt anzeigen</label><select .value=${w.toggle_badge !== false ? "on" : "off"} @change=${(e) => this._uw("toggle_badge", e.target.value === "on")}><option value="on">Ja</option><option value="off">Nein</option></select></div>` : ""}
+          ${w.tap_action === "toggle" ? html`<div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.tap_target_entity || w.entity_id || ""} label="Schalt-Entity" placeholder="Schalter, Licht oder Input Boolean wählen" @value-changed=${(e) => this._uw("tap_target_entity", e.detail.value)}></td-entity-picker></div><div class="pf2"><label>Statuspunkt anzeigen</label><select .value=${w.toggle_badge !== false ? "on" : "off"} @change=${(e) => this._uw("toggle_badge", e.target.value === "on")}><option value="on">Ja</option><option value="off">Nein</option></select></div><div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Leer lassen = Haupt-Entity des Widgets verwenden. Für Schalter-Aktion eignen sich z. B. switch.*, light.*, input_boolean.*, fan.*.</label></div>` : ""}
           <div class="pg4">Position & Größe</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="pf2"><label>Spalte</label><input type="number" min="0" .value=${w.col || 0} @change=${(e) => this._uw("col", +e.target.value)}></div>

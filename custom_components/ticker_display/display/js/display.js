@@ -884,7 +884,7 @@ class ScreenManager {
   }
 
   async _toggleWidgetEntity(widget, config) {
-    const entityId = config.entity_id;
+    const entityId = config.tap_target_entity || config.entity_id;
     if (!entityId || !this.app?.callEntityToggle) return;
     const ok = await this.app.callEntityToggle(entityId);
     if (!ok) return;
