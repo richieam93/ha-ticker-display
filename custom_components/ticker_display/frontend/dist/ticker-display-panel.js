@@ -66,6 +66,37 @@ function deepClone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+
+
+const TD_CHART_WIDGETS = [
+  ["mini-graph", "📉", "Mini Graph"],
+  ["sparkline", "〰️", "Sparkline"],
+  ["bar-chart", "📊", "Balken"],
+  ["area-chart", "🌊", "Area Chart"],
+  ["multi-line-chart", "📈", "Multi-Line"],
+  ["stacked-bar-chart", "🧱", "Stacked Bar"],
+  ["horizontal-bar-chart", "↔️", "Horizontal Bar"],
+  ["donut-chart", "🍩", "Donut"],
+  ["pie-chart", "🥧", "Pie"],
+  ["radar-chart", "🕸️", "Radar"],
+  ["heatmap-mini", "🔥", "Heatmap Mini"],
+  ["timeline-chart", "🕒", "Timeline"],
+  ["scatter-chart", "✳️", "Scatter"],
+  ["forecast-chart", "🔮", "Forecast"],
+  ["energy-flow-mini", "⚡", "Energy Flow"],
+  ["comparison-chart", "⚖️", "Comparison"],
+  ["radial-gauge-advanced", "🎛️", "Radial Gauge"],
+  ["bullet-chart", "🎯", "Bullet"],
+];
+const TD_CHART_TYPES = new Set(TD_CHART_WIDGETS.map((x) => x[0]));
+const TD_CAMERA_SOURCES = [
+  ["auto", "Auto (Snapshot → entity_picture → camera_proxy → stream)"],
+  ["snapshot", "Snapshot"],
+  ["entity_picture", "entity_picture"],
+  ["camera_proxy", "camera_proxy"],
+  ["camera_proxy_stream", "camera_proxy_stream"],
+];
+
 function downloadJson(filename, data) {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: "application/json" });
@@ -892,11 +923,7 @@ class TdScreenEditor extends LitElement {
         { t: "trend-arrow", i: "📈", l: "Trend" },
         { t: "icon-value", i: "ℹ️", l: "Icon+Wert" },
       ]},
-      { n: "Graphen", items: [
-        { t: "mini-graph", i: "📉", l: "Mini Graph" },
-        { t: "bar-chart", i: "📊", l: "Balken" },
-        { t: "sparkline", i: "〰️", l: "Sparkline" },
-      ]},
+      { n: "Graphen", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l })) },
       { n: "Media", items: [
         { t: "camera", i: "📹", l: "Kamera" },
         { t: "image", i: "🖼️", l: "Bild" },
@@ -941,7 +968,7 @@ class TdScreenEditor extends LitElement {
     }
 
     const els = [];
-    const ti = { "simple-value": "🔢", gauge: "🎯", "progress-bar": "📊", "status-dot": "🔵", camera: "📹", clock: "🕐", weather: "🌤️", "mini-graph": "📉", image: "🖼️" };
+    const ti = { "simple-value": "🔢", gauge: "🎯", "progress-bar": "📊", "status-dot": "🔵", camera: "📹", clock: "🕐", weather: "🌤️", image: "🖼️", ...Object.fromEntries(TD_CHART_WIDGETS.map(([t,i]) => [t,i])) };
 
     for (let i = 0; i < widgets.length; i++) {
       const w = widgets[i];
@@ -977,7 +1004,7 @@ class TdScreenEditor extends LitElement {
 
     return html`
       <div class="pva">
-        <div class="pf ${this._prev === "landscape" ? "l" : "p"}">
+        <div class="pf ${this._prev === "landscape" ? "l" : "p"}" style="background:${this._cfg.background_color || "#121212"};${this._cfg.background_image ? `background-image:url(${this._cfg.background_image});background-size:${this._cfg.background_image_size || "cover"};background-position:center;background-repeat:no-repeat;` : ""}">
           <div class="pg" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${els}</div>
           <div class="ptk">▶ Ticker-Leiste</div>
         </div>
@@ -987,7 +1014,24 @@ class TdScreenEditor extends LitElement {
 
   _properties() {
     if (this._sel < 0 || !this._cfg.widgets?.[this._sel]) {
-      return html`<div class="props"><div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div></div>`;
+      return html`<div class="props">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:15px">Screen</strong></div>
+        <div class="pg4">Screen-Style</div>
+        <div class="pf2"><label>Screen-Typ</label><select .value=${this._cfg.type || "dashboard"} @change=${(e) => this._ss("type", e.target.value)}>
+          <option value="dashboard">Dashboard</option>
+          <option value="clock">Uhr</option>
+          <option value="weather">Wetter</option>
+          <option value="camera">Kamera</option>
+          <option value="image">Bild</option>
+        </select></div>
+        <div class="pf2"><td-color-picker .value=${this._cfg.background_color || "#121212"} label="Hintergrundfarbe" @value-changed=${(e) => this._ss("background_color", e.detail.value)}></td-color-picker></div>
+        <div class="pf2"><label>Hintergrundbild URL</label><input .value=${this._cfg.background_image || ""} placeholder="/ticker-display/media/images/dein-bild.png" @input=${(e) => this._ss("background_image", e.target.value)}></div>
+        <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.background_image_size || "cover"} @change=${(e) => this._ss("background_image_size", e.target.value)}>
+          <option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option>
+        </select></div>
+        ${(this.images || []).length ? html`<div class="pf2"><label>Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
+        <div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div>
+      </div>`;
     }
 
     const w = this._cfg.widgets[this._sel];
@@ -997,7 +1041,7 @@ class TdScreenEditor extends LitElement {
       { v: "progress-bar", l: "Fortschrittsbalken" },
       { v: "status-dot", l: "Status Punkt" },
       { v: "icon-value", l: "Icon+Wert" },
-      { v: "mini-graph", l: "Mini Graph" },
+      ...TD_CHART_WIDGETS.map(([v,,l]) => ({ v, l })),
       { v: "camera", l: "Kamera" },
       { v: "clock", l: "Uhr" },
       { v: "weather", l: "Wetter" },
@@ -1052,11 +1096,22 @@ class TdScreenEditor extends LitElement {
           ` : ""}
           ${w.type === "camera" ? html`
             <div class="pg4">Kamera</div>
+            <div class="pf2"><label>Kamera-Quelle</label><select .value=${w.config?.camera_source || "auto"} @change=${(e) => this._uwc("camera_source", e.target.value)}>${TD_CAMERA_SOURCES.map(([v,l]) => html`<option value=${v}>${l}</option>`)}</select></div>
             <div class="pf2"><label>Refresh (s)</label><input type="number" min="1" .value=${w.config?.refresh_interval || 5} @change=${(e) => this._uwc("refresh_interval", +e.target.value)}></div>
+          ` : ""}
+          ${TD_CHART_TYPES.has(w.type) ? html`
+            <div class="pg4">Chart</div>
+            <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
+            <div class="pf2"><label>Zusätzliche Entities (eine pro Zeile)</label><textarea rows="4" .value=${(w.config?.entities || []).join("
+")} @change=${(e) => this._uwc("entities", e.target.value.split(/
+|,/).map((v) => v.trim()).filter(Boolean))} placeholder="sensor.energy_import
+sensor.energy_export"></textarea></div>
+            ${(w.type === "gauge" || w.type === "radial-gauge-advanced" || w.type === "bullet-chart") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Min</label><input type="number" .value=${w.config?.min || 0} @change=${(e) => this._uwc("min", +e.target.value)}></div><div class="pf2"><label>Max</label><input type="number" .value=${w.config?.max || 100} @change=${(e) => this._uwc("max", +e.target.value)}></div></div>` : ""}
           ` : ""}
           ${w.type === "image" ? html`
             <div class="pg4">Bild</div>
-            <div class="pf2"><label>Bild-URL</label><input .value=${w.imageUrl || ""} placeholder="/ticker-display/media/images/xyz.png" @input=${(e) => this._uw("imageUrl", e.target.value)}></div>
+            <div class="pf2"><label>Bild-URL</label><input .value=${w.imageUrl || w.image_url || ""} placeholder="/ticker-display/media/images/xyz.png" @input=${(e) => this._uw("imageUrl", e.target.value)}></div>
+            ${(this.images || []).length ? html`<div class="pf2"><label>Bild wählen</label><select .value=${w.imageUrl || w.image_url || ""} @change=${(e) => this._uw("imageUrl", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
           ` : ""}
         ` : ""}
 
@@ -1066,6 +1121,8 @@ class TdScreenEditor extends LitElement {
           <div class="pf2"><label>Schriftgröße: ${w.fontSize || 28}px</label><input type="range" min="12" max="72" step="2" .value=${w.fontSize || 28} @input=${(e) => this._uw("fontSize", +e.target.value)}></div>
           <div class="pf2"><td-color-picker .value=${w.textColor || "#FFFFFF"} label="Textfarbe" @value-changed=${(e) => this._uw("textColor", e.detail.value)}></td-color-picker></div>
           <div class="pf2"><td-color-picker .value=${w.bgColor || "#1E1E1E"} label="Hintergrundfarbe" @value-changed=${(e) => this._uw("bgColor", e.detail.value)}></td-color-picker></div>
+          <div class="pf2"><label>Hintergrund-Transparenz: ${w.bgOpacity ?? 0.75}</label><input type="range" min="0" max="1" step="0.05" .value=${w.bgOpacity ?? 0.75} @input=${(e) => this._uw("bgOpacity", +e.target.value)}></div>
+          <div class="pf2"><label>Blur: ${w.blur || 0}px</label><input type="range" min="0" max="20" step="1" .value=${w.blur || 0} @input=${(e) => this._uw("blur", +e.target.value)}></div>
           <div class="pf2"><label>Ecken-Radius: ${w.borderRadius || 12}px</label><input type="range" min="0" max="32" step="2" .value=${w.borderRadius || 12} @input=${(e) => this._uw("borderRadius", +e.target.value)}></div>
         ` : ""}
 
@@ -1092,11 +1149,16 @@ class TdScreenEditor extends LitElement {
     return "";
   }
 
+  _ss(k, v) {
+    this._push();
+    this._cfg = { ...this._cfg, [k]: v };
+  }
+
   _drop(c, r) {
     if (!this._dwt) return;
     this._push();
     const ws = [...(this._cfg.widgets || [])];
-    ws.push({ id: `w_${Date.now()}`, type: this._dwt, col: c, row: r, colspan: 1, rowspan: 1, entity_id: "", name: "", icon: "", config: {} });
+    ws.push({ id: `w_${Date.now()}`, type: this._dwt, col: c, row: r, colspan: 1, rowspan: 1, entity_id: "", name: "", icon: "", bgOpacity: 0.75, blur: 0, config: {} });
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = ws.length - 1;
     this._dwt = null;
@@ -1233,7 +1295,7 @@ class TdTemplateEditor extends LitElement {
         name: "",
         description: "",
         category: "custom",
-        screen_config: { type: "dashboard", grid: { columns: 3, rows: 2 }, widgets: [], duration: 15 },
+        screen_config: { type: "dashboard", grid: { columns: 3, rows: 2 }, widgets: [], duration: 15, background_color: "#121212", background_image: "", background_image_size: "cover" },
         variables: [],
       };
     }

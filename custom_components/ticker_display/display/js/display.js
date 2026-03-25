@@ -62,6 +62,33 @@ const Utils = {
   }
 };
 
+const CHART_WIDGET_TYPES = new Set([
+  "mini-graph", "sparkline", "bar-chart", "area-chart", "multi-line-chart", "stacked-bar-chart",
+  "horizontal-bar-chart", "donut-chart", "pie-chart", "radar-chart", "heatmap-mini", "timeline-chart",
+  "scatter-chart", "forecast-chart", "energy-flow-mini", "comparison-chart", "radial-gauge-advanced", "bullet-chart"
+]);
+
+const CHART_TYPE_ICONS = {
+  "mini-graph": "📉",
+  "sparkline": "〰️",
+  "bar-chart": "📊",
+  "area-chart": "🌊",
+  "multi-line-chart": "📈",
+  "stacked-bar-chart": "🧱",
+  "horizontal-bar-chart": "↔️",
+  "donut-chart": "🍩",
+  "pie-chart": "🥧",
+  "radar-chart": "🕸️",
+  "heatmap-mini": "🔥",
+  "timeline-chart": "🕒",
+  "scatter-chart": "✳️",
+  "forecast-chart": "🔮",
+  "energy-flow-mini": "⚡",
+  "comparison-chart": "⚖️",
+  "radial-gauge-advanced": "🎛️",
+  "bullet-chart": "🎯"
+};
+
 class DataManager {
   constructor(apiBase) {
     this.apiBase = apiBase;
@@ -94,6 +121,20 @@ class DataManager {
 
   getCameraUrl(entityId, mode = "auto") {
     return `${this.apiBase}/api/image/camera/${entityId}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
+  }
+
+  async resolveCameraUrl(entityId, mode = "auto") {
+    const url = this.getCameraUrl(entityId, mode);
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      const ct = r.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        const data = await r.json();
+        if (data?.redirect) return { url: data.redirect, mode: data.mode || mode };
+      }
+      if (r.ok) return { url, mode };
+    } catch (e) {}
+    return { url, mode };
   }
 }
 
@@ -522,6 +563,7 @@ class ScreenManager {
 
     const screen = document.createElement("div");
     screen.className = "screen";
+    this._applyScreenStyle(screen, config);
 
     switch (config.type) {
       case "clock":
@@ -543,6 +585,16 @@ class ScreenManager {
 
     const transition = config.transition || this.app.config.rotation?.transition || "fade";
     this._doTransition(screen, transition);
+  }
+
+  _applyScreenStyle(screen, config) {
+    if (config.background_color) screen.style.background = config.background_color;
+    if (config.background_image) {
+      screen.style.backgroundImage = `url(${config.background_image})`;
+      screen.style.backgroundRepeat = "no-repeat";
+      screen.style.backgroundPosition = "center center";
+      screen.style.backgroundSize = config.background_image_size || "cover";
+    }
   }
 
   _buildDashboardScreen(screen, config) {
@@ -619,15 +671,19 @@ class ScreenManager {
 
   _buildCameraScreen(screen, config) {
     const eid = config.entity_id || "";
+    const source = config.config?.camera_source || config.camera_source || "auto";
     screen.innerHTML = `
-      <img id="camera-img" src="${this.app.apiBase}/api/image/camera/${eid}" class="screen-image-contain" alt="Camera">
-      <div class="screen-caption">${config.title || eid || "Kamera"}</div>
+      <img id="camera-img" class="screen-image-contain" alt="Camera">
+      <div class="screen-caption">${config.title || config.name || eid || "Kamera"}</div>
     `;
 
-    const ms = (config.refresh_interval || 5) * 1000;
+    const img = screen.querySelector("#camera-img");
+    if (img && eid) this._loadCameraInto(img, eid, source);
+
+    const ms = (config.refresh_interval || config.config?.refresh_interval || 5) * 1000;
     this._cameraIntervals.push(setInterval(() => {
-      const img = screen.querySelector("#camera-img");
-      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+      const nextImg = screen.querySelector("#camera-img");
+      if (nextImg && eid) this._loadCameraInto(nextImg, eid, source);
     }, ms));
   }
 
@@ -635,7 +691,7 @@ class ScreenManager {
     const src = config.image_url || config.imageUrl || config.url || "";
     screen.innerHTML = `
       <div class="image-screen-wrap">
-        ${src ? `<img src="${src}" class="screen-image-contain" alt="Image">` : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild gesetzt</div></div>`}
+        ${src ? `<img src="${src}" class="screen-image-contain" style="object-fit:${config.image_fit || config.background_image_size || "contain"}" alt="Image">` : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild gesetzt</div></div>`}
       </div>
     `;
   }
@@ -705,11 +761,23 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
-        this._renderLineChartWidget(widget, config, state, name, false);
-        break;
-
       case "bar-chart":
-        this._renderLineChartWidget(widget, config, state, name, true);
+      case "area-chart":
+      case "multi-line-chart":
+      case "stacked-bar-chart":
+      case "horizontal-bar-chart":
+      case "donut-chart":
+      case "pie-chart":
+      case "radar-chart":
+      case "heatmap-mini":
+      case "timeline-chart":
+      case "scatter-chart":
+      case "forecast-chart":
+      case "energy-flow-mini":
+      case "comparison-chart":
+      case "radial-gauge-advanced":
+      case "bullet-chart":
+        this._renderChartWidget(widget, config, state, name);
         break;
 
       case "icon-value":
@@ -787,15 +855,19 @@ class ScreenManager {
   _renderCameraWidget(widget, config, name) {
     widget.classList.add("widget-camera");
     const eid = config.entity_id || "";
+    const source = config.config?.camera_source || config.camera_source || "auto";
     widget.innerHTML = `
-      <img src="${this.app.apiBase}/api/image/camera/${eid}" alt="Camera" class="widget-camera-image">
+      <img alt="Camera" class="widget-camera-image">
       <div class="camera-overlay">${name || eid}</div>
     `;
 
+    const img = widget.querySelector("img");
+    if (img && eid) this._loadCameraInto(img, eid, source);
+
     const ms = (config.config?.refresh_interval || 5) * 1000;
     const interval = setInterval(() => {
-      const img = widget.querySelector("img");
-      if (img) img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
+      const nextImg = widget.querySelector("img");
+      if (nextImg && eid) this._loadCameraInto(nextImg, eid, source);
     }, ms);
     this._cameraIntervals.push(interval);
   }
@@ -930,11 +1002,9 @@ class ScreenManager {
     `;
   }
 
-  _renderLineChartWidget(widget, config, state, name, asBar = false) {
-    const currentValue = Utils.toNumber(state?.state, 0);
+  _renderChartWidget(widget, config, state, name) {
     const unit = state?.attributes?.unit_of_measurement || config.unit || "";
-    const title = name || state?.attributes?.friendly_name || config.entity_id || (asBar ? "Balken" : "Graph");
-    const hours = config.config?.hours || 24;
+    const title = config.name || name || state?.attributes?.friendly_name || config.entity_id || config.type || "Chart";
 
     widget.classList.add("widget-chart");
     widget.innerHTML = `
@@ -948,95 +1018,227 @@ class ScreenManager {
     `;
 
     const canvas = widget.querySelector(".chart-canvas");
-    if (!canvas || !window.Chart || !config.entity_id) return;
-
-    this._buildChart(canvas, config.entity_id, hours, asBar, currentValue);
+    if (!canvas || !window.Chart) return;
+    this._buildChart(canvas, config, state);
   }
 
-  async _buildChart(canvas, entityId, hours, asBar, currentValue) {
+  _chartPalette(index = 0, alpha = 1) {
+    const base = [
+      [33,150,243],[76,175,80],[255,152,0],[156,39,176],[244,67,54],[0,188,212],[255,235,59],[255,87,34]
+    ];
+    const [r,g,b] = base[index % base.length];
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  _normalizePoints(rawPoints, fallbackValue = 0) {
+    const points = Utils.safeArray(rawPoints).filter((p) => p && p.x !== undefined && p.y !== undefined);
+    if (points.length) return points.map((p) => ({ x: p.x, y: Utils.toNumber(p.y, 0) }));
+    return [{ x: new Date().toISOString(), y: Utils.toNumber(fallbackValue, 0) }];
+  }
+
+  _chartEntityIds(config) {
+    const ids = [];
+    if (config.entity_id) ids.push(config.entity_id);
+    for (const extra of Utils.safeArray(config.config?.entities || config.entities)) {
+      if (extra && !ids.includes(extra)) ids.push(extra);
+    }
+    return ids;
+  }
+
+  async _buildChart(canvas, config, state) {
     try {
-      const history = await this.app.dataManager.fetchHistory(entityId, hours);
-      const points = Utils.safeArray(history?.data).filter((p) => p && p.x !== undefined && p.y !== undefined);
+      const entityIds = this._chartEntityIds(config);
+      const hours = config.config?.hours || config.config?.period || 24;
+      const histories = await Promise.all(entityIds.map(async (entityId) => {
+        const liveState = this.app.entityStates[entityId] || (entityId === config.entity_id ? state : null) || {};
+        const history = entityId ? await this.app.dataManager.fetchHistory(entityId, hours) : { data: [] };
+        return {
+          entityId,
+          state: liveState,
+          points: this._normalizePoints(history?.data, liveState?.state)
+        };
+      }));
 
-      const labels = points.map((p) => Utils.shortDateTime(p.x));
-      const values = points.map((p) => Utils.toNumber(p.y, 0));
-
-      if (!values.length) {
-        labels.push("Jetzt");
-        values.push(currentValue);
-      }
-
-      const type = asBar ? "bar" : "line";
-      const chart = new Chart(canvas, {
-        type,
-        data: {
-          labels,
-          datasets: [{
-            data: values,
-            tension: 0.35,
-            borderWidth: 2,
-            pointRadius: asBar ? 0 : 0,
-            pointHoverRadius: 3,
-            fill: !asBar,
-            backgroundColor: asBar ? "rgba(33,150,243,0.35)" : "rgba(33,150,243,0.18)",
-            borderColor: "rgba(33,150,243,0.95)",
-            barPercentage: 0.8,
-            categoryPercentage: 0.9
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: {
-            duration: 350
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              enabled: true,
-              displayColors: false
-            }
-          },
-          scales: {
-            x: {
-              display: !asBar,
-              grid: { display: false },
-              ticks: {
-                maxTicksLimit: 4,
-                color: "rgba(255,255,255,0.45)"
-              }
-            },
-            y: {
-              display: true,
-              grid: {
-                color: "rgba(255,255,255,0.06)"
-              },
-              ticks: {
-                maxTicksLimit: 4,
-                color: "rgba(255,255,255,0.45)"
-              }
-            }
-          }
-        }
-      });
-
+      const primary = histories[0] || { state: state || {}, points: this._normalizePoints([], state?.state) };
+      const labels = primary.points.map((p) => Utils.shortDateTime(p.x));
+      const type = config.type || "mini-graph";
+      const chartCfg = this._getChartConfig(type, histories, labels, config);
+      const chart = new Chart(canvas, chartCfg);
+      canvas.dataset.chartType = type;
+      canvas.dataset.entityIds = JSON.stringify(entityIds);
       this._chartInstances.push(chart);
     } catch (e) {
       console.warn("Chart build failed:", e);
     }
   }
 
+  _getChartConfig(type, histories, labels, config) {
+    const baseOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      plugins: {
+        legend: { display: histories.length > 1 || ["donut-chart","pie-chart","radar-chart"].includes(type), labels: { color: "rgba(255,255,255,0.7)" } },
+        tooltip: { enabled: true, displayColors: true }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: "rgba(255,255,255,0.45)" } },
+        y: { beginAtZero: false, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: 5, color: "rgba(255,255,255,0.45)" } }
+      }
+    };
+
+    const lineDatasets = histories.map((entry, idx) => ({
+      label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
+      data: entry.points.map((p) => p.y),
+      borderColor: this._chartPalette(idx, 0.95),
+      backgroundColor: this._chartPalette(idx, type === "area-chart" ? 0.22 : 0.16),
+      fill: type === "area-chart" || type === "forecast-chart" || type === "energy-flow-mini",
+      tension: 0.35,
+      pointRadius: type === "sparkline" ? 0 : 2,
+      pointHoverRadius: 3,
+      borderWidth: 2,
+      stack: type === "energy-flow-mini" ? "energy" : undefined
+    }));
+
+    if (type === "mini-graph" || type === "sparkline" || type === "area-chart" || type === "multi-line-chart" || type === "forecast-chart" || type === "comparison-chart" || type === "energy-flow-mini" || type === "timeline-chart") {
+      return {
+        type: "line",
+        data: { labels, datasets: lineDatasets },
+        options: {
+          ...baseOptions,
+          plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: histories.length > 1 || ["comparison-chart","multi-line-chart","forecast-chart"].includes(type) } },
+          scales: {
+            ...baseOptions.scales,
+            x: { ...baseOptions.scales.x, display: type !== "sparkline" },
+            y: { ...baseOptions.scales.y, display: type !== "sparkline" }
+          }
+        }
+      };
+    }
+
+    if (type === "bar-chart" || type === "stacked-bar-chart" || type === "horizontal-bar-chart" || type === "heatmap-mini" || type === "bullet-chart") {
+      const datasets = histories.map((entry, idx) => ({
+        label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}`,
+        data: entry.points.map((p) => p.y),
+        borderWidth: 1,
+        borderColor: this._chartPalette(idx, 0.95),
+        backgroundColor: this._chartPalette(idx, type === "heatmap-mini" ? 0.55 : 0.35),
+        barPercentage: 0.8,
+        categoryPercentage: 0.9
+      }));
+      return {
+        type: "bar",
+        data: { labels, datasets },
+        options: {
+          ...baseOptions,
+          indexAxis: type === "horizontal-bar-chart" || type === "bullet-chart" ? "y" : "x",
+          scales: {
+            x: { ...baseOptions.scales.x, stacked: type === "stacked-bar-chart" },
+            y: { ...baseOptions.scales.y, stacked: type === "stacked-bar-chart" }
+          },
+          plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: histories.length > 1 || type === "stacked-bar-chart" } }
+        }
+      };
+    }
+
+    if (type === "donut-chart" || type === "pie-chart" || type === "radial-gauge-advanced") {
+      const latest = histories.map((entry) => entry.points[entry.points.length - 1]?.y ?? 0);
+      const doughnutLabels = histories.map((entry, idx) => entry.state?.attributes?.friendly_name || entry.entityId || `Wert ${idx + 1}`);
+      const isGauge = type === "radial-gauge-advanced";
+      const gaugeMax = config.config?.max ?? 100;
+      const gaugeValue = latest[0] ?? 0;
+      return {
+        type: "doughnut",
+        data: {
+          labels: isGauge ? [doughnutLabels[0] || "Wert", "Rest"] : doughnutLabels,
+          datasets: [{
+            data: isGauge ? [gaugeValue, Math.max(gaugeMax - gaugeValue, 0)] : latest,
+            backgroundColor: isGauge ? [this._chartPalette(0, 0.95), "rgba(255,255,255,0.08)"] : latest.map((_, idx) => this._chartPalette(idx, 0.78)),
+            borderColor: "rgba(255,255,255,0.08)",
+            borderWidth: 1,
+            cutout: type === "pie-chart" ? "0%" : "70%"
+          }]
+        },
+        options: { ...baseOptions, scales: {}, plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: true } } }
+      };
+    }
+
+    if (type === "radar-chart") {
+      return {
+        type: "radar",
+        data: {
+          labels,
+          datasets: histories.map((entry, idx) => ({
+            label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
+            data: entry.points.map((p) => p.y),
+            borderColor: this._chartPalette(idx, 0.95),
+            backgroundColor: this._chartPalette(idx, 0.20),
+            pointBackgroundColor: this._chartPalette(idx, 0.95),
+            pointRadius: 2
+          }))
+        },
+        options: { ...baseOptions, scales: { r: { angleLines: { color: "rgba(255,255,255,0.08)" }, grid: { color: "rgba(255,255,255,0.08)" }, pointLabels: { color: "rgba(255,255,255,0.6)" }, ticks: { backdropColor: "transparent", color: "rgba(255,255,255,0.45)" } } } }
+      };
+    }
+
+    if (type === "scatter-chart") {
+      return {
+        type: "scatter",
+        data: {
+          datasets: histories.map((entry, idx) => ({
+            label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
+            data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y })),
+            borderColor: this._chartPalette(idx, 0.95),
+            backgroundColor: this._chartPalette(idx, 0.45),
+            pointRadius: 4
+          }))
+        },
+        options: baseOptions
+      };
+    }
+
+    return { type: "line", data: { labels, datasets: lineDatasets }, options: baseOptions };
+  }
+
+  async _loadCameraInto(img, entityId, preferredMode = "auto") {
+    if (!img || !entityId) return;
+    const candidates = preferredMode === "auto"
+      ? ["snapshot", "entity_picture", "camera_proxy", "camera_proxy_stream"]
+      : [preferredMode, "snapshot", "entity_picture", "camera_proxy", "camera_proxy_stream"];
+
+    const seen = new Set();
+    for (const mode of candidates) {
+      if (!mode || seen.has(mode)) continue;
+      seen.add(mode);
+      try {
+        const resolved = await this.app.dataManager.resolveCameraUrl(entityId, mode);
+        if (resolved?.url) {
+          img.src = resolved.url;
+          img.dataset.cameraMode = resolved.mode || mode;
+          return;
+        }
+      } catch (e) {}
+    }
+    img.src = this.app.dataManager.getCameraUrl(entityId, preferredMode);
+  }
+
   _applyCommonWidgetStyle(widget, config) {
     if (config.font) widget.style.fontFamily = `"${config.font}", sans-serif`;
     if (config.fontSize) {
-      const ve = widget.querySelector(".w-value");
+      const ve = widget.querySelector(".w-value") || widget.querySelector(".chart-value");
       if (ve) ve.style.fontSize = `${config.fontSize}px`;
     }
     if (config.textColor) widget.style.color = config.textColor;
     if (config.bgColor && !widget.classList.contains("widget-color-block")) {
       widget.style.background = config.bgColor;
     }
-    if (config.borderRadius) widget.style.borderRadius = `${config.borderRadius}px`;
+    const opacity = config.bgOpacity ?? config.backgroundOpacity;
+    if (opacity !== undefined && opacity !== null && !widget.classList.contains("widget-color-block")) {
+      widget.style.backgroundColor = `rgba(30,30,30,${Utils.clamp(Utils.toNumber(opacity, 0.75), 0, 1)})`;
+    }
+    const blur = config.blur ?? config.backgroundBlur;
+    if (blur) widget.style.backdropFilter = `blur(${blur}px)`;
+    if (config.borderRadius !== undefined) widget.style.borderRadius = `${config.borderRadius}px`;
 
     if (config.customCss) {
       widget.style.cssText += `;${config.customCss}`;
@@ -1100,7 +1302,22 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
-      case "bar-chart": {
+      case "bar-chart":
+      case "area-chart":
+      case "multi-line-chart":
+      case "stacked-bar-chart":
+      case "horizontal-bar-chart":
+      case "donut-chart":
+      case "pie-chart":
+      case "radar-chart":
+      case "heatmap-mini":
+      case "timeline-chart":
+      case "scatter-chart":
+      case "forecast-chart":
+      case "energy-flow-mini":
+      case "comparison-chart":
+      case "radial-gauge-advanced":
+      case "bullet-chart": {
         const chartValue = element.querySelector(".chart-value");
         if (chartValue) {
           chartValue.innerHTML = `${Utils.text(value)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}`;
@@ -1184,6 +1401,21 @@ class ScreenManager {
       "icon-value": "ℹ️",
       "mini-graph": "📉",
       "bar-chart": "📊",
+      "area-chart": "🌊",
+      "multi-line-chart": "📈",
+      "stacked-bar-chart": "🧱",
+      "horizontal-bar-chart": "↔️",
+      "donut-chart": "🍩",
+      "pie-chart": "🥧",
+      "radar-chart": "🕸️",
+      "heatmap-mini": "🔥",
+      "timeline-chart": "🕒",
+      "scatter-chart": "✳️",
+      "forecast-chart": "🔮",
+      "energy-flow-mini": "⚡",
+      "comparison-chart": "⚖️",
+      "radial-gauge-advanced": "🎛️",
+      "bullet-chart": "🎯",
       "sparkline": "〰️",
       "trend-arrow": "📈",
       "weather": "🌤️",

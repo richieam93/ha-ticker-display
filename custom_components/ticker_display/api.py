@@ -206,6 +206,8 @@ class TickerDisplayAPI:
     async def _camera_proxy(self, request):
         entity_id = request.match_info["entity_id"]
         mode = request.query.get("mode", "auto")
+        if mode == "stream":
+            mode = "camera_proxy_stream"
         state = self.hass.states.get(entity_id)
 
         async def _snapshot():
@@ -230,9 +232,9 @@ class TickerDisplayAPI:
                     proxy_url = f"/api/camera_proxy/{entity_id}?token={token}"
                     return web.json_response({"redirect": proxy_url, "mode": "camera_proxy"})
 
-                if token and mode in ("auto", "stream"):
+                if token and mode in ("auto", "camera_proxy_stream"):
                     stream_url = f"/api/camera_proxy_stream/{entity_id}?token={token}"
-                    return web.json_response({"redirect": stream_url, "mode": "stream"})
+                    return web.json_response({"redirect": stream_url, "mode": "camera_proxy_stream"})
 
             return web.Response(status=500)
         except Exception as e:
