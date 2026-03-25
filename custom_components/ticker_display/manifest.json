@@ -1,7 +1,7 @@
 {
   "domain": "ticker_display",
   "name": "Ticker Display",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "documentation": "https://github.com/richieam93/ha-ticker-display",
   "issue_tracker": "https://github.com/richieam93/ha-ticker-display/issues",
   "requirements": [],
