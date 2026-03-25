@@ -48,6 +48,28 @@ const Utils = {
     return Number.isNaN(n) ? fallback : n;
   },
 
+  formatValue(v, opts = {}) {
+    if (v === null || v === undefined || v === "") return opts.fallback ?? "—";
+    const raw = String(v).trim();
+    const numeric = Number.parseFloat(raw);
+    if (!Number.isFinite(numeric) || !/^[-+]?\d+(?:[\.,]\d+)?$/.test(raw.replace(',', '.'))) return raw;
+    let decimals = opts.decimals;
+    if (decimals === undefined || decimals === null || decimals === "") return String(numeric);
+    decimals = Math.max(0, Math.min(6, Number(decimals) || 0));
+    let out = numeric.toFixed(decimals);
+    if (opts.trimTrailingZeros) {
+      out = out.replace(/\.0+$/, '');
+      out = out.replace(/(\.\d*?[1-9])0+$/, '$1');
+    }
+    return out;
+  },
+
+  formatStateWithUnit(v, unit = '', opts = {}) {
+    const value = Utils.formatValue(v, opts);
+    if (!unit) return value;
+    return `${value}${opts.spaceBeforeUnit === false ? '' : ' '}${unit}`;
+  },
+
   isTruthyState(v) {
     return ["on", "true", "home", "open", "detected", "playing"].includes(String(v).toLowerCase());
   },
@@ -813,7 +835,76 @@ class ScreenManager {
     widget.classList.toggle("widget-animated", config.animations !== false);
     widget.classList.toggle(`widget-anim-${config.type || "generic"}`, config.animations !== false);
     widget.dataset.widgetType = config.type || "generic";
+    this._bindWidgetInteraction(widget, config);
     return widget;
+  }
+
+
+  _bindWidgetInteraction(widget, config) {
+    if (!config?.tap_action || config.tap_action === "none") return;
+    widget.classList.add("widget-interactive");
+    widget.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (config.tap_action === "expand") this._openWidgetDetail(widget, config);
+      else if (config.tap_action === "toggle") this._toggleWidgetEntity(widget, config);
+    });
+  }
+
+  _openWidgetDetail(widget, config) {
+    const overlay = document.getElementById("widget-detail-overlay") || this._createWidgetDetailOverlay();
+    const panel = overlay.querySelector(".widget-detail-panel");
+    const clone = widget.cloneNode(true);
+    clone.classList.add("widget-detail-card");
+    clone.style.width = "100%";
+    clone.style.height = "100%";
+    clone.style.transform = `scale(${config.tap_scale || 1.45})`;
+    const body = overlay.querySelector(".widget-detail-body");
+    body.innerHTML = "";
+    body.appendChild(clone);
+    overlay.hidden = false;
+    const close = () => { overlay.hidden = true; body.innerHTML = ""; };
+    overlay.querySelector(".widget-detail-close").onclick = close;
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    const secs = Number(config.tap_autoclose || 0);
+    if (secs > 0) {
+      clearTimeout(this._detailTimer);
+      this._detailTimer = setTimeout(close, secs * 1000);
+    }
+  }
+
+  _createWidgetDetailOverlay() {
+    const overlay = document.createElement("div");
+    overlay.id = "widget-detail-overlay";
+    overlay.className = "widget-detail-overlay";
+    overlay.hidden = true;
+    overlay.innerHTML = `<div class="widget-detail-panel"><button class="widget-detail-close">✕</button><div class="widget-detail-body"></div></div>`;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  async _toggleWidgetEntity(widget, config) {
+    const entityId = config.entity_id;
+    if (!entityId || !this.app?.callEntityToggle) return;
+    const ok = await this.app.callEntityToggle(entityId);
+    if (!ok) return;
+    const badge = config.toggle_badge !== false;
+    if (badge) {
+      const st = this.app.entityStates[entityId] || {};
+      this._showWidgetToggleBadge(widget, Utils.isTruthyState(st.state));
+    }
+  }
+
+  _showWidgetToggleBadge(widget, on) {
+    let badge = widget.querySelector(".widget-toggle-badge");
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.className = "widget-toggle-badge";
+      widget.appendChild(badge);
+    }
+    badge.classList.toggle("on", !!on);
+    badge.classList.toggle("off", !on);
+    badge.textContent = on ? "Ein" : "Aus";
   }
 
   _normalizeEntityIdList(list) {
@@ -828,7 +919,8 @@ class ScreenManager {
       const meta = this._extraEntityMeta(config, entityId);
       const label = meta.hide_name ? "" : (meta.alias || st.attributes?.friendly_name || entityId);
       const unit = st.attributes?.unit_of_measurement || "";
-      return `<div class="td-extra-row ${meta.hide_name ? "name-hidden" : ""}" data-entity-id="${entityId}"><span class="td-extra-name">${Utils.text(label)}</span><span class="td-extra-value">${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}</span></div>`;
+      const val = Utils.formatStateWithUnit(st.state ?? "—", unit, { decimals: config.config?.extra_value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
+      return `<div class="td-extra-row ${meta.hide_name ? "name-hidden" : ""}" data-entity-id="${entityId}"><span class="td-extra-name">${Utils.text(label)}</span><span class="td-extra-value">${val}</span></div>`;
     }).join("");
     widget.insertAdjacentHTML("beforeend", `<div class="td-extra-entities" data-count="${entityIds.length}">${rows}</div>`);
   }
@@ -856,7 +948,7 @@ class ScreenManager {
       const valueEl = row.querySelector(".td-extra-value");
       row.classList.toggle("name-hidden", !!meta.hide_name);
       if (nameEl) nameEl.textContent = label;
-      if (valueEl) valueEl.textContent = `${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}`;
+      if (valueEl) valueEl.textContent = Utils.formatStateWithUnit(st.state ?? "—", unit, { decimals: config.config?.extra_value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
     });
   }
 
@@ -891,7 +983,7 @@ class ScreenManager {
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
-      <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
+      <div><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
       <div class="w-name">${name}</div>
     `;
     this._renderExtraEntityList(widget, config);
@@ -900,7 +992,7 @@ class ScreenManager {
   _renderIconValueWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:28px">${icon}</span></div>
-      <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
+      <div><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
       <div class="w-name">${name}</div>
     `;
     this._renderExtraEntityList(widget, config);
@@ -917,7 +1009,7 @@ class ScreenManager {
       <svg viewBox="0 0 200 130">
         <path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-bg"></path>
         <path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-value" stroke="${color}" stroke-dasharray="${pct * 2.51} 251"></path>
-        <text x="100" y="95" class="gauge-text-value">${nv}${unit}</text>
+        <text x="100" y="95" class="gauge-text-value">${Utils.formatStateWithUnit(nv, unit, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</text>
         <text x="100" y="118" class="gauge-text-label">${name}</text>
       </svg>
     `;
@@ -933,7 +1025,7 @@ class ScreenManager {
 
     widget.innerHTML = `
       <div class="w-name" style="margin-bottom:4px">${name}</div>
-      <div><span class="w-value">${nv}</span><span class="w-unit">${unit}</span></div>
+      <div><span class="w-value">${Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
       <div class="progress-container">
         <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
       </div>
@@ -964,7 +1056,7 @@ class ScreenManager {
     widget.innerHTML = `
       <div class="w-icon trend-arrow-icon"><span style="font-size:24px">${icon}</span></div>
       <div class="trend-main">
-        <div><span class="w-value">${Utils.text(state?.state ?? "—")}</span><span class="w-unit">${unit}</span></div>
+        <div><span class="w-value">${Utils.formatValue(state?.state ?? "—", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
         <div class="trend-arrow-chip ${direction}" style="color:${trendColor}">${arrow} <span class="trend-delta">${Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '0.0'}${unit}</span></div>
       </div>
       <div class="w-name">${name || state?.attributes?.friendly_name || config.entity_id || 'Trend'}</div>
@@ -1137,7 +1229,7 @@ class ScreenManager {
     widget.innerHTML = `
       <div class="chart-header">
         <div class="chart-title">${title}</div>
-        <div class="chart-value">${Utils.text(state?.state)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}</div>
+        <div class="chart-value">${Utils.formatValue(state?.state, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}${unit ? `<span class="chart-unit"> ${unit}</span>` : ""}</div>
       </div>
       <div class="chart-body">
         <canvas class="chart-canvas"></canvas>
@@ -1416,7 +1508,7 @@ class ScreenManager {
           arc.setAttribute("stroke-dasharray", `${pct * 2.51} 251`);
           arc.setAttribute("stroke", this._getZoneColor(nv, config.config?.zones));
         }
-        if (txt) txt.textContent = `${nv}${unit}`;
+        if (txt) txt.textContent = Utils.formatStateWithUnit(nv, unit, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
         break;
       }
 
@@ -1428,7 +1520,7 @@ class ScreenManager {
         const fill = element.querySelector(".progress-fill");
         const ve = element.querySelector(".w-value");
         if (fill) fill.style.width = `${pct}%`;
-        if (ve) ve.textContent = nv;
+        if (ve) ve.textContent = Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
         break;
       }
 
@@ -1476,7 +1568,7 @@ class ScreenManager {
       case "bullet-chart": {
         const chartValue = element.querySelector(".chart-value");
         if (chartValue) {
-          chartValue.innerHTML = `${Utils.text(value)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}`;
+          chartValue.innerHTML = `${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}${unit ? `<span class="chart-unit"> ${unit}</span>` : ""}`;
         }
         const canvas = element.querySelector(".chart-canvas");
         if (canvas && window.Chart) this._scheduleChartBuild(element, canvas, config, this.app.entityStates[config.entity_id] || newState);
@@ -1485,7 +1577,7 @@ class ScreenManager {
 
       default: {
         const wv = element.querySelector(".w-value");
-        if (wv) wv.textContent = Utils.text(value);
+        if (wv) wv.textContent = Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
       }
     }
 
@@ -2020,6 +2112,21 @@ class TickerDisplayApp {
       this.bridge.stopSound();
     } else if (data.action === "set_volume") {
       this.bridge.setVolume(data.volume);
+    }
+  }
+
+  async callEntityToggle(entityId) {
+    const domain = String(entityId || "").split(".")[0];
+    if (!domain) return false;
+    const serviceDomain = ["switch","light","input_boolean","fan","media_player"].includes(domain) ? domain : "homeassistant";
+    const service = serviceDomain === "media_player" ? "media_play_pause" : "toggle";
+    try {
+      const resp = await fetch(`/api/services/${serviceDomain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ entity_id: entityId }) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return true;
+    } catch (e) {
+      console.warn("toggle failed", entityId, e);
+      return false;
     }
   }
 

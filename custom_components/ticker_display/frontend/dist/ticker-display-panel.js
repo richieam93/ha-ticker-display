@@ -139,6 +139,9 @@ function tdCreateWidget(type, col, row, settings = {}) {
     config: {
       camera_source: d.default_camera_source,
       hours: d.default_chart_hours,
+      value_decimals: 1,
+      extra_value_decimals: 1,
+      trim_trailing_zeros: false,
     },
   };
 }
@@ -935,6 +938,7 @@ class TdDeviceEditor extends LitElement {
               </div>
               <div class="sa">
                 <button class="ib" @click=${() => this._e("edit-screen", { screenIndex: i })}>✏️</button>
+                <button class="ib" title="Als Vorlage speichern" @click=${() => { const n = prompt("Vorlagenname:", s.name || `Screen ${i + 1}`); if (n) this._e("save-screen-as-template", { screenIndex: i, name: n }); }}>📚</button>
                 <button class="ib" @click=${() => {
                   const sc = [...(this._ed.screens || [])];
                   const c = deepClone(sc[i]);
@@ -1108,12 +1112,18 @@ class TdScreenEditor extends LitElement {
       .tb select { padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
       .tb .sp { flex:1; }
       .tb .lb { font-size:12px; color:var(--secondary-text-color); white-space:nowrap; }
-      .tb details.tmenu { position:relative; display:inline-block; }
-      .tb details.tmenu[open] { z-index:40; }
-      .tb details.tmenu summary { list-style:none; padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; cursor:pointer; white-space:nowrap; }
-      .tb details.tmenu summary::-webkit-details-marker { display:none; }
-      .tb details.tmenu[open] summary { background:rgba(255,255,255,.06); }
-      .tpop { position:absolute; top:calc(100% + 6px); left:0; min-width:320px; max-width:min(92vw, 520px); max-height:min(70vh, 560px); overflow:auto; padding:10px; border:1px solid var(--divider-color); border-radius:10px; background:var(--card-background-color); box-shadow:0 10px 30px rgba(0,0,0,.28); z-index:50; display:grid; gap:10px; }
+      .tb .tmenu-wrap { position:relative; display:inline-block; }
+      .tb .tmenu-btn { padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; cursor:pointer; white-space:nowrap; background:none; color:var(--primary-text-color); }
+      .tb .tmenu-btn.a { background:rgba(255,255,255,.06); }
+      .tpop { position:absolute; top:calc(100% + 6px); left:0; min-width:320px; max-width:min(92vw, 520px); max-height:min(70vh, 560px); overflow:auto; padding:10px; border:1px solid var(--divider-color); border-radius:10px; background:var(--card-background-color); box-shadow:0 10px 30px rgba(0,0,0,.28); z-index:80; display:grid; gap:10px; }
+      .folder { border:1px solid rgba(255,255,255,.06); border-radius:12px; margin-bottom:10px; overflow:hidden; background:rgba(255,255,255,.02); }
+      .folder summary { list-style:none; cursor:pointer; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+      .folder summary::-webkit-details-marker { display:none; }
+      .folder .fleft { display:flex; align-items:center; gap:10px; min-width:0; }
+      .folder .fmeta { font-size:11px; color:var(--secondary-text-color); }
+      .folder .fpreview { display:flex; gap:4px; }
+      .folder .fpreview span { width:18px; height:18px; border-radius:6px; background:rgba(255,255,255,.12); display:flex; align-items:center; justify-content:center; font-size:11px; }
+      .folder .body { padding:0 10px 10px; }
       .tsect { display:grid; gap:6px; }
       .tsect .tl { font-size:11px; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.04em; }
       .trow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
@@ -1216,9 +1226,9 @@ class TdScreenEditor extends LitElement {
         <button @click=${() => this._grid = !this._grid}>${this._grid ? "▦" : "▢"}</button>
         <button ?disabled=${this._sel < 0} @click=${() => this._duplicateSelected()}>⧉</button>
         <button ?disabled=${this._sel < 0} @click=${() => this._deleteSelected()}>🗑</button>
-        <details class="tmenu">
-          <summary>🧰 Werkzeuge ▾</summary>
-          <div class="tpop">
+        <div class="tmenu-wrap">
+          <button class="tmenu-btn ${this._toolsOpen ? "a" : ""}" @click=${() => this._toolsOpen = !this._toolsOpen}>🧰 Werkzeuge ▾</button>
+          ${this._toolsOpen ? html`<div class="tpop">
             <div class="tsect">
               <div class="tl">Bewegen</div>
               <div class="trow">
@@ -1260,8 +1270,8 @@ class TdScreenEditor extends LitElement {
                 <button class=${this._snap ? "p" : ""} @click=${() => this._snap = !this._snap}># Snap</button>
               </div>
             </div>
-          </div>
-        </details>
+          </div>` : ""}
+        </div>
         <div class="sp"></div>
         <span class="lb">${multiCount > 1 ? `${multiCount} Widgets ausgewählt` : (this._sel >= 0 ? `Widget ${this._sel + 1} ausgewählt` : "Kein Widget ausgewählt")}</span>
         <button ?disabled=${!this._undo.length} @click=${() => this._doUndo()}>↩</button>
@@ -1279,34 +1289,63 @@ class TdScreenEditor extends LitElement {
   }
 
   _palette() {
+    const userTemplateItems = Object.entries(this.templates || {}).map(([id, t]) => ({
+      t: `saved-template:${id}`,
+      i: "📋",
+      l: t.name || id,
+      d: `${t.category || "custom"} · ${(t.screen_config?.widgets?.length || 0)} Widgets`,
+      previewConfig: t.screen_config || {}
+    }));
     const cats = [
-      { n: "🔢 Werte", items: [
+      { n: "📁 Werte & Status", items: [
         { t: "simple-value", i: "🔢", l: "Wert", d: "Klassische Zahl oder Sensorwert" },
+        { t: "icon-value", i: "ℹ️", l: "Icon+Wert", d: "Wert mit Symbol und Titel" },
+        { t: "trend-arrow", i: "📈", l: "Trend", d: "Tendenz nach oben oder unten" },
+        { t: "status-dot", i: "🟢", l: "Status", d: "Kompakter Zustand mit Farbe" },
         { t: "gauge", i: "🎯", l: "Gauge", d: "Runder Füllstand / Prozentwert" },
         { t: "progress-bar", i: "📊", l: "Fortschritt", d: "Horizontaler Fortschrittsbalken" },
-        { t: "status-dot", i: "🔵", l: "Status", d: "Kompakter Zustand mit Farbe" },
-        { t: "trend-arrow", i: "📈", l: "Trend", d: "Tendenz nach oben oder unten" },
-        { t: "icon-value", i: "ℹ️", l: "Icon+Wert", d: "Wert mit Symbol und Titel" },
       ]},
-      { n: "📈 Graphen", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l, d: "Chart.js Widget" })) },
-      { n: "🖼️ Media", items: [
+      { n: "📁 Graphen & Charts", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l, d: "Chart.js Widget" })) },
+      { n: "📁 Medien & Kamera", items: [
         { t: "camera", i: "📹", l: "Kamera", d: "Snapshot, entity_picture, Proxy, Stream" },
         { t: "image", i: "🖼️", l: "Bild", d: "Lokale oder HA-Medienbilder" },
       ]},
-      { n: "🌤️ Info", items: [
+      { n: "📁 Uhr, Wetter & Info", items: [
         { t: "clock", i: "🕐", l: "Uhr", d: "Zeit und Datum" },
-        { t: "weather", i: "🌤️", l: "Wetter", d: "Wetter-Entity mit Übersicht" },
+        { t: "weather", i: "🌦️", l: "Wetter", d: "Wetter-Entity mit Übersicht" },
         { t: "countdown", i: "⏱️", l: "Countdown", d: "Ereignis oder Zielzeit" },
       ]},
-      { n: "🏠 Home Assistant Presets", items: [
+      { n: "📁 Home Assistant Presets", items: [
         { t: "preset-energy", i: "⚡", l: "Energie", d: "Leistungs-, Batterie- oder Energie-Sensor" },
         { t: "preset-calendar", i: "🗓️", l: "Kalender", d: "Kalender oder Countdown mit Terminen" },
         { t: "preset-person", i: "👤", l: "Personen", d: "Anwesenheit und Status" },
         { t: "preset-doors", i: "🚪", l: "Türen/Fenster", d: "Öffnungssensoren und Kontakte" },
         { t: "preset-battery", i: "🔋", l: "Batterie", d: "Batterie-Ladung oder Status" },
         { t: "preset-media", i: "🎵", l: "Medienplayer", d: "Titel, Status und Wiedergabe" },
+        { t: "preset-climate", i: "🌡️", l: "Klima", d: "Thermostat, Temperatur, Sollwert" },
+        { t: "preset-light", i: "💡", l: "Licht", d: "Lichtstatus und Helligkeit" },
+        { t: "preset-alarm", i: "🛡️", l: "Alarm", d: "Alarmsteuerung oder Sicherheitsstatus" },
+        { t: "preset-cover", i: "🪟", l: "Rollläden/Cover", d: "Position und Status von Covers" },
+        { t: "preset-vacuum", i: "🧹", l: "Staubsauger", d: "Status und Akku des Roboters" },
+        { t: "preset-network", i: "📶", l: "Netzwerk", d: "Router, WLAN oder Ping-Sensoren" },
       ]},
-      { n: "✨ Sonstige", items: [
+      { n: "📁 HA Karten-Vorlagen", items: [
+        { t: "ha-card-weather-hero", i: "🌤️", l: "Wetter Hero", d: "Große Wetterkarte im HA-Stil" },
+        { t: "ha-card-entities", i: "📋", l: "Entities Liste", d: "Hauptwert mit mehreren Zusatzsensoren" },
+        { t: "ha-card-security", i: "🛡️", l: "Sicherheit", d: "Alarm-/Tür-/Fenster-Übersicht" },
+        { t: "ha-card-energy-flow", i: "⚙️", l: "Energie Übersicht", d: "Leistung, Vergleich und Verlauf" },
+        { t: "ha-card-media-player", i: "🎶", l: "Medienkarte", d: "Medienplayer im HA-Stil" },
+        { t: "ha-card-climate", i: "🌡️", l: "Klima-Karte", d: "Aktuelle Temperatur und Sollwert" },
+      ]},
+      { n: "📁 Screen-Vorlagen", items: [
+        { t: "ha-template-home", i: "🏠", l: "Home Übersicht", d: "Wetter, Uhr, wichtige Statuswerte" },
+        { t: "ha-template-energy", i: "⚡", l: "Energie Screen", d: "Energie- und Verbrauchsübersicht" },
+        { t: "ha-template-security", i: "🚨", l: "Sicherheits Screen", d: "Kontakte, Bewegung, Alarm" },
+        { t: "ha-template-family", i: "👨‍👩‍👧", l: "Familie Screen", d: "Personen, Kalender, Zuhause-Status" },
+        { t: "ha-template-media", i: "📺", l: "Medien Screen", d: "Medienplayer und Lieblingsbilder" },
+      ]},
+      { n: "📁 Meine Screen-Presets", items: userTemplateItems },
+      { n: "📁 Sonstige", items: [
         { t: "color-block", i: "🟦", l: "Farbblock", d: "Dekoratives Element / Fläche" },
         { t: "button", i: "🔘", l: "Button", d: "Interaktive Aktion" },
       ]},
@@ -1344,24 +1383,34 @@ class TdScreenEditor extends LitElement {
           <div class="lb">${total} Widgets in der Palette</div>
         </div>
         ${groups.map((c) => html`
-          <div class="pc">${c.n}</div>
-          <div class="pgrid">
-            ${c.items.map((it) => html`
-              <div class="pi" draggable="true"
-                @dragstart=${(e) => { this._dwt = it.t; e.dataTransfer.setData("text/plain", it.t); e.dataTransfer.effectAllowed = "copy"; }}
-                @dragend=${() => this._dwt = null}
-                @dblclick=${() => this._quickAddWidget(it.t)}
-              >
-                <div class="pvm">${this._paletteMini(it)}</div>
-                <div>
-                  <div class="pti">${it.i || "◼"}</div>
-                  <div>${it.l}</div>
-                  <div class="meta">${it.d}</div>
-                </div>
-                <button class="favb ${(this._favoriteWidgets || []).includes(it.t) ? "a" : ""}" @click=${(e) => { e.stopPropagation(); this._toggleFavoriteWidget(it.t); }}>${(this._favoriteWidgets || []).includes(it.t) ? "★" : "☆"}</button>
+          <details class="folder" ?open=${this._paletteFolders[c.n] !== false} @toggle=${(e) => this._togglePaletteFolder(c.n, e.currentTarget.open)}>
+            <summary>
+              <div class="fleft">
+                <div>${c.n}</div>
+                <div class="fmeta">${c.items.length} Einträge</div>
               </div>
-            `)}
-          </div>
+              <div class="fpreview">${c.items.slice(0,3).map((it) => html`<span>${it.i || "•"}</span>`)}</div>
+            </summary>
+            <div class="body">
+              <div class="pgrid">
+                ${c.items.map((it) => html`
+                  <div class="pi" draggable="true"
+                    @dragstart=${(e) => { this._dwt = it.t; e.dataTransfer.setData("text/plain", it.t); e.dataTransfer.effectAllowed = "copy"; }}
+                    @dragend=${() => this._dwt = null}
+                    @dblclick=${() => this._quickAddWidget(it.t)}
+                  >
+                    <div class="pvm">${this._paletteMini(it)}</div>
+                    <div>
+                      <div class="pti">${it.i || "◼"}</div>
+                      <div>${it.l}</div>
+                      <div class="meta">${it.d}</div>
+                    </div>
+                    <button class="favb ${(this._favoriteWidgets || []).includes(it.t) ? "a" : ""}" @click=${(e) => { e.stopPropagation(); this._toggleFavoriteWidget(it.t); }}>${(this._favoriteWidgets || []).includes(it.t) ? "★" : "☆"}</button>
+                  </div>
+                `)}
+              </div>
+            </div>
+          </details>
         `)}
       </div>
     `;
@@ -1379,6 +1428,22 @@ class TdScreenEditor extends LitElement {
     if (set.has(type)) set.delete(type); else set.add(type);
     this._favoriteWidgets = [...set];
     localStorage.setItem("td_widget_favorites", JSON.stringify(this._favoriteWidgets));
+  }
+
+
+  _togglePaletteFolder(name, open) {
+    this._paletteFolders = { ...(this._paletteFolders || {}), [name]: open };
+    localStorage.setItem("td_palette_folders", JSON.stringify(this._paletteFolders));
+  }
+
+  _applySavedTemplate(templateId) {
+    const tpl = (this.templates || {})[templateId];
+    if (!tpl?.screen_config) return;
+    this._push();
+    const currentId = this._cfg.id;
+    this._cfg = { ...deepClone(tpl.screen_config), id: currentId, name: tpl.name || this._cfg.name || "Screen" };
+    this._sel = -1;
+    this._selMulti = [];
   }
 
   _findNextFreeCell() {
@@ -1399,6 +1464,18 @@ class TdScreenEditor extends LitElement {
       this._applyDomainPreset(type);
       return;
     }
+    if (String(type).startsWith("ha-card-")) {
+      this._applyHomeAssistantCard(type);
+      return;
+    }
+    if (String(type).startsWith("ha-template-")) {
+      this._applyHomeAssistantTemplate(type);
+      return;
+    }
+    if (String(type).startsWith("saved-template:")) {
+      this._applySavedTemplate(String(type).split(":").slice(1).join(":"));
+      return;
+    }
     const { c, r } = this._findNextFreeCell();
     this._push();
     const ws = [...(this._cfg.widgets || [])];
@@ -1411,13 +1488,19 @@ class TdScreenEditor extends LitElement {
 
   _paletteMini(it) {
     const t = it.t;
-    if (String(t).startsWith("preset-")) return html`<div class="lc">${it.i}</div>`;
+    if (String(t).startsWith("saved-template:")) {
+      const widgets = it.previewConfig?.widgets || [];
+      return html`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:100%;height:100%">${widgets.slice(0,4).map((w) => html`<div style="border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:13px">${this._widgetIcon(w.type)}</div>`)}${!widgets.length ? html`<div class="lc">📋</div>` : ""}</div>`;
+    }
+    if (String(t).startsWith("preset-") || String(t).startsWith("ha-card-") || String(t).startsWith("ha-template-")) return html`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;width:100%;height:100%"><div class="lc">${it.i}</div><div class="bars"><span style="height:8px"></span><span style="height:14px"></span><span style="height:18px"></span><span style="height:11px"></span></div><div class="ring"></div><div class="weather">☀️</div></div>`;
     if (TD_CHART_TYPES.has(t)) return html`<div class="bars"><span style="height:8px"></span><span style="height:14px"></span><span style="height:18px"></span><span style="height:11px"></span></div>`;
     if (t === "gauge" || t === "radial-gauge-advanced") return html`<div class="ring"></div>`;
     if (t === "camera" || t === "image") return html`<div class="cam">${it.i}</div>`;
     if (t === "weather") return html`<div class="weather">${it.i}</div>`;
     return html`<div><div class="lc">${it.i}</div><div class="ln"></div></div>`;
   }
+
+  _widgetIcon(type) { return ({"simple-value":"🔢","icon-value":"ℹ️","trend-arrow":"📈","status-dot":"🟢","gauge":"🎯","progress-bar":"📊","camera":"📹","image":"🖼️","clock":"🕐","weather":"🌦️","countdown":"⏱️","button":"🔘"}[type] || (TD_CHART_TYPES.has(type) ? "📈" : "◼")); }
 
   _duplicateSelected() {
     const idxs = this._getSelectedIndices();
@@ -1554,6 +1637,12 @@ class TdScreenEditor extends LitElement {
       "preset-doors": { widget: "status-dot", domain: "binary_sensor", match: ["door", "window", "fenster", "tuer", "öffnung"] },
       "preset-battery": { widget: "progress-bar", domain: "sensor", match: ["battery", "akku"] },
       "preset-media": { widget: "icon-value", domain: "media_player", match: ["media_player", "speaker", "tv"] },
+      "preset-climate": { widget: "simple-value", domain: "climate", match: ["climate", "thermostat", "heizung"] },
+      "preset-light": { widget: "status-dot", domain: "light", match: ["light", "licht"] },
+      "preset-alarm": { widget: "status-dot", domain: "alarm_control_panel", match: ["alarm", "security"] },
+      "preset-cover": { widget: "progress-bar", domain: "cover", match: ["cover", "rollladen", "jalousie"] },
+      "preset-vacuum": { widget: "icon-value", domain: "vacuum", match: ["vacuum", "robot", "staubsauger"] },
+      "preset-network": { widget: "status-dot", domain: "sensor", match: ["wifi", "ping", "router", "netz"] },
     };
     const spec = map[type];
     if (!spec) return;
@@ -1566,12 +1655,110 @@ class TdScreenEditor extends LitElement {
     if (type === "preset-energy") { w.colspan = 2; w.config = { ...(w.config || {}), entities: entities.slice(0,4).map((e) => e.entity_id) }; }
     if (type === "preset-doors") { w.config = { ...(w.config || {}), entities: entities.slice(0,6).map((e) => e.entity_id) }; }
     if (type === "preset-media") { w.config = { ...(w.config || {}), entities: entities.slice(0,4).map((e) => e.entity_id) }; }
+    if (type === "preset-climate") { w.icon = "🌡️"; w.config = { ...(w.config || {}), entities: entities.slice(0,3).map((e) => e.entity_id) }; }
+    if (type === "preset-light") { w.icon = "💡"; w.config = { ...(w.config || {}), entities: entities.slice(0,6).map((e) => e.entity_id) }; }
+    if (type === "preset-alarm") { w.icon = "🛡️"; }
+    if (type === "preset-cover") { w.icon = "🪟"; w.config = { ...(w.config || {}), min: 0, max: 100, entities: entities.slice(0,4).map((e) => e.entity_id) }; }
+    if (type === "preset-vacuum") { w.icon = "🧹"; w.config = { ...(w.config || {}), entities: entities.slice(0,4).map((e) => e.entity_id) }; }
+    if (type === "preset-network") { w.icon = "📶"; w.config = { ...(w.config || {}), entities: entities.slice(0,6).map((e) => e.entity_id) }; }
     this._push();
     const ws = [...(this._cfg.widgets || []), w];
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = ws.length - 1;
     this._selMulti = [this._sel];
     this._rememberWidgetType(spec.widget);
+  }
+
+  _applyHomeAssistantCard(type) {
+    const { c, r } = this._findNextFreeCell();
+    const add = (w) => {
+      const ws = [...(this._cfg.widgets || []), w];
+      this._cfg = { ...this._cfg, widgets: ws };
+      this._sel = ws.length - 1;
+      this._selMulti = [this._sel];
+    };
+    this._push();
+    if (type === "ha-card-weather-hero") {
+      const w = tdCreateWidget("weather", c, r, this.globalSettings || {});
+      w.colspan = 2; w.rowspan = 2; w.name = "Wetter"; add(w); return;
+    }
+    if (type === "ha-card-entities") {
+      const sensors = getAllEntities(this.hass, "sensor").slice(0, 5);
+      const w = tdCreateWidget("simple-value", c, r, this.globalSettings || {});
+      w.entity_id = sensors[0]?.entity_id || "";
+      w.name = sensors[0]?.friendly_name || "Übersicht";
+      w.colspan = 2;
+      w.config = { ...(w.config || {}), entities: sensors.slice(1).map((e) => e.entity_id) };
+      add(w); return;
+    }
+    if (type === "ha-card-security") {
+      const entities = getAllEntities(this.hass, "binary_sensor").filter((e) => /door|window|motion|beweg|fenster|tuer|kontakt/i.test(`${e.entity_id} ${e.friendly_name}`)).slice(0, 6);
+      const w = tdCreateWidget("status-dot", c, r, this.globalSettings || {});
+      w.entity_id = entities[0]?.entity_id || "";
+      w.name = "Sicherheit";
+      w.icon = "🛡️";
+      w.config = { ...(w.config || {}), entities: entities.slice(1).map((e) => e.entity_id) };
+      add(w); return;
+    }
+    if (type === "ha-card-energy-flow") {
+      const entities = getAllEntities(this.hass, "sensor").filter((e) => /power|energy|leistung|verbrauch/i.test(`${e.entity_id} ${e.friendly_name}`)).slice(0, 5);
+      const w = tdCreateWidget("comparison-chart", c, r, this.globalSettings || {});
+      w.entity_id = entities[0]?.entity_id || "";
+      w.name = "Energie";
+      w.colspan = 2;
+      w.config = { ...(w.config || {}), entities: entities.slice(1).map((e) => e.entity_id), hours: 24 };
+      add(w); return;
+    }
+    if (type === "ha-card-media-player") {
+      const entities = getAllEntities(this.hass, "media_player").slice(0, 4);
+      const w = tdCreateWidget("icon-value", c, r, this.globalSettings || {});
+      w.entity_id = entities[0]?.entity_id || "";
+      w.name = entities[0]?.friendly_name || "Medien";
+      w.icon = "🎵";
+      w.config = { ...(w.config || {}), entities: entities.slice(1).map((e) => e.entity_id) };
+      add(w); return;
+    }
+    if (type === "ha-card-climate") {
+      const climates = getAllEntities(this.hass, "climate");
+      const w = tdCreateWidget("simple-value", c, r, this.globalSettings || {});
+      w.entity_id = climates[0]?.entity_id || "";
+      w.name = climates[0]?.friendly_name || "Klima";
+      w.icon = "🌡️";
+      add(w); return;
+    }
+  }
+
+  _applyHomeAssistantTemplate(type) {
+    this._push();
+    const widgets = [];
+    const mk = (kind, col, row, extra = {}) => Object.assign(tdCreateWidget(kind, col, row, this.globalSettings || {}), extra);
+    if (type === "ha-template-home") {
+      widgets.push(mk("weather", 0, 0, { colspan: 2, rowspan: 2, name: "Wetter" }));
+      widgets.push(mk("clock", 2, 0, { name: "Uhr" }));
+      widgets.push(mk("trend-arrow", 2, 1, { name: "Trend" }));
+    } else if (type === "ha-template-energy") {
+      widgets.push(mk("comparison-chart", 0, 0, { colspan: 2, name: "Energie" }));
+      widgets.push(mk("progress-bar", 2, 0, { name: "Batterie" }));
+      widgets.push(mk("simple-value", 2, 1, { name: "Verbrauch" }));
+    } else if (type === "ha-template-security") {
+      widgets.push(mk("status-dot", 0, 0, { name: "Alarm", icon: "🛡️" }));
+      widgets.push(mk("camera", 1, 0, { colspan: 2, rowspan: 2, name: "Kamera" }));
+      widgets.push(mk("status-dot", 0, 1, { name: "Kontakte", icon: "🚪" }));
+    } else if (type === "ha-template-family") {
+      widgets.push(mk("status-dot", 0, 0, { name: "Person 1", icon: "👤" }));
+      widgets.push(mk("status-dot", 1, 0, { name: "Person 2", icon: "👤" }));
+      widgets.push(mk("countdown", 2, 0, { name: "Nächster Termin" }));
+      widgets.push(mk("weather", 0, 1, { colspan: 2, name: "Wetter" }));
+    } else if (type === "ha-template-media") {
+      widgets.push(mk("icon-value", 0, 0, { colspan: 2, name: "Medien" , icon: "🎵" }));
+      widgets.push(mk("image", 2, 0, { rowspan: 2, name: "Cover" }));
+      widgets.push(mk("progress-bar", 0, 1, { colspan: 2, name: "Lautstärke" }));
+    } else {
+      return;
+    }
+    this._cfg = { ...this._cfg, widgets: [...(this._cfg.widgets || []), ...widgets] };
+    this._sel = (this._cfg.widgets || []).length - widgets.length;
+    this._selMulti = [this._sel];
   }
 
   _nudgeSelected(dx, dy) {
@@ -1747,10 +1934,22 @@ class TdScreenEditor extends LitElement {
 
           ${this._supportsMultiEntity(w.type) ? html`<div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${this._mergeEntityList("", w.config?.entities || []).filter((id) => id !== w.entity_id)} .domain=${this._entityDomainForWidget(w.type)} label="Zusätzliche Sensoren / Entities" placeholder="Weitere Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>
           ${this._renderExtraEntityMetaEditor(w)}` : ""}
+          ${this._supportsValueFormatting(w.type) ? html`
+            <div class="pg4">Wertformat</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Dezimalstellen</label><input type="number" min="0" max="6" .value=${w.config?.value_decimals ?? 1} @change=${(e) => this._uwc("value_decimals", +e.target.value)}></div>
+              <div class="pf2"><label>Zusatzsensoren Dezimalstellen</label><input type="number" min="0" max="6" .value=${w.config?.extra_value_decimals ?? w.config?.value_decimals ?? 1} @change=${(e) => this._uwc("extra_value_decimals", +e.target.value)}></div>
+            </div>
+            <div class="tog"><input type="checkbox" .checked=${w.config?.trim_trailing_zeros === true} @change=${(e) => this._uwc("trim_trailing_zeros", e.target.checked)}><span>Überflüssige Nullen entfernen (25.0 → 25)</span></div>
+          ` : ""}
           <div class="pf2"><label>Name</label><input .value=${w.name || ""} placeholder="Auto" @input=${(e) => this._uw("name", e.target.value)}></div>
           <div class="pf2">
             <td-icon-picker .value=${w.icon || ""} label="Icon" @value-changed=${(e) => this._uw("icon", e.detail.value)}></td-icon-picker>
           </div>
+          <div class="pg4">Interaktion auf dem Display</div>
+          <div class="pf2"><label>Touch-Aktion</label><select .value=${w.tap_action || "none"} @change=${(e) => this._uw("tap_action", e.target.value)}><option value="none">Keine</option><option value="expand">Widget vergrößern / Details</option><option value="toggle">Schalter ein/aus</option></select></div>
+          ${w.tap_action === "expand" ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Auto schließen (s)</label><input type="number" min="0" max="120" .value=${w.tap_autoclose || 10} @change=${(e) => this._uw("tap_autoclose", +e.target.value)}></div><div class="pf2"><label>Detail-Skalierung</label><input type="number" min="1" max="2.4" step="0.1" .value=${w.tap_scale || 1.45} @change=${(e) => this._uw("tap_scale", +e.target.value)}></div></div>` : ""}
+          ${w.tap_action === "toggle" ? html`<div class="pf2"><label>Statuspunkt anzeigen</label><select .value=${w.toggle_badge !== false ? "on" : "off"} @change=${(e) => this._uw("toggle_badge", e.target.value === "on")}><option value="on">Ja</option><option value="off">Nein</option></select></div>` : ""}
           <div class="pg4">Position & Größe</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="pf2"><label>Spalte</label><input type="number" min="0" .value=${w.col || 0} @change=${(e) => this._uw("col", +e.target.value)}></div>
@@ -1835,6 +2034,10 @@ class TdScreenEditor extends LitElement {
     return !["camera", "weather", "clock", "countdown", "qr-code", "button", "color-block"].includes(type);
   }
 
+  _supportsValueFormatting(type) {
+    return !["camera", "weather", "clock", "countdown", "qr-code", "button", "color-block", "image"].includes(type);
+  }
+
   _mergeEntityList(primary, extras) {
     const out = [];
     if (primary) out.push(primary);
@@ -1885,6 +2088,21 @@ class TdScreenEditor extends LitElement {
     if (!this._dwt) return;
     if (String(this._dwt).startsWith("preset-")) {
       this._applyDomainPreset(this._dwt);
+      this._dwt = null;
+      return;
+    }
+    if (String(this._dwt).startsWith("ha-card-")) {
+      this._applyHomeAssistantCard(this._dwt);
+      this._dwt = null;
+      return;
+    }
+    if (String(this._dwt).startsWith("ha-template-")) {
+      this._applyHomeAssistantTemplate(this._dwt);
+      this._dwt = null;
+      return;
+    }
+    if (String(this._dwt).startsWith("saved-template:")) {
+      this._applySavedTemplate(String(this._dwt).split(":").slice(1).join(":"));
       this._dwt = null;
       return;
     }
@@ -3211,6 +3429,13 @@ class TickerDisplayPanel extends LitElement {
             sc.splice(e.detail.screenIndex, 1);
             await this._post(`/api/config/device/${this._devId}`, { ...d, screens: sc });
             await this._load();
+          }}
+          @save-screen-as-template=${async (e) => {
+            const sc = d?.screens?.[e.detail.screenIndex];
+            if (!sc) return;
+            await this._post(`/api/config/template`, { templateId: `template_${Date.now()}`, name: e.detail.name || sc.name || 'Screen Vorlage', category: 'custom', screen_config: deepClone(sc) });
+            await this._load();
+            this._toast("📚 Als Vorlage gespeichert");
           }}
           @back=${() => this._page = "main"}
         ></td-device-editor>

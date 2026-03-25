@@ -629,14 +629,7 @@ body {
   animation: tdWidgetFloat 9s ease-in-out infinite;
 }
 .widget.widget-animated::after {
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  border-radius:inherit;
-  background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.05) 35%, transparent 70%);
-  transform:translateX(-120%);
-  animation: tdWidgetSheen 8s linear infinite;
+  display:none;
 }
 .widget.widget-anim-camera::after,
 .widget.widget-anim-image::after,
@@ -686,3 +679,15 @@ body {
 @keyframes tdTrendPulse { 0%,100% { transform:scale(1);} 50% { transform:scale(1.05);} }
 @keyframes tdTrendWobble { 0%,100% { transform:rotate(0deg);} 25% { transform:rotate(-4deg);} 75% { transform:rotate(4deg);} }
 @keyframes tdWeatherBob { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-3px);} }
+
+
+.widget-interactive { cursor:pointer; }
+.widget-interactive:active { transform:scale(.985); }
+.widget-toggle-badge { position:absolute; top:8px; right:8px; padding:4px 8px; border-radius:999px; font-size:11px; font-weight:700; background:rgba(255,255,255,.16); color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.24); }
+.widget-toggle-badge.on { background:rgba(76,175,80,.9); }
+.widget-toggle-badge.off { background:rgba(244,67,54,.9); }
+.widget-detail-overlay { position:fixed; inset:0; z-index:2500; background:rgba(0,0,0,.68); display:flex; align-items:center; justify-content:center; padding:18px; backdrop-filter:blur(8px); }
+.widget-detail-panel { position:relative; width:min(92vw, 900px); height:min(82vh, 620px); border-radius:26px; background:rgba(8,12,18,.88); border:1px solid rgba(255,255,255,.08); box-shadow:0 18px 50px rgba(0,0,0,.4); overflow:hidden; }
+.widget-detail-body { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:36px; }
+.widget-detail-card { max-width:70%; max-height:70%; transform-origin:center; box-shadow:0 18px 44px rgba(0,0,0,.38); }
+.widget-detail-close { position:absolute; top:12px; right:12px; z-index:2; width:40px; height:40px; border:none; border-radius:999px; background:rgba(255,255,255,.12); color:#fff; font-size:18px; }
