@@ -916,6 +916,15 @@ class TdDeviceEditor extends LitElement {
           <button class="ab" @click=${() => this._e("add-screen-preset", { preset: "camera" })}>📹 Kamera</button>
           <button class="ab" @click=${() => this._e("add-screen-preset", { preset: "charts" })}>📈 Charts</button>
         </div>
+        ${(Object.entries(this.templates || {}).filter(([, t]) => t?.screen_config).length) ? html`
+          <div class="da" style="margin-bottom:14px;align-items:center">
+            <select .value=${this._screenTemplateToImport || ""} @change=${(e) => this._screenTemplateToImport = e.target.value}>
+              <option value="">📥 Vorlage importieren…</option>
+              ${Object.entries(this.templates || {}).filter(([, t]) => t?.screen_config).map(([id, t]) => html`<option value=${id}>${t.name || id}</option>`)}
+            </select>
+            <button class="ab" ?disabled=${!this._screenTemplateToImport} @click=${() => this._screenTemplateToImport && this._e("import-screen-template", { templateId: this._screenTemplateToImport })}>📚 Einfügen</button>
+          </div>
+        ` : ""}
         <ul class="sl">
           ${(d.screens || []).map((s, i) => html`
             <li class="si ${this._di === i ? "drag" : ""}" draggable="true"
@@ -1866,6 +1875,15 @@ class TdScreenEditor extends LitElement {
         </select></div>
         <div class="pf2"><label>Farb-Overlay über Bild: ${Math.round(Number(this._cfg.background_overlay_opacity ?? 1) * 100)}%</label><input type="range" min="0" max="1" step="0.05" .value=${this._cfg.background_overlay_opacity ?? 1} @input=${(e) => this._ss("background_overlay_opacity", +e.target.value)}></div>
         <div class="pf2"><button class="ab" @click=${() => this._ss("background_image", "")}>Hintergrundbild entfernen</button></div>
+        <div class="pg4">Screen-Wettereffekt</div>
+        <div class="tog"><input type="checkbox" .checked=${this._cfg.screen_weather_fx === true} @change=${(e) => this._ss("screen_weather_fx", e.target.checked)}><span>Wettereffekt über ganzen Screen anzeigen</span></div>
+        ${this._cfg.screen_weather_fx ? html`
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="pf2"><label>Intensität</label><select .value=${this._cfg.screen_weather_fx_intensity || "normal"} @change=${(e) => this._ss("screen_weather_fx_intensity", e.target.value)}><option value="soft">Sanft</option><option value="normal">Normal</option><option value="strong">Stark</option></select></div>
+            <div class="pf2"><label>Layer</label><input type="number" min="1" max="4" .value=${this._cfg.screen_weather_fx_layers || 1} @change=${(e) => this._ss("screen_weather_fx_layers", +e.target.value)}></div>
+          </div>
+          <div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Nutzt bei Wetter-Screens die Screen-Entity und bei Dashboard-Screens das erste Wetter-Widget.</label></div>
+        ` : ""}
         <div class="pg4">Ticker-Leiste</div>
         <div class="pf2"><label>Stil-Vorlage</label><select .value=${this._cfg.ticker_style?.style_template || "classic"} @change=${(e) => this._applyTickerTemplate(e.target.value)}><option value="classic">Classic</option><option value="glass">Glass</option><option value="alert">Alert</option><option value="minimal">Minimal</option></select></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1943,14 +1961,27 @@ class TdScreenEditor extends LitElement {
             </div>
             <div class="tog"><input type="checkbox" .checked=${w.config?.trim_trailing_zeros === true} @change=${(e) => this._uwc("trim_trailing_zeros", e.target.checked)}><span>Überflüssige Nullen entfernen (25.0 → 25)</span></div>
           ` : ""}
-          <div class="pf2"><label>Name</label><input .value=${w.name || ""} placeholder="Auto" @input=${(e) => this._uw("name", e.target.value)}></div>
+          <div class="pf2"><label>Name</label><input .value=${w.name || ""} placeholder="Auto oder kurzer eigener Name" @input=${(e) => this._uw("name", e.target.value)}></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="pf2"><label>Name anzeigen</label><select .value=${w.config?.show_name === false ? "off" : "on"} @change=${(e) => this._uwc("show_name", e.target.value !== "off")}><option value="on">Ja</option><option value="off">Ausblenden</option></select></div>
+            <div class="pf2"><label>Name kürzen (Zeichen)</label><input type="number" min="0" max="60" .value=${w.config?.name_max_length ?? 0} @change=${(e) => this._uwc("name_max_length", +e.target.value)} placeholder="0 = automatisch"></div>
+          </div>
           <div class="pf2">
             <td-icon-picker .value=${w.icon || ""} label="Icon" @value-changed=${(e) => this._uw("icon", e.detail.value)}></td-icon-picker>
           </div>
           <div class="pg4">Interaktion auf dem Display</div>
-          <div class="pf2"><label>Touch-Aktion</label><select .value=${w.tap_action || "none"} @change=${(e) => this._uw("tap_action", e.target.value)}><option value="none">Keine</option><option value="expand">Widget vergrößern / Details</option><option value="toggle">Schalter ein/aus</option></select></div>
-          ${w.tap_action === "expand" ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Auto schließen (s)</label><input type="number" min="0" max="120" .value=${w.tap_autoclose || 10} @change=${(e) => this._uw("tap_autoclose", +e.target.value)}></div><div class="pf2"><label>Detail-Skalierung</label><input type="number" min="1" max="2.4" step="0.1" .value=${w.tap_scale || 1.45} @change=${(e) => this._uw("tap_scale", +e.target.value)}></div></div>` : ""}
-          ${w.tap_action === "toggle" ? html`<div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.tap_target_entity || w.entity_id || ""} label="Schalt-Entity" placeholder="Schalter, Licht oder Input Boolean wählen" @value-changed=${(e) => this._uw("tap_target_entity", e.detail.value)}></td-entity-picker></div><div class="pf2"><label>Statuspunkt anzeigen</label><select .value=${w.toggle_badge !== false ? "on" : "off"} @change=${(e) => this._uw("toggle_badge", e.target.value === "on")}><option value="on">Ja</option><option value="off">Nein</option></select></div><div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Leer lassen = Haupt-Entity des Widgets verwenden. Für Schalter-Aktion eignen sich z. B. switch.*, light.*, input_boolean.*, fan.*.</label></div>` : ""}
+          <div class="pf2"><label>Touch-Aktion</label><select .value=${w.tap_action || "none"} @change=${(e) => this._uw("tap_action", e.target.value)}><option value="none">Keine</option><option value="expand">Widget vergrößern / Details</option><option value="popup">Vollbild-Popup</option><option value="toggle">Schalter ein/aus</option><option value="goto_screen">Zu Screen wechseln</option><option value="open_url">URL öffnen</option></select></div>
+          ${(w.tap_action === "expand" || w.tap_action === "popup") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Auto schließen (s)</label><input type="number" min="0" max="120" .value=${w.tap_autoclose || 10} @change=${(e) => this._uw("tap_autoclose", +e.target.value)}></div><div class="pf2"><label>Detail-Skalierung</label><input type="number" min="1" max="2.4" step="0.1" .value=${w.tap_scale || 1.45} @change=${(e) => this._uw("tap_scale", +e.target.value)}></div></div>` : ""}
+          ${w.tap_action === "toggle" ? html`
+            <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.tap_target_entity || w.entity_id || ""} label="Schalt-Entity" placeholder="Schalter, Licht oder Input Boolean wählen" @value-changed=${(e) => this._uw("tap_target_entity", e.detail.value)}></td-entity-picker></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Schaltmodus</label><select .value=${w.toggle_mode || "toggle"} @change=${(e) => this._uw("toggle_mode", e.target.value)}><option value="toggle">Umschalten</option><option value="on">Nur Ein</option><option value="off">Nur Aus</option></select></div>
+              <div class="pf2"><label>Statuspunkt anzeigen</label><select .value=${w.toggle_badge !== false ? "on" : "off"} @change=${(e) => this._uw("toggle_badge", e.target.value === "on")}><option value="on">Ja</option><option value="off">Nein</option></select></div>
+            </div>
+            <div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Leer lassen = Haupt-Entity des Widgets verwenden. Für Schalter-Aktion eignen sich z. B. switch.*, light.*, input_boolean.*, fan.*, cover.*, valve.*.</label></div>` : ""}
+          ${w.tap_action === "goto_screen" ? html`<div class="pf2"><label>Ziel-Screen</label><select .value=${w.tap_screen_id || ""} @change=${(e) => this._uw("tap_screen_id", e.target.value)}><option value="">— wählen —</option>${(this.device?.screens || []).map((s) => html`<option value=${s.id || s.name}>${s.name || s.id}</option>`)}</select></div>` : ""}
+          ${w.tap_action === "open_url" ? html`<div class="pf2"><label>Ziel-URL</label><input .value=${w.tap_url || ""} placeholder="https://..." @input=${(e) => this._uw("tap_url", e.target.value)}></div>` : ""}
+          ${(w.tap_action === "popup" && (w.type === "weather" || w.type === "camera" || w.entity_id?.startsWith?.("media_player.") || w.type === "image")) ? html`<div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Für Wetter, Medien, Kamera und Bilder wird ein spezielles Vollbild-Popup verwendet.</label></div>` : ""}
           <div class="pg4">Position & Größe</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="pf2"><label>Spalte</label><input type="number" min="0" .value=${w.col || 0} @change=${(e) => this._uw("col", +e.target.value)}></div>
@@ -1974,7 +2005,12 @@ class TdScreenEditor extends LitElement {
           ` : ""}
           ${w.type === "camera" ? html`
             <div class="pg4">Kamera</div>
+            <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.entity_id || w.config?.camera_entity || ""} .domain=${"camera"} label="Kamera-Entity" placeholder="camera.* auswählen" @value-changed=${(e) => { this._uw("entity_id", e.detail.value); this._uwc("camera_entity", e.detail.value); }}></td-entity-picker></div>
             <div class="pf2"><label>Kamera-Quelle</label><select .value=${w.config?.camera_source || "auto"} @change=${(e) => this._uwc("camera_source", e.target.value)}>${TD_CAMERA_SOURCES.map(([v,l]) => html`<option value=${v}>${l}</option>`)}</select></div>
+            <div class="pf2"><label>Kamera-Ansicht</label><select .value=${w.config?.camera_view || "still"} @change=${(e) => this._uwc("camera_view", e.target.value)}><option value="still">Stillbild / Refresh</option><option value="live">Live / Stream bevorzugen</option></select></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Objektfit</label><select .value=${w.config?.camera_fit || "cover"} @change=${(e) => this._uwc("camera_fit", e.target.value)}><option value="cover">cover</option><option value="contain">contain</option></select></div><div class="pf2"><label>Kamera-Titel</label><select .value=${w.config?.camera_show_title === false ? "off" : "on"} @change=${(e) => this._uwc("camera_show_title", e.target.value !== "off")}><option value="on">Anzeigen</option><option value="off">Ausblenden</option></select></div></div>
+            <div class="tog"><input type="checkbox" .checked=${w.config?.camera_tap_fullscreen === true} @change=${(e) => this._uwc("camera_tap_fullscreen", e.target.checked)}><span>Tap auf Kamera = Vollbild</span></div>
+            <div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Fallbacks: zuerst normaler Snapshot, dann entity_picture, dann camera_proxy, dann camera_proxy_stream.</label></div>
             <div class="pf2"><label>Refresh (s)</label><input type="number" min="1" .value=${w.config?.refresh_interval || 5} @change=${(e) => this._uwc("refresh_interval", +e.target.value)}></div>
           ` : ""}
           ${TD_CHART_TYPES.has(w.type) ? html`
@@ -2004,6 +2040,7 @@ class TdScreenEditor extends LitElement {
           <div class="pf2"><td-color-picker .value=${w.bgColor || "#1E1E1E"} label="Hintergrundfarbe" @value-changed=${(e) => this._uw("bgColor", e.detail.value)}></td-color-picker></div>
           <div class="pf2"><label>Hintergrund-Transparenz: ${w.bgOpacity ?? 0.75}</label><input type="range" min="0" max="1" step="0.05" .value=${w.bgOpacity ?? 0.75} @input=${(e) => this._uw("bgOpacity", +e.target.value)}></div>
           <div class="pf2"><label>Blur: ${w.blur || 0}px</label><input type="range" min="0" max="20" step="1" .value=${w.blur || 0} @input=${(e) => this._uw("blur", +e.target.value)}></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Animationen</label><select .value=${w.animations === false ? "off" : "on"} @change=${(e) => this._uw("animations", e.target.value !== "off")}><option value="on">Aktiv</option><option value="off">Aus</option></select></div><div class="pf2"><label>Animationsstil</label><select .value=${w.animation_style || "auto"} @change=${(e) => this._uw("animation_style", e.target.value)}><option value="auto">Automatisch</option><option value="soft">Sanft</option><option value="lively">Lebendig</option><option value="pulse">Pulse</option></select></div></div>
           <div class="pf2"><label>Ecken-Radius: ${w.borderRadius || 12}px</label><input type="range" min="0" max="32" step="2" .value=${w.borderRadius || 12} @input=${(e) => this._uw("borderRadius", +e.target.value)}></div>
           <div class="tog"><input type="checkbox" .checked=${w.animations !== false} @change=${(e) => this._uw("animations", e.target.checked)}><span>Animationen aktivieren</span></div>
         ` : ""}
@@ -2211,7 +2248,12 @@ class TdScreenEditor extends LitElement {
   _uw(k, v) {
     this._push();
     const ws = [...(this._cfg.widgets || [])];
-    ws[this._sel] = { ...ws[this._sel], [k]: v };
+    const current = ws[this._sel] || {};
+    const next = { ...current, [k]: v };
+    if (k === "entity_id" && current.type === "camera") {
+      next.config = { ...(current.config || {}), camera_entity: v };
+    }
+    ws[this._sel] = next;
     this._cfg = { ...this._cfg, widgets: ws };
   }
   _uwc(k, v) {
@@ -3437,6 +3479,16 @@ class TickerDisplayPanel extends LitElement {
             await this._post(`/api/config/template`, { templateId: `template_${Date.now()}`, name: e.detail.name || sc.name || 'Screen Vorlage', category: 'custom', screen_config: deepClone(sc) });
             await this._load();
             this._toast("📚 Als Vorlage gespeichert");
+          }}
+          @import-screen-template=${async (e) => {
+            const tpl = this._templates?.[e.detail.templateId];
+            if (!tpl?.screen_config || !d) return;
+            const sc = deepClone(tpl.screen_config);
+            sc.id = `screen_${Date.now()}`;
+            sc.name = sc.name || tpl.name || `Screen ${(d.screens?.length || 0) + 1}`;
+            await this._post(`/api/config/device/${this._devId}`, { ...d, screens:[...(d.screens || []), sc] });
+            await this._load();
+            this._toast("📥 Vorlage eingefügt");
           }}
           @back=${() => this._page = "main"}
         ></td-device-editor>

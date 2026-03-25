@@ -574,6 +574,12 @@ class ScreenManager {
         this._updateWidget(w, entityId, newState);
       }
     }
+    const current = this.temporaryScreen || this.screens[this.currentIndex];
+    if (!current) return;
+    const weatherRelated = current.entity_id === entityId || Utils.safeArray(current.widgets).some((w) => w.type === "weather" && w.entity_id === entityId);
+    if ((current.type === "weather" || current.screen_weather_fx) && weatherRelated) {
+      this._renderScreen(current);
+    }
   }
 
   _showScreen(index) {
@@ -620,6 +626,7 @@ class ScreenManager {
         break;
     }
 
+    this._applyScreenWeatherOverlay(screen, config);
     const transition = config.transition || this.app.config.rotation?.transition || "fade";
     this._doTransition(screen, transition);
   }
@@ -634,6 +641,29 @@ class ScreenManager {
       screen.style.backgroundPosition = "center center, center center";
       screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
     }
+  }
+
+  _getScreenWeatherEffectConfig(config) {
+    const enabled = config.screen_weather_fx === true || config.weather_fullscreen_fx === true;
+    if (!enabled) return null;
+    let entityId = config.entity_id || null;
+    if (!entityId) {
+      const weatherWidget = Utils.safeArray(config.widgets).find((w) => w.type === "weather" && w.entity_id);
+      entityId = weatherWidget?.entity_id || null;
+    }
+    if (!entityId) return null;
+    const state = this.app.entityStates[entityId] || {};
+    const visual = this._weatherVisual(state?.state, config.config || config);
+    return { entityId, visual, intensity: config.screen_weather_fx_intensity || "normal", layers: Number(config.screen_weather_fx_layers || 1) };
+  }
+
+  _applyScreenWeatherOverlay(screen, config) {
+    const fx = this._getScreenWeatherEffectConfig(config);
+    if (!fx) return;
+    const overlay = document.createElement("div");
+    overlay.className = `screen-weather-overlay ${fx.visual.theme} ${fx.visual.animClass} ${fx.visual.animate ? "animate" : ""} intensity-${fx.intensity} layers-${fx.layers}`;
+    overlay.innerHTML = this._weatherFxMarkup(fx.visual.animClass, fx.layers);
+    screen.appendChild(overlay);
   }
 
   _buildDashboardScreen(screen, config) {
@@ -707,21 +737,27 @@ class ScreenManager {
   }
 
   _buildCameraScreen(screen, config) {
-    const eid = config.entity_id || "";
-    const source = config.config?.camera_source || config.camera_source || "auto";
+    const eid = config.entity_id || config.config?.camera_entity || config.camera_entity || "";
+    const preferredSource = config.config?.camera_source || config.camera_source || "auto";
+    const liveMode = (config.config?.camera_view || config.camera_view || "still") === "live";
+    const source = liveMode && preferredSource === "auto" ? "camera_proxy_stream" : preferredSource;
+    const fit = config.config?.camera_fit || config.camera_fit || "contain";
+    const title = this._widgetCameraTitle(config, config.title || config.name || eid || "Kamera");
     screen.innerHTML = `
-      <img id="camera-img" class="screen-image-contain" alt="Camera">
-      <div class="screen-caption">${config.title || config.name || eid || "Kamera"}</div>
+      <img id="camera-img" class="screen-image-contain" style="object-fit:${fit}" alt="Camera">
+      ${title ? `<div class="screen-caption">${title}</div>` : ""}
     `;
 
     const img = screen.querySelector("#camera-img");
     if (img && eid) this._loadCameraInto(img, eid, source);
 
-    const ms = (config.refresh_interval || config.config?.refresh_interval || 5) * 1000;
-    this._cameraIntervals.push(setInterval(() => {
-      const nextImg = screen.querySelector("#camera-img");
-      if (nextImg && eid) this._loadCameraInto(nextImg, eid, source);
-    }, ms));
+    if (!liveMode) {
+      const ms = (config.refresh_interval || config.config?.refresh_interval || 5) * 1000;
+      this._cameraIntervals.push(setInterval(() => {
+        const nextImg = screen.querySelector("#camera-img");
+        if (nextImg && eid) this._loadCameraInto(nextImg, eid, source);
+      }, ms));
+    }
   }
 
   _buildImageScreen(screen, config) {
@@ -737,7 +773,7 @@ class ScreenManager {
     const widget = document.createElement("div");
     widget.className = `widget widget-${config.type || "simple-value"}`;
 
-    const trackedIds = [config.entity_id, ...Utils.safeArray(config.config?.entities || config.entities)].filter(Boolean);
+    const trackedIds = [config.entity_id, config.config?.camera_entity, config.camera_entity, ...Utils.safeArray(config.config?.entities || config.entities)].filter(Boolean);
     for (const trackedId of [...new Set(trackedIds)]) {
       if (!this._widgetElements[trackedId]) {
         this._widgetElements[trackedId] = [];
@@ -749,7 +785,7 @@ class ScreenManager {
     const value = state.state ?? "—";
     const attrs = state.attributes || {};
     const unit = attrs.unit_of_measurement || config.unit || "";
-    const name = config.name || attrs.friendly_name || "";
+    const name = this._widgetName(config, attrs.friendly_name || "");
     const icon = config.icon || this._defaultIconForType(config.type);
 
     switch (config.type) {
@@ -823,7 +859,8 @@ class ScreenManager {
         break;
 
       case "icon-value":
-        this._renderIconValueWidget(widget, config, value, unit, name, icon);
+        if (String(config.entity_id || "").startsWith("media_player.")) this._renderMediaPlayerWidget(widget, config, state, name, icon);
+        else this._renderIconValueWidget(widget, config, value, unit, name, icon);
         break;
 
       default:
@@ -834,21 +871,55 @@ class ScreenManager {
     this._applyCommonWidgetStyle(widget, config);
     widget.classList.toggle("widget-animated", config.animations !== false);
     widget.classList.toggle(`widget-anim-${config.type || "generic"}`, config.animations !== false);
+    widget.classList.remove("anim-auto", "anim-soft", "anim-lively", "anim-pulse");
+    widget.classList.add(`anim-${config.animation_style || "auto"}`);
     widget.dataset.widgetType = config.type || "generic";
+    this._syncWidgetToggleBadge(widget, config);
     this._bindWidgetInteraction(widget, config);
     return widget;
   }
 
 
   _bindWidgetInteraction(widget, config) {
-    if (!config?.tap_action || config.tap_action === "none") return;
+    const cameraFullscreen = (config.type === "camera" && (config.config?.camera_tap_fullscreen || config.camera_tap_fullscreen));
+    const action = config?.tap_action || "none";
+    if ((action === "none" || !action) && !cameraFullscreen) return;
     widget.classList.add("widget-interactive");
     widget.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      if (config.tap_action === "expand") this._openWidgetDetail(widget, config);
-      else if (config.tap_action === "toggle") this._toggleWidgetEntity(widget, config);
+      if (cameraFullscreen) return this._openCameraFullscreen(config);
+      if (action === "expand") this._openWidgetDetail(widget, config);
+      else if (action === "popup") this._openWidgetPopup(config);
+      else if (action === "toggle") this._toggleWidgetEntity(widget, config);
+      else if (action === "goto_screen") this._gotoTargetScreen(config);
+      else if (action === "open_url") this._openWidgetUrl(config);
     });
+  }
+
+  _syncWidgetToggleBadge(widget, config) {
+    if ((config?.tap_action || "none") !== "toggle" || config?.toggle_badge === false) {
+      const existing = widget.querySelector(".widget-toggle-badge");
+      if (existing) existing.remove();
+      return;
+    }
+    const entityId = config.tap_target_entity || config.entity_id;
+    if (!entityId) return;
+    const st = this.app?.entityStates?.[entityId] || {};
+    const on = Utils.isTruthyState(st.state);
+    this._showWidgetToggleBadge(widget, on, st.state);
+  }
+
+  _openWidgetUrl(config) {
+    const url = config.tap_url || config.config?.tap_url || "";
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  _gotoTargetScreen(config) {
+    const target = config.tap_screen_id || config.config?.tap_screen_id || "";
+    if (!target) return;
+    this.app.screenManager.goto(target);
   }
 
   _openWidgetDetail(widget, config) {
@@ -883,19 +954,171 @@ class ScreenManager {
     return overlay;
   }
 
-  async _toggleWidgetEntity(widget, config) {
-    const entityId = config.tap_target_entity || config.entity_id;
-    if (!entityId || !this.app?.callEntityToggle) return;
-    const ok = await this.app.callEntityToggle(entityId);
-    if (!ok) return;
-    const badge = config.toggle_badge !== false;
-    if (badge) {
-      const st = this.app.entityStates[entityId] || {};
-      this._showWidgetToggleBadge(widget, Utils.isTruthyState(st.state));
+  _widgetPopupOverlay() {
+    let overlay = document.getElementById("widget-popup-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "widget-popup-overlay";
+      overlay.className = "widget-popup-overlay";
+      overlay.hidden = true;
+      overlay.innerHTML = `<div class="widget-popup-panel"><button class="widget-popup-close">✕</button><div class="widget-popup-body"></div></div>`;
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  _closeWidgetPopup() {
+    const overlay = document.getElementById("widget-popup-overlay");
+    if (!overlay) return;
+    overlay.hidden = true;
+    const body = overlay.querySelector(".widget-popup-body");
+    if (body) body.innerHTML = "";
+  }
+
+  _openCameraFullscreen(config) {
+    this._openWidgetPopup({ ...config, tap_popup_kind: "camera" });
+  }
+
+  _popupFriendlyName(config, st) {
+    return this._widgetName(config, st?.attributes?.friendly_name || config.entity_id || config.type || "Widget");
+  }
+
+  _popupWeatherMarkup(config, st) {
+    const attrs = st?.attributes || {};
+    const visual = this._weatherVisual(st?.state || "", config.config || config);
+    return `<div class="popup-hero popup-weather ${visual.theme}">
+      <div class="popup-weather-bg ${visual.animClass} ${visual.animate ? "animate" : ""}">${this._weatherFxMarkup(visual.animClass, 2)}</div>
+      <div class="popup-eyebrow">${this._popupFriendlyName(config, st)}</div>
+      <div class="popup-big-icon">${visual.icon}</div>
+      <div class="popup-big-value">${Utils.text(attrs.temperature ?? "—")}<span>°C</span></div>
+      <div class="popup-subtitle">${visual.label || st?.state || ""}</div>
+      <div class="popup-grid-info">
+        <div><span>Feuchte</span><strong>${Utils.text(attrs.humidity ?? "—")}${attrs.humidity !== undefined ? "%" : ""}</strong></div>
+        <div><span>Wind</span><strong>${Utils.text(attrs.wind_speed ?? attrs.wind_bearing ?? "—")}</strong></div>
+        <div><span>Druck</span><strong>${Utils.text(attrs.pressure ?? "—")}</strong></div>
+      </div>
+    </div>`;
+  }
+
+  _popupCameraMarkup(config) {
+    const eid = config.entity_id || config.config?.camera_entity || config.camera_entity || "";
+    const preferred = config.config?.camera_source || config.camera_source || "auto";
+    const live = (config.config?.camera_view || config.camera_view || "still") === "live";
+    const source = live && preferred === "auto" ? "camera_proxy_stream" : preferred;
+    const fit = config.config?.camera_fit || config.camera_fit || "contain";
+    const src = this._cameraUrlForEntity(eid, source) || "";
+    if (!src) return `<div class="popup-empty">Keine Kamera verfügbar</div>`;
+    return `<div class="popup-hero popup-camera"><div class="popup-eyebrow">${Utils.text(this._widgetCameraTitle(config, eid) || eid)}</div><img class="popup-camera-image" style="object-fit:${fit}" src="${src}" alt="${eid}"></div>`;
+  }
+
+  _popupImageMarkup(config) {
+    const src = config.image_url || config.imageUrl || config.url || "";
+    if (!src) return `<div class="popup-empty">Kein Bild konfiguriert</div>`;
+    return `<div class="popup-hero popup-image"><div class="popup-eyebrow">${Utils.text(this._widgetName(config, "Bild") || "Bild")}</div><img class="popup-camera-image" style="object-fit:contain" src="${src}" alt="Bild"></div>`;
+  }
+
+  _renderPopupControlButton(body, label, active, onClick) {
+    const btn = document.createElement("button");
+    btn.className = `popup-control-btn ${active ? "active" : ""}`;
+    btn.textContent = label;
+    btn.onclick = onClick;
+    body.appendChild(btn);
+  }
+
+  _openWidgetPopup(config) {
+    const overlay = this._widgetPopupOverlay();
+    const body = overlay.querySelector(".widget-popup-body");
+    const close = () => this._closeWidgetPopup();
+    overlay.querySelector(".widget-popup-close").onclick = close;
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    const entityId = config.entity_id || config.tap_target_entity || "";
+    const st = this.app.entityStates[entityId] || {};
+    const domain = String(entityId || "").split(".")[0];
+    const kind = config.tap_popup_kind || (config.type === "weather" || domain === "weather" ? "weather" : config.type === "camera" ? "camera" : config.type === "image" ? "image" : domain);
+    let html = "";
+    if (kind === "weather") html = this._popupWeatherMarkup(config, st);
+    else if (kind === "camera") html = this._popupCameraMarkup(config);
+    else if (kind === "image") html = this._popupImageMarkup(config);
+    else if (domain === "media_player") {
+      const cover = st.attributes?.entity_picture || "";
+      const progress = Number(st.attributes?.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(st.attributes?.media_position || 0) / Number(st.attributes?.media_duration || 1)) * 100))) : 0;
+      html = `<div class="popup-hero popup-media">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}<div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-value">${Utils.text(st.attributes?.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(st.attributes?.media_artist || st.attributes?.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-controls"></div></div></div>`;
+    } else if (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan") {
+      const isOn = Utils.isTruthyState(st.state);
+      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOn ? "🟢" : "🔴"}</div><div class="popup-big-value">${isOn ? "Ein" : "Aus"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+    } else if (domain === "cover") {
+      const pos = st.attributes?.current_position;
+      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🪟</div><div class="popup-big-value">${pos == null ? Utils.text(st.state || "—") : `${Math.round(Number(pos))}<span>%</span>`}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+    } else if (domain === "valve") {
+      const isOpen = Utils.isTruthyState(st.state) || String(st.state || '').toLowerCase() === 'open';
+      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOpen ? "💧" : "🚫"}</div><div class="popup-big-value">${isOpen ? "Offen" : "Zu"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+    } else if (domain === "climate") {
+      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(st.attributes?.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(st.attributes?.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+    } else {
+      html = `<div class="popup-hero"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId || this._widgetName(config, "Widget"))}</div><div class="popup-big-value">${Utils.formatStateWithUnit(st.state ?? "—", st.attributes?.unit_of_measurement || "", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</div><div class="popup-subtitle">${Utils.text(st.state ?? "—")}</div></div>`;
+    }
+    body.innerHTML = html;
+    const controls = body.querySelector(".popup-controls");
+    if (controls && domain === "media_player") {
+      this._renderPopupControlButton(controls, "⏮", false, () => this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }));
+      this._renderPopupControlButton(controls, "⏯", false, () => this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }));
+      this._renderPopupControlButton(controls, "⏭", false, () => this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }));
+      this._renderPopupControlButton(controls, "−", false, async () => { const level = Math.max(0, Number(st.attributes?.volume_level ?? 0) - 0.1); await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: level }); });
+      this._renderPopupControlButton(controls, "+", false, async () => { const level = Math.min(1, Number(st.attributes?.volume_level ?? 0) + 0.1); await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: level }); });
+    } else if (controls && (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
+      this._renderPopupControlButton(controls, "Ein/Aus", false, async () => { await this._invokeToggleAction(entityId, 'toggle'); close(); });
+    } else if (controls && domain === "cover") {
+      this._renderPopupControlButton(controls, "⬆", false, async () => { await this.app.callEntityService("cover", "open_cover", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "■", false, async () => { await this.app.callEntityService("cover", "stop_cover", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "⬇", false, async () => { await this.app.callEntityService("cover", "close_cover", { entity_id: entityId }); });
+    } else if (controls && domain === "climate") {
+      this._renderPopupControlButton(controls, "−1°", false, async () => { const t = Number(st.attributes?.temperature ?? 20) - 1; await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: t }); close(); });
+      this._renderPopupControlButton(controls, "+1°", false, async () => { const t = Number(st.attributes?.temperature ?? 20) + 1; await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: t }); close(); });
+    }
+    overlay.hidden = false;
+    const secs = Number(config.tap_autoclose || 0);
+    if (secs > 0) {
+      clearTimeout(this._popupTimer);
+      this._popupTimer = setTimeout(close, secs * 1000);
     }
   }
 
-  _showWidgetToggleBadge(widget, on) {
+  async _toggleWidgetEntity(widget, config) {
+    const entityId = config.tap_target_entity || config.entity_id;
+    if (!entityId) return;
+    const ok = await this._invokeToggleAction(entityId, config.toggle_mode || 'toggle');
+    if (!ok) return;
+    setTimeout(() => this._syncWidgetToggleBadge(widget, config), 250);
+  }
+
+  async _invokeToggleAction(entityId, mode = 'toggle') {
+    const st = this.app?.entityStates?.[entityId] || {};
+    const domain = String(entityId || '').split('.')[0];
+    const serviceDomain = domain === 'input_boolean' ? 'input_boolean' : domain;
+    if (!entityId) return false;
+    if (mode === 'on') {
+      if (domain === 'cover') return this.app.callEntityService('cover', 'open_cover', { entity_id: entityId });
+      if (domain === 'valve') return this.app.callEntityService('valve', 'open_valve', { entity_id: entityId });
+      return this.app.callEntityService(serviceDomain, 'turn_on', { entity_id: entityId });
+    }
+    if (mode === 'off') {
+      if (domain === 'cover') return this.app.callEntityService('cover', 'close_cover', { entity_id: entityId });
+      if (domain === 'valve') return this.app.callEntityService('valve', 'close_valve', { entity_id: entityId });
+      return this.app.callEntityService(serviceDomain, 'turn_off', { entity_id: entityId });
+    }
+    if (domain === 'cover') {
+      const pos = Number(st.attributes?.current_position ?? (String(st.state).toLowerCase() === 'open' ? 100 : 0));
+      return this.app.callEntityService('cover', pos > 10 ? 'close_cover' : 'open_cover', { entity_id: entityId });
+    }
+    if (domain === 'valve') {
+      const open = Utils.isTruthyState(st.state) || String(st.state || '').toLowerCase() === 'open';
+      return this.app.callEntityService('valve', open ? 'close_valve' : 'open_valve', { entity_id: entityId });
+    }
+    if (!this.app?.callEntityToggle) return false;
+    return this.app.callEntityToggle(entityId);
+  }
+
+  _showWidgetToggleBadge(widget, on, rawState = null) {
     let badge = widget.querySelector(".widget-toggle-badge");
     if (!badge) {
       badge = document.createElement("div");
@@ -905,10 +1128,32 @@ class ScreenManager {
     badge.classList.toggle("on", !!on);
     badge.classList.toggle("off", !on);
     badge.textContent = on ? "Ein" : "Aus";
+    badge.title = rawState == null ? badge.textContent : `Status: ${rawState}`;
   }
 
   _normalizeEntityIdList(list) {
     return [...new Set(Utils.safeArray(list).map((item) => typeof item === "string" ? item : item?.entity_id || item?.id || "").filter(Boolean))];
+  }
+
+  _truncateLabel(label, maxLen) {
+    const text = Utils.text(label, "");
+    const n = Number(maxLen || 0);
+    if (!n || n < 1) return text;
+    return text.length > n ? `${text.slice(0, Math.max(1, n)).trim()}…` : text;
+  }
+
+  _widgetName(config, fallback = "") {
+    const show = config?.config?.show_name !== false && config?.show_name !== false;
+    if (!show) return "";
+    const raw = config?.name || fallback || "";
+    const maxLen = config?.config?.name_max_length ?? config?.name_max_length ?? 0;
+    return this._truncateLabel(raw, maxLen);
+  }
+
+  _widgetCameraTitle(config, fallback = "") {
+    const show = config?.config?.camera_show_title !== false && config?.camera_show_title !== false;
+    if (!show) return "";
+    return this._widgetName(config, fallback);
   }
 
   _renderExtraEntityList(widget, config) {
@@ -973,18 +1218,24 @@ class ScreenManager {
     return { icon: "🌤️", label: Utils.text(condition || "Wetter"), animClass: "clouds", theme: "theme-default", animate };
   }
 
-  _weatherFxMarkup(kind) {
-    if (kind === "rain" || kind === "storm") return '<span></span><span></span><span></span><span></span><span></span><span></span>';
-    if (kind === "snow") return '<span></span><span></span><span></span><span></span><span></span><span></span>';
-    if (kind === "clouds" || kind === "fog" || kind === "wind" || kind === "sun") return '<span></span><span></span><span></span>';
-    return '';
+  _weatherFxMarkup(kind, layers = 1) {
+    const base = (kind === "rain" || kind === "storm" || kind === "snow") ? 6 : 3;
+    const count = Math.max(1, Number(layers || 1)) * base;
+    return Array.from({ length: count }, (_, i) => {
+      const left = ((i * 17) % 96) + 2;
+      const top = kind === "rain" || kind === "storm" ? -20 : ((i * 29) % 80) + 8;
+      const delay = -((i % base) * 0.65);
+      const size = kind === "clouds" || kind === "fog" || kind === "wind" ? 140 + ((i * 31) % 90) : (kind === "snow" ? 8 + (i % 4) * 2 : 3);
+      const height = kind === "clouds" || kind === "fog" || kind === "wind" ? 36 + ((i * 13) % 22) : (kind === "snow" ? size : 38);
+      return `<span style="--fx-left:${left}%;--fx-top:${top}%;--fx-delay:${delay}s;--fx-width:${size}px;--fx-height:${height}px"></span>`;
+    }).join("");
   }
 
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
       <div><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
-      <div class="w-name">${name}</div>
+      ${name ? `<div class="w-name">${name}</div>` : ""}
     `;
     this._renderExtraEntityList(widget, config);
   }
@@ -993,7 +1244,31 @@ class ScreenManager {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:28px">${icon}</span></div>
       <div><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
-      <div class="w-name">${name}</div>
+      ${name ? `<div class="w-name">${name}</div>` : ""}
+    `;
+    this._renderExtraEntityList(widget, config);
+  }
+
+  _renderMediaPlayerWidget(widget, config, state, name, icon) {
+    const attrs = state?.attributes || {};
+    const cover = attrs.entity_picture || "";
+    const title = Utils.text(attrs.media_title || state?.state || "—");
+    const subtitle = Utils.text(attrs.media_artist || attrs.source || attrs.friendly_name || "");
+    const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
+    const vol = Math.round(Number(attrs.volume_level || 0) * 100);
+    widget.classList.add("widget-media-modern");
+    widget.innerHTML = `
+      <div class="media-widget-shell">
+        ${cover ? `<img class="media-widget-cover" src="${cover}" alt="Cover">` : `<div class="media-widget-cover placeholder">${icon || "🎵"}</div>`}
+        <div class="media-widget-meta">
+          ${name ? `<div class="w-name">${name}</div>` : ""}
+          <div class="media-widget-title">${title}</div>
+          <div class="media-widget-subtitle">${subtitle}</div>
+          <div class="media-widget-state-row"><div class="media-widget-state">${Utils.text(state?.state || "—")}</div><div class="media-widget-vol">🔊 ${vol}%</div></div>
+          <div class="media-widget-progress"><span style="width:${progress}%"></span></div>
+          <div class="media-widget-controls"><span>⏮</span><span>⏯</span><span>⏭</span></div>
+        </div>
+      </div>
     `;
     this._renderExtraEntityList(widget, config);
   }
@@ -1024,7 +1299,7 @@ class ScreenManager {
     const color = config.config?.color || "var(--td-accent)";
 
     widget.innerHTML = `
-      <div class="w-name" style="margin-bottom:4px">${name}</div>
+      ${name ? `<div class="w-name" style="margin-bottom:4px">${name}</div>` : ""}
       <div><span class="w-value">${Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>
       <div class="progress-container">
         <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
@@ -1038,7 +1313,7 @@ class ScreenManager {
     const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
     widget.innerHTML = `
       <div class="status-dot-indicator ${isOn ? "on" : ""}" style="background:${color};color:${color}"></div>
-      <div class="w-name">${name}</div>
+      ${name ? `<div class="w-name">${name}</div>` : ""}
       <div class="widget-subvalue">${Utils.text(value)}</div>
     `;
     this._renderExtraEntityList(widget, config);
@@ -1066,22 +1341,28 @@ class ScreenManager {
 
   _renderCameraWidget(widget, config, name) {
     widget.classList.add("widget-camera");
-    const eid = config.entity_id || "";
-    const source = config.config?.camera_source || config.camera_source || "auto";
+    const eid = config.entity_id || config.config?.camera_entity || config.camera_entity || "";
+    const preferredSource = config.config?.camera_source || config.camera_source || "auto";
+    const liveMode = (config.config?.camera_view || config.camera_view || "still") === "live";
+    const source = liveMode && preferredSource === "auto" ? "camera_proxy_stream" : preferredSource;
+    const fit = config.config?.camera_fit || config.camera_fit || "cover";
+    const title = this._widgetCameraTitle(config, name || eid);
     widget.innerHTML = `
-      <img alt="Camera" class="widget-camera-image">
-      <div class="camera-overlay">${name || eid}</div>
+      <img alt="Camera" class="widget-camera-image" style="object-fit:${fit}">
+      ${title ? `<div class="camera-overlay">${title}</div>` : ""}
     `;
 
     const img = widget.querySelector("img");
     if (img && eid) this._loadCameraInto(img, eid, source);
 
-    const ms = (config.config?.refresh_interval || 5) * 1000;
-    const interval = setInterval(() => {
-      const nextImg = widget.querySelector("img");
-      if (nextImg && eid) this._loadCameraInto(nextImg, eid, source);
-    }, ms);
-    this._cameraIntervals.push(interval);
+    if (!liveMode) {
+      const ms = (config.config?.refresh_interval || 5) * 1000;
+      const interval = setInterval(() => {
+        const nextImg = widget.querySelector("img");
+        if (nextImg && eid) this._loadCameraInto(nextImg, eid, source);
+      }, ms);
+      this._cameraIntervals.push(interval);
+    }
   }
 
   _renderWeatherWidget(widget, config, state) {
@@ -1097,7 +1378,7 @@ class ScreenManager {
           <div class="weather-card-icon">${visual.icon}</div>
           <div class="weather-card-reading"><span class="w-value">${temp}</span><span class="w-unit">°C</span></div>
         </div>
-        <div class="w-name">${config.name || attrs.friendly_name || "Wetter"}</div>
+        ${this._widgetName(config, attrs.friendly_name || "Wetter") ? `<div class="w-name">${this._widgetName(config, attrs.friendly_name || "Wetter")}</div>` : ""}
         <div class="widget-subvalue">${visual.label || condition}</div>
       </div>
     `;
@@ -1139,7 +1420,7 @@ class ScreenManager {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:24px">⏱️</span></div>
       <div><span class="w-value js-countdown-value">--</span></div>
-      <div class="w-name">${config.name || "Countdown"}</div>
+      ${this._widgetName(config, "Countdown") ? `<div class="w-name">${this._widgetName(config, "Countdown")}</div>` : ""}
     `;
 
     const update = () => {
@@ -1216,14 +1497,14 @@ class ScreenManager {
     widget.innerHTML = `
       <div class="widget-button-face">
         <div class="w-icon"><span style="font-size:24px">${config.icon || "🔘"}</span></div>
-        <div class="w-name">${name || "Button"}</div>
+        ${this._widgetName(config, name || "Button") ? `<div class="w-name">${this._widgetName(config, name || "Button")}</div>` : ""}
       </div>
     `;
   }
 
   _renderChartWidget(widget, config, state, name) {
     const unit = state?.attributes?.unit_of_measurement || config.unit || "";
-    const title = config.name || name || state?.attributes?.friendly_name || config.entity_id || config.type || "Chart";
+    const title = this._widgetName(config, name || state?.attributes?.friendly_name || config.entity_id || config.type || "Chart");
 
     widget.classList.add("widget-chart");
     widget.innerHTML = `
@@ -2118,14 +2399,25 @@ class TickerDisplayApp {
   async callEntityToggle(entityId) {
     const domain = String(entityId || "").split(".")[0];
     if (!domain) return false;
-    const serviceDomain = ["switch","light","input_boolean","fan","media_player"].includes(domain) ? domain : "homeassistant";
-    const service = serviceDomain === "media_player" ? "media_play_pause" : "toggle";
+    const serviceDomain = ["switch","light","input_boolean","fan","media_player","valve"].includes(domain) ? domain : "homeassistant";
+    const service = serviceDomain === "media_player" ? "media_play_pause" : serviceDomain === 'valve' ? 'open_valve' : "toggle";
     try {
       const resp = await fetch(`/api/services/${serviceDomain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ entity_id: entityId }) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return true;
     } catch (e) {
       console.warn("toggle failed", entityId, e);
+      return false;
+    }
+  }
+
+  async callEntityService(domain, service, data = {}) {
+    try {
+      const resp = await fetch(`/api/services/${domain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify(data) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return true;
+    } catch (e) {
+      console.warn("service call failed", domain, service, data, e);
       return false;
     }
   }
