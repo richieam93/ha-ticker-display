@@ -38,8 +38,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0 22px;
-  font-size: 14px;
+  padding: 0 var(--td-ticker-padding-x, 22px);
+  font-size: var(--td-ticker-font-size, 14px);
   font-weight: 500;
   color: var(--td-text-secondary);
   flex-shrink: 0;

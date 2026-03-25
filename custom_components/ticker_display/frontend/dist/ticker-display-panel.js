@@ -991,6 +991,22 @@ class TdDeviceEditor extends LitElement {
               <option value="fast">Schnell</option>
             </select>
           </div>
+          <div class="f">
+            <label>Höhe</label>
+            <input type="number" min="24" max="120" .value=${d.ticker?.height || 36} @change=${(e) => this._un("ticker", "height", +e.target.value)}>
+          </div>
+          <div class="f">
+            <label>Schriftgröße</label>
+            <input type="number" min="10" max="40" .value=${d.ticker?.font_size || 14} @change=${(e) => this._un("ticker", "font_size", +e.target.value)}>
+          </div>
+          <div class="f">
+            <label>Padding X</label>
+            <input type="number" min="4" max="40" .value=${d.ticker?.item_padding_x || 22} @change=${(e) => this._un("ticker", "item_padding_x", +e.target.value)}>
+          </div>
+          <div class="f">
+            <label>Transparenz</label>
+            <input type="number" min="0.1" max="1" step="0.05" .value=${d.ticker?.opacity || 1} @change=${(e) => this._un("ticker", "opacity", +e.target.value)}>
+          </div>
         </div>
       </div>
 
@@ -1031,6 +1047,12 @@ class TdScreenEditor extends LitElement {
       _redo: { type: Array },
       _dwt: { type: String },
       _pt: { type: Number },
+      _paletteQuery: { type: String },
+      _paletteFilter: { type: String },
+      _favoriteWidgets: { type: Array },
+      _recentWidgets: { type: Array },
+      _selMulti: { type: Array },
+      _snap: { type: Boolean },
     };
   }
   constructor() {
@@ -1043,6 +1065,12 @@ class TdScreenEditor extends LitElement {
     this._redo = [];
     this._dwt = null;
     this._pt = 0;
+    this._paletteQuery = "";
+    this._paletteFilter = "all";
+    this._favoriteWidgets = safeJsonParse(localStorage.getItem("td_widget_favorites"), []) || [];
+    this._recentWidgets = safeJsonParse(localStorage.getItem("td_widget_recent"), []) || [];
+    this._selMulti = [];
+    this._snap = true;
   }
   updated(c) {
     if (c.has("screenConfig") && this.screenConfig) this._cfg = deepClone(this.screenConfig);
@@ -1050,7 +1078,7 @@ class TdScreenEditor extends LitElement {
 
   static get styles() {
     return css`
-      :host { display:grid; grid-template-columns:220px 1fr 320px; grid-template-rows:52px 1fr; height:100vh; overflow:hidden; }
+      :host { display:grid; grid-template-columns:280px 1fr 340px; grid-template-rows:52px 1fr; height:100vh; overflow:hidden; }
       .tb { grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:0 12px; background:var(--app-header-background-color,#1e1e1e); border-bottom:1px solid var(--divider-color); overflow-x:auto; }
       .tb button { padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; background:none; color:var(--primary-text-color); font-size:13px; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:4px; }
       .tb button:hover { background:rgba(255,255,255,.05); }
@@ -1060,12 +1088,21 @@ class TdScreenEditor extends LitElement {
       .tb select { padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
       .tb .sp { flex:1; }
       .tb .lb { font-size:12px; color:var(--secondary-text-color); white-space:nowrap; }
-      .pal { overflow-y:auto; padding:8px; border-right:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
+      .pal { overflow-y:auto; padding:10px; border-right:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
+      .paltools { display:grid; gap:8px; margin-bottom:10px; position:sticky; top:0; background:linear-gradient(180deg,var(--sidebar-background-color,#111) 80%, rgba(17,17,17,0)); padding-bottom:8px; z-index:1; }
+      .paltools input, .paltools select { width:100%; padding:8px 10px; border:1px solid var(--divider-color); border-radius:8px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
+      .chips { display:flex; gap:6px; flex-wrap:wrap; }
+      .chip2 { padding:6px 10px; border-radius:999px; border:1px solid var(--divider-color); background:none; color:var(--secondary-text-color); cursor:pointer; font-size:12px; }
+      .chip2.a { color:var(--primary-text-color); border-color:var(--primary-color); background:rgba(33,150,243,.12); }
       .pc { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--secondary-text-color); padding:12px 8px 6px; }
-      .pi { display:flex; align-items:center; gap:8px; padding:8px 10px; margin:2px 0; border-radius:8px; cursor:grab; font-size:13px; color:var(--primary-text-color); transition:background .15s; }
-      .pi:hover { background:rgba(255,255,255,.06); }
+      .pgrid { display:grid; gap:8px; }
+      .pi { display:grid; grid-template-columns:28px 1fr auto; gap:8px; align-items:center; padding:10px; border:1px solid rgba(255,255,255,.06); margin:0; border-radius:12px; cursor:grab; font-size:13px; color:var(--primary-text-color); transition:background .15s,border-color .15s,transform .15s; background:rgba(255,255,255,.02); }
+      .pi:hover { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.12); transform:translateY(-1px); }
       .pi:active { cursor:grabbing; opacity:.6; }
-      .pi .pp { font-size:18px; opacity:.7; width:22px; text-align:center; }
+      .pi .pp { font-size:18px; opacity:.8; width:22px; text-align:center; }
+      .pi .meta { font-size:11px; color:var(--secondary-text-color); }
+      .favb { border:none; background:none; color:var(--secondary-text-color); cursor:pointer; font-size:16px; }
+      .favb.a { color:#f6c344; }
       .pva { display:flex; align-items:center; justify-content:center; background:#0a0a0a; padding:20px; overflow:hidden; }
       .pf { background:#121212; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,.5); display:flex; flex-direction:column; overflow:hidden; position:relative; }
       .pf.l { width:min(100%,720px); aspect-ratio:16/10; }
@@ -1080,10 +1117,28 @@ class TdScreenEditor extends LitElement {
         align-items:center; justify-content:center; cursor:pointer; position:relative; overflow:hidden; border:2px solid transparent; transition:border-color .15s;
       }
       .wb:hover { border-color:rgba(255,255,255,.15); }
-      .wb.sel { border-color:var(--primary-color); }
+      .wb.sel { border-color:var(--primary-color); box-shadow:0 0 0 1px rgba(33,150,243,.2), 0 10px 24px rgba(0,0,0,.25); }
+      .wb.ms { border-color:#8BC34A; }
       .wb .wi { font-size:20px; opacity:.5; }
       .wb .wv { font-size:22px; font-weight:500; color:#fff; margin:2px 0; }
       .wb .wn { font-size:10px; color:rgba(255,255,255,.5); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+      .wb .wx { font-size:9px; color:rgba(255,255,255,.38); margin-top:2px; text-align:center; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .guides { position:absolute; inset:0; pointer-events:none; }
+      .gvl, .ghl { position:absolute; pointer-events:none; }
+      .gvl { top:0; bottom:28px; width:1px; background:rgba(33,150,243,.28); }
+      .ghl { left:0; right:0; height:1px; background:rgba(33,150,243,.24); }
+      .pvm { display:flex; align-items:center; justify-content:center; width:54px; height:38px; border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.05); overflow:hidden; }
+      .pvm .lc { width:34px; height:20px; border-radius:6px; background:rgba(255,255,255,.09); display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; }
+      .pvm .ln { width:36px; height:3px; border-radius:999px; background:rgba(255,255,255,.18); margin-top:3px; }
+      .pvm .bars { display:flex; align-items:flex-end; gap:3px; height:20px; }
+      .pvm .bars span { width:5px; border-radius:3px 3px 0 0; background:rgba(33,150,243,.75); }
+      .pvm .ring { width:20px; height:20px; border-radius:50%; border:4px solid rgba(33,150,243,.65); border-right-color:rgba(255,255,255,.15); }
+      .pvm .cam { font-size:16px; }
+      .pvm .weather { font-size:16px; }
+      .presetgrid { display:grid; gap:8px; margin-bottom:12px; }
+      .presetb { display:flex; align-items:center; gap:8px; padding:9px 10px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.03); color:var(--primary-text-color); cursor:pointer; }
+      .presetb:hover { background:rgba(255,255,255,.06); }
+      .msinfo { margin-left:8px; font-size:12px; color:var(--secondary-text-color); }
       .props { overflow-y:auto; padding:12px; border-left:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
       .pe { display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; color:var(--secondary-text-color); text-align:center; font-size:14px; gap:8px; }
       .ptabs { display:flex; border-bottom:1px solid var(--divider-color); margin-bottom:12px; }
@@ -1121,7 +1176,19 @@ class TdScreenEditor extends LitElement {
         <span>×</span>
         <select .value=${String(this._cfg.grid?.rows || 2)} @change=${(e) => this._sg("rows", +e.target.value)}>${[1,2,3,4].map((n) => html`<option value=${n}>${n}</option>`)}</select>
         <button @click=${() => this._grid = !this._grid}>${this._grid ? "▦" : "▢"}</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._duplicateSelected()}>⧉</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._deleteSelected()}>🗑</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(-1, 0)}>←</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(1, 0)}>→</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(0, -1)}>↑</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(0, 1)}>↓</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("col")}>⇤X</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("row")}>⇡Y</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedSize("width")}>▭W</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedSize("height")}>▯H</button>
+        <button class=${this._snap ? "p" : ""} @click=${() => this._snap = !this._snap}># Snap</button>
         <div class="sp"></div>
+        <span class="lb">${(this._selMulti || []).length > 1 ? `${this._selMulti.length} Widgets ausgewählt` : (this._sel >= 0 ? `Widget ${this._sel + 1} ausgewählt` : "Kein Widget ausgewählt")}</span>
         <button ?disabled=${!this._undo.length} @click=${() => this._doUndo()}>↩</button>
         <button ?disabled=${!this._redo.length} @click=${() => this._doRedo()}>↪</button>
         <button @click=${() => this._prev = this._prev === "landscape" ? "portrait" : "landscape"}>${this._prev === "landscape" ? "🖥" : "📱"}</button>
@@ -1139,44 +1206,249 @@ class TdScreenEditor extends LitElement {
   _palette() {
     const cats = [
       { n: "Werte", items: [
-        { t: "simple-value", i: "🔢", l: "Wert" },
-        { t: "gauge", i: "🎯", l: "Gauge" },
-        { t: "progress-bar", i: "📊", l: "Fortschritt" },
-        { t: "status-dot", i: "🔵", l: "Status" },
-        { t: "trend-arrow", i: "📈", l: "Trend" },
-        { t: "icon-value", i: "ℹ️", l: "Icon+Wert" },
+        { t: "simple-value", i: "🔢", l: "Wert", d: "Klassische Zahl oder Sensorwert" },
+        { t: "gauge", i: "🎯", l: "Gauge", d: "Runder Füllstand / Prozentwert" },
+        { t: "progress-bar", i: "📊", l: "Fortschritt", d: "Horizontaler Fortschrittsbalken" },
+        { t: "status-dot", i: "🔵", l: "Status", d: "Kompakter Zustand mit Farbe" },
+        { t: "trend-arrow", i: "📈", l: "Trend", d: "Tendenz nach oben oder unten" },
+        { t: "icon-value", i: "ℹ️", l: "Icon+Wert", d: "Wert mit Symbol und Titel" },
       ]},
-      { n: "Graphen", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l })) },
+      { n: "Graphen", items: TD_CHART_WIDGETS.map(([t,i,l]) => ({ t, i, l, d: "Chart.js Widget" })) },
       { n: "Media", items: [
-        { t: "camera", i: "📹", l: "Kamera" },
-        { t: "image", i: "🖼️", l: "Bild" },
+        { t: "camera", i: "📹", l: "Kamera", d: "Snapshot, entity_picture, Proxy, Stream" },
+        { t: "image", i: "🖼️", l: "Bild", d: "Lokale oder HA-Medienbilder" },
       ]},
       { n: "Info", items: [
-        { t: "clock", i: "🕐", l: "Uhr" },
-        { t: "weather", i: "🌤️", l: "Wetter" },
-        { t: "countdown", i: "⏱️", l: "Countdown" },
+        { t: "clock", i: "🕐", l: "Uhr", d: "Zeit und Datum" },
+        { t: "weather", i: "🌤️", l: "Wetter", d: "Wetter-Entity mit Übersicht" },
+        { t: "countdown", i: "⏱️", l: "Countdown", d: "Ereignis oder Zielzeit" },
+      ]},
+      { n: "Home Assistant Presets", items: [
+        { t: "preset-energy", i: "⚡", l: "Energie", d: "Leistungs-, Batterie- oder Energie-Sensor" },
+        { t: "preset-calendar", i: "🗓️", l: "Kalender", d: "Kalender oder Countdown mit Terminen" },
+        { t: "preset-person", i: "👤", l: "Personen", d: "Anwesenheit und Status" },
+        { t: "preset-doors", i: "🚪", l: "Türen/Fenster", d: "Öffnungssensoren und Kontakte" },
+        { t: "preset-battery", i: "🔋", l: "Batterie", d: "Batterie-Ladung oder Status" },
+        { t: "preset-media", i: "🎵", l: "Medienplayer", d: "Titel, Status und Wiedergabe" },
       ]},
       { n: "Sonstige", items: [
-        { t: "color-block", i: "🟦", l: "Farbblock" },
-        { t: "button", i: "🔘", l: "Button" },
+        { t: "color-block", i: "🟦", l: "Farbblock", d: "Dekoratives Element / Fläche" },
+        { t: "button", i: "🔘", l: "Button", d: "Interaktive Aktion" },
       ]},
     ];
 
+    let groups = cats.map((c) => ({...c, items: c.items.filter((it) => {
+      const q = (this._paletteQuery || "").trim().toLowerCase();
+      const fav = (this._favoriteWidgets || []).includes(it.t);
+      const rec = (this._recentWidgets || []).includes(it.t);
+      if (this._paletteFilter === "favorites" && !fav) return false;
+      if (this._paletteFilter === "recent" && !rec) return false;
+      if (!q) return true;
+      return [it.t, it.l, it.d, c.n].join(" ").toLowerCase().includes(q);
+    })})).filter((c) => c.items.length);
+
+    const total = groups.reduce((sum, c) => sum + c.items.length, 0);
+
     return html`
       <div class="pal">
-        ${cats.map((c) => html`
+        <div class="paltools">
+          <input .value=${this._paletteQuery} placeholder="Widget suchen..." @input=${(e) => this._paletteQuery = e.target.value}>
+          <div class="chips">
+            <button class="chip2 ${this._paletteFilter === "all" ? "a" : ""}" @click=${() => this._paletteFilter = "all"}>Alle</button>
+            <button class="chip2 ${this._paletteFilter === "favorites" ? "a" : ""}" @click=${() => this._paletteFilter = "favorites"}>Favoriten</button>
+            <button class="chip2 ${this._paletteFilter === "recent" ? "a" : ""}" @click=${() => this._paletteFilter = "recent"}>Zuletzt</button>
+          </div>
+          <div class="lb">${total} Widgets in der Palette</div>
+        </div>
+        ${groups.map((c) => html`
           <div class="pc">${c.n}</div>
-          ${c.items.map((it) => html`
-            <div class="pi" draggable="true"
-              @dragstart=${(e) => { this._dwt = it.t; e.dataTransfer.setData("text/plain", it.t); e.dataTransfer.effectAllowed = "copy"; }}
-              @dragend=${() => this._dwt = null}
-            >
-              <span class="pp">${it.i}</span>${it.l}
-            </div>
-          `)}
+          <div class="pgrid">
+            ${c.items.map((it) => html`
+              <div class="pi" draggable="true"
+                @dragstart=${(e) => { this._dwt = it.t; e.dataTransfer.setData("text/plain", it.t); e.dataTransfer.effectAllowed = "copy"; }}
+                @dragend=${() => this._dwt = null}
+                @dblclick=${() => this._quickAddWidget(it.t)}
+              >
+                <div class="pvm">${this._paletteMini(it)}</div>
+                <div>
+                  <div>${it.l}</div>
+                  <div class="meta">${it.d}</div>
+                </div>
+                <button class="favb ${(this._favoriteWidgets || []).includes(it.t) ? "a" : ""}" @click=${(e) => { e.stopPropagation(); this._toggleFavoriteWidget(it.t); }}>${(this._favoriteWidgets || []).includes(it.t) ? "★" : "☆"}</button>
+              </div>
+            `)}
+          </div>
         `)}
       </div>
     `;
+  }
+
+
+  _rememberWidgetType(type) {
+    const list = [type, ...(this._recentWidgets || []).filter((x) => x !== type)].slice(0, 8);
+    this._recentWidgets = list;
+    localStorage.setItem("td_widget_recent", JSON.stringify(list));
+  }
+
+  _toggleFavoriteWidget(type) {
+    const set = new Set(this._favoriteWidgets || []);
+    if (set.has(type)) set.delete(type); else set.add(type);
+    this._favoriteWidgets = [...set];
+    localStorage.setItem("td_widget_favorites", JSON.stringify(this._favoriteWidgets));
+  }
+
+  _findNextFreeCell() {
+    const cols = this._cfg.grid?.columns || 3;
+    const rows = this._cfg.grid?.rows || 2;
+    const widgets = this._cfg.widgets || [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const taken = widgets.some((w) => c >= (w.col || 0) && c < (w.col || 0) + (w.colspan || 1) && r >= (w.row || 0) && r < (w.row || 0) + (w.rowspan || 1));
+        if (!taken) return { c, r };
+      }
+    }
+    return { c: 0, r: 0 };
+  }
+
+  _quickAddWidget(type) {
+    if (String(type).startsWith("preset-")) {
+      this._applyDomainPreset(type);
+      return;
+    }
+    const { c, r } = this._findNextFreeCell();
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    ws.push(tdCreateWidget(type, c, r, this.globalSettings || {}));
+    this._cfg = { ...this._cfg, widgets: ws };
+    this._sel = ws.length - 1;
+    this._selMulti = [this._sel];
+    this._rememberWidgetType(type);
+  }
+
+  _paletteMini(it) {
+    const t = it.t;
+    if (String(t).startsWith("preset-")) return html`<div class="lc">${it.i}</div>`;
+    if (TD_CHART_TYPES.has(t)) return html`<div class="bars"><span style="height:8px"></span><span style="height:14px"></span><span style="height:18px"></span><span style="height:11px"></span></div>`;
+    if (t === "gauge" || t === "radial-gauge-advanced") return html`<div class="ring"></div>`;
+    if (t === "camera" || t === "image") return html`<div class="cam">${it.i}</div>`;
+    if (t === "weather") return html`<div class="weather">${it.i}</div>`;
+    return html`<div><div class="lc">${it.i}</div><div class="ln"></div></div>`;
+  }
+
+  _duplicateSelected() {
+    if (this._sel < 0 || !this._cfg.widgets?.[this._sel]) return;
+    const src = this._cfg.widgets[this._sel];
+    const { c, r } = this._findNextFreeCell();
+    this._push();
+    const copy = deepClone(src);
+    copy.id = `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    copy.col = c;
+    copy.row = r;
+    const ws = [...(this._cfg.widgets || []), copy];
+    this._cfg = { ...this._cfg, widgets: ws };
+    this._sel = ws.length - 1;
+    this._selMulti = [this._sel];
+    this._rememberWidgetType(copy.type);
+  }
+
+  _deleteSelected() {
+    if (this._sel < 0) return;
+    const idxs = this._getSelectedIndices();
+    if (idxs.length > 1) {
+      this._push();
+      const ws = [...(this._cfg.widgets || [])].filter((_, i) => !idxs.includes(i));
+      this._cfg = { ...this._cfg, widgets: ws };
+      this._sel = -1;
+      this._selMulti = [];
+      return;
+    }
+    this._delW();
+  }
+
+  _getSelectedIndices() {
+    if ((this._selMulti || []).length) return [...new Set(this._selMulti)].sort((a,b) => a-b);
+    return this._sel >= 0 ? [this._sel] : [];
+  }
+
+  _handleWidgetSelect(i, e) {
+    if (e?.ctrlKey || e?.metaKey) {
+      const set = new Set(this._selMulti || []);
+      if (set.has(i)) set.delete(i); else set.add(i);
+      this._selMulti = [...set].sort((a,b) => a-b);
+      this._sel = this._selMulti.length ? this._selMulti[this._selMulti.length - 1] : -1;
+      return;
+    }
+    this._sel = i;
+    this._selMulti = [i];
+  }
+
+  _alignSelectedEdge(axis) {
+    const idxs = this._getSelectedIndices();
+    if (idxs.length < 2) return;
+    const first = this._cfg.widgets[idxs[0]];
+    const value = axis === "col" ? (first.col || 0) : (first.row || 0);
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    for (const i of idxs) ws[i] = { ...ws[i], [axis]: value };
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _alignSelectedSize(kind) {
+    const idxs = this._getSelectedIndices();
+    if (idxs.length < 2) return;
+    const first = this._cfg.widgets[idxs[0]];
+    const key = kind === "width" ? "colspan" : "rowspan";
+    const value = first[key] || 1;
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    for (const i of idxs) ws[i] = { ...ws[i], [key]: value };
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _applyDomainPreset(type) {
+    const map = {
+      "preset-energy": { widget: "comparison-chart", domain: "sensor", match: ["power", "energy", "verbrauch", "leistung"] },
+      "preset-calendar": { widget: "countdown", domain: "calendar", match: ["calendar", "kalender"] },
+      "preset-person": { widget: "status-dot", domain: "person", match: ["person"] },
+      "preset-doors": { widget: "status-dot", domain: "binary_sensor", match: ["door", "window", "fenster", "tuer", "öffnung"] },
+      "preset-battery": { widget: "progress-bar", domain: "sensor", match: ["battery", "akku"] },
+      "preset-media": { widget: "icon-value", domain: "media_player", match: ["media_player", "speaker", "tv"] },
+    };
+    const spec = map[type];
+    if (!spec) return;
+    const entities = getAllEntities(this.hass, spec.domain || "");
+    const hit = entities.find((e) => spec.match.some((m) => `${e.entity_id} ${e.friendly_name}`.toLowerCase().includes(m))) || entities[0];
+    const { c, r } = this._findNextFreeCell();
+    const w = tdCreateWidget(spec.widget, c, r, this.globalSettings || {});
+    w.entity_id = hit?.entity_id || "";
+    w.name = hit?.friendly_name || spec.widget;
+    if (type === "preset-energy") { w.colspan = 2; w.config = { ...(w.config || {}), entities: entities.slice(0,4).map((e) => e.entity_id) }; }
+    if (type === "preset-doors") { w.config = { ...(w.config || {}), entities: entities.slice(0,6).map((e) => e.entity_id) }; }
+    if (type === "preset-media") { w.config = { ...(w.config || {}), entities: entities.slice(0,4).map((e) => e.entity_id) }; }
+    this._push();
+    const ws = [...(this._cfg.widgets || []), w];
+    this._cfg = { ...this._cfg, widgets: ws };
+    this._sel = ws.length - 1;
+    this._selMulti = [this._sel];
+    this._rememberWidgetType(spec.widget);
+  }
+
+  _nudgeSelected(dx, dy) {
+    const idxs = this._getSelectedIndices();
+    if (!idxs.length) return;
+    const cols = this._cfg.grid?.columns || 3;
+    const rows = this._cfg.grid?.rows || 2;
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    for (const i of idxs) {
+      const w = ws[i];
+      ws[i] = {
+        ...w,
+        col: Math.max(0, Math.min(cols - (w.colspan || 1), (w.col || 0) + dx)),
+        row: Math.max(0, Math.min(rows - (w.rowspan || 1), (w.row || 0) + dy)),
+      };
+    }
+    this._cfg = { ...this._cfg, widgets: ws };
   }
 
   _preview() {
@@ -1200,13 +1472,14 @@ class TdScreenEditor extends LitElement {
       const u = st?.attributes?.unit_of_measurement || "";
       const nm = w.name || st?.attributes?.friendly_name || w.type || "";
       els.push(html`
-        <div class="wb ${this._sel === i ? "sel" : ""}" style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1}"
-          @click=${() => this._sel = i} draggable="true"
+        <div class="wb ${this._sel === i ? "sel" : ""} ${(this._selMulti || []).includes(i) && this._sel !== i ? "ms" : ""}" style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1};background:${w.bgColor || "#1E1E1E"};${w.bgOpacity != null ? `opacity:${Math.max(0.25, Math.min(1, Number(w.bgOpacity) || 1))};` : ""}"
+          @click=${(e) => this._handleWidgetSelect(i, e)} draggable="true"
           @dragstart=${(e) => { e.dataTransfer.setData("widget-index", String(i)); e.dataTransfer.effectAllowed = "move"; }}
         >
           <span class="wi">${ti[w.type] || "📊"}</span>
           <span class="wv">${v}${u ? ` ${u}` : ""}</span>
           <span class="wn">${nm}</span>
+          ${(w.config?.entities || []).length ? html`<span class="wx">+ ${(w.config.entities || []).slice(0, 3).join(" · ")}</span>` : ""}
         </div>
       `);
     }
@@ -1225,11 +1498,17 @@ class TdScreenEditor extends LitElement {
       }
     }
 
+    const guides = [];
+    if (this._snap) {
+      for (let c = 1; c < cols; c++) guides.push(html`<div class="gvl" style="left:${(c / cols) * 100}%"></div>`);
+      for (let r = 1; r < rows; r++) guides.push(html`<div class="ghl" style="top:${(r / rows) * 100}%"></div>`);
+    }
     return html`
       <div class="pva">
         <div class="pf ${this._prev === "landscape" ? "l" : "p"}" style="background:${this._cfg.background_color || "#121212"};${this._cfg.background_image ? `background-image:url(${this._cfg.background_image});background-size:${this._cfg.background_image_size || "cover"};background-position:center;background-repeat:no-repeat;` : ""}">
           <div class="pg" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${els}</div>
-          <div class="ptk">▶ Ticker-Leiste</div>
+          ${this._snap ? html`<div class="guides">${guides}</div>` : ""}
+          <div class="ptk" style="height:${this._cfg.ticker_style?.height || this.globalSettings?.default_ticker_height || 36}px;font-size:${this._cfg.ticker_style?.font_size || 12}px">▶ Ticker-Leiste</div>
         </div>
       </div>
     `;
@@ -1252,6 +1531,13 @@ class TdScreenEditor extends LitElement {
         <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.background_image_size || "cover"} @change=${(e) => this._ss("background_image_size", e.target.value)}>
           <option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option>
         </select></div>
+        <div class="pg4">Ticker-Leiste</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="pf2"><label>Höhe</label><input type="number" min="24" max="120" .value=${this._cfg.ticker_style?.height || this.globalSettings?.default_ticker_height || 36} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), height: +e.target.value })}></div>
+          <div class="pf2"><label>Schriftgröße</label><input type="number" min="10" max="40" .value=${this._cfg.ticker_style?.font_size || 12} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), font_size: +e.target.value })}></div>
+          <div class="pf2"><label>Padding X</label><input type="number" min="4" max="40" .value=${this._cfg.ticker_style?.item_padding_x || 22} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), item_padding_x: +e.target.value })}></div>
+          <div class="pf2"><label>Transparenz</label><input type="number" min="0.1" max="1" step="0.05" .value=${this._cfg.ticker_style?.opacity || 1} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), opacity: +e.target.value })}></div>
+        </div>
         ${(this.images || []).length ? html`<div class="pf2"><label>Lokales Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
         ${(this.haImages || []).length ? html`<div class="pf2"><td-ha-media-picker .items=${this.haImages || []} .value=${this._cfg.background_image || ""} label="Home Assistant Medienbild" placeholder="Bild aus Medienbrowser wählen" @value-changed=${(e) => this._ss("background_image", e.detail.value)}></td-ha-media-picker></div>` : ""}
         <div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div>
@@ -1393,11 +1679,18 @@ class TdScreenEditor extends LitElement {
 
   _drop(c, r) {
     if (!this._dwt) return;
+    if (String(this._dwt).startsWith("preset-")) {
+      this._applyDomainPreset(this._dwt);
+      this._dwt = null;
+      return;
+    }
     this._push();
     const ws = [...(this._cfg.widgets || [])];
     ws.push(tdCreateWidget(this._dwt, c, r, this.globalSettings || {}));
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = ws.length - 1;
+    this._selMulti = [this._sel];
+    this._rememberWidgetType(this._dwt);
     this._dwt = null;
   }
   _uw(k, v) {
@@ -1420,11 +1713,12 @@ class TdScreenEditor extends LitElement {
     ws.splice(this._sel, 1);
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = -1;
+    this._selMulti = [];
   }
   _sg(k, v) { this._cfg = { ...this._cfg, grid: { ...(this._cfg.grid || { columns: 3, rows: 2 }), [k]: v } }; }
   _push() { this._undo = [...this._undo, JSON.stringify(this._cfg)]; this._redo = []; }
-  _doUndo() { if (!this._undo.length) return; this._redo = [...this._redo, JSON.stringify(this._cfg)]; this._cfg = JSON.parse(this._undo[this._undo.length - 1]); this._undo = this._undo.slice(0, -1); this._sel = -1; }
-  _doRedo() { if (!this._redo.length) return; this._undo = [...this._undo, JSON.stringify(this._cfg)]; this._cfg = JSON.parse(this._redo[this._redo.length - 1]); this._redo = this._redo.slice(0, -1); this._sel = -1; }
+  _doUndo() { if (!this._undo.length) return; this._redo = [...this._redo, JSON.stringify(this._cfg)]; this._cfg = JSON.parse(this._undo[this._undo.length - 1]); this._undo = this._undo.slice(0, -1); this._sel = -1; this._selMulti = []; }
+  _doRedo() { if (!this._redo.length) return; this._undo = [...this._undo, JSON.stringify(this._cfg)]; this._cfg = JSON.parse(this._redo[this._redo.length - 1]); this._redo = this._redo.slice(0, -1); this._sel = -1; this._selMulti = []; }
   _e(n, d) { this.dispatchEvent(new CustomEvent(n, { detail: d, bubbles: true, composed: true })); }
 }
 customElements.define("td-screen-editor", TdScreenEditor);

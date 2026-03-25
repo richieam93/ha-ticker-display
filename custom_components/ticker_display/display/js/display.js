@@ -560,6 +560,9 @@ class ScreenManager {
   _renderScreen(config) {
     this._widgetElements = {};
     this._clearIntervals();
+    if (this.app.tickerManager) {
+      this.app.tickerManager._applyStyle({ ...(this.app.config.ticker || {}), ...(config.ticker_style || {}) });
+    }
 
     const screen = document.createElement("div");
     screen.className = "screen";
@@ -1478,6 +1481,7 @@ class TickerManager {
 
   init() {
     const tickerConfig = this.app.config.ticker || {};
+    this._applyStyle(tickerConfig);
     if (!tickerConfig.enabled) {
       if (this.bar) this.bar.hidden = true;
       document.querySelector(".screen-container")?.classList.add("no-ticker");
@@ -1489,8 +1493,19 @@ class TickerManager {
   }
 
   rebuild() {
-    this.entityTemplates = Utils.safeArray(this.app.config.ticker?.entities);
+    const cfg = this.app.config.ticker || {};
+    this.entityTemplates = Utils.safeArray(cfg.entities);
+    this._applyStyle(cfg);
     this._rebuild();
+  }
+
+  _applyStyle(cfg = {}) {
+    const root = document.documentElement;
+    if (!root) return;
+    if (cfg.height) root.style.setProperty("--td-ticker-height", `${cfg.height}px`);
+    if (cfg.font_size) root.style.setProperty("--td-ticker-font-size", `${cfg.font_size}px`);
+    if (cfg.item_padding_x) root.style.setProperty("--td-ticker-padding-x", `${cfg.item_padding_x}px`);
+    if (cfg.opacity != null && this.bar) this.bar.style.opacity = String(cfg.opacity);
   }
 
   addMessages(msgs) {
