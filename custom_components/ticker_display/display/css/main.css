@@ -37,7 +37,12 @@ body {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  isolation: isolate;
+  background: var(--td-bg, #121212);
 }
+
+.screen[class*="screen-enter-"] { z-index: 2; }
+.screen[class*="screen-exit-"] { z-index: 1; }
 
 .loading-screen {
   position: fixed;
@@ -287,33 +292,43 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow: auto;
+  max-height: min(45%, 124px);
+  padding-right: 2px;
 }
 
 .td-extra-row {
   display: flex;
+  min-height: 18px;
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
   color: var(--td-text-secondary, rgba(255,255,255,.7));
   padding-top: 4px;
   border-top: 1px solid rgba(255,255,255,.06);
+  align-items: flex-start;
 }
 
 .td-extra-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .td-extra-value {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   color: var(--td-text-primary, #fff);
+  text-align: right;
+  white-space: nowrap;
 }
 
 .widget-chart {
   align-items: stretch;
   justify-content: flex-start;
   padding: 12px;
+  min-height: 0;
 }
 
 .chart-header {
@@ -351,8 +366,8 @@ body {
 
 .chart-body {
   position: relative;
-  flex: 1;
-  min-height: 80px;
+  flex: 1 1 auto;
+  min-height: 92px;
 }
 
 .chart-canvas {

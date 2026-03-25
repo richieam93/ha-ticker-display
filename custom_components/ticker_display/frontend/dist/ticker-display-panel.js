@@ -1068,6 +1068,7 @@ class TdScreenEditor extends LitElement {
       _snap: { type: Boolean },
       _dragState: { type: Object },
       _resizeState: { type: Object },
+      _toolMenuOpen: { type: Boolean },
     };
   }
   constructor() {
@@ -1086,6 +1087,7 @@ class TdScreenEditor extends LitElement {
     this._recentWidgets = safeJsonParse(localStorage.getItem("td_widget_recent"), []) || [];
     this._selMulti = [];
     this._snap = true;
+    this._toolMenuOpen = false;
     this._dragState = null;
     this._resizeState = null;
   }
@@ -1105,6 +1107,15 @@ class TdScreenEditor extends LitElement {
       .tb select { padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
       .tb .sp { flex:1; }
       .tb .lb { font-size:12px; color:var(--secondary-text-color); white-space:nowrap; }
+      .tb details.tmenu { position:relative; }
+      .tb details.tmenu summary { list-style:none; padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; cursor:pointer; white-space:nowrap; }
+      .tb details.tmenu summary::-webkit-details-marker { display:none; }
+      .tb details.tmenu[open] summary { background:rgba(255,255,255,.06); }
+      .tpop { position:absolute; top:calc(100% + 6px); left:0; min-width:280px; padding:10px; border:1px solid var(--divider-color); border-radius:10px; background:var(--card-background-color); box-shadow:0 10px 30px rgba(0,0,0,.28); z-index:20; display:grid; gap:10px; }
+      .tsect { display:grid; gap:6px; }
+      .tsect .tl { font-size:11px; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.04em; }
+      .trow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+      .trow button { justify-content:center; }
       .pal { overflow-y:auto; padding:10px; border-right:1px solid var(--divider-color); background:var(--sidebar-background-color,#111); }
       .paltools { display:grid; gap:8px; margin-bottom:10px; position:sticky; top:0; background:linear-gradient(180deg,var(--sidebar-background-color,#111) 80%, rgba(17,17,17,0)); padding-bottom:8px; z-index:1; }
       .paltools input, .paltools select { width:100%; padding:8px 10px; border:1px solid var(--divider-color); border-radius:8px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
@@ -1191,6 +1202,7 @@ class TdScreenEditor extends LitElement {
   }
 
   _toolbar() {
+    const multiCount = (this._selMulti || []).length;
     return html`
       <div class="tb">
         <button @click=${() => this._e("back", {})}>← Zurück</button>
@@ -1202,29 +1214,54 @@ class TdScreenEditor extends LitElement {
         <button @click=${() => this._grid = !this._grid}>${this._grid ? "▦" : "▢"}</button>
         <button ?disabled=${this._sel < 0} @click=${() => this._duplicateSelected()}>⧉</button>
         <button ?disabled=${this._sel < 0} @click=${() => this._deleteSelected()}>🗑</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(-1, 0)}>←</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(1, 0)}>→</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(0, -1)}>↑</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(0, 1)}>↓</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("col")}>⇤X</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("row")}>⇡Y</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedSize("width")}>▭W</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedSize("height")}>▯H</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("left")}>⇤</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("center-x")}>↔</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("right")}>⇥</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("top")}>⇡</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("center-y")}>↕</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("bottom")}>⇣</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._distributeSelected("x")}>⋯X</button>
-        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._distributeSelected("y")}>⋮Y</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(1,0)}>＋W</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(-1,0)}>－W</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(0,1)}>＋H</button>
-        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(0,-1)}>－H</button>
-        <button class=${this._snap ? "p" : ""} @click=${() => this._snap = !this._snap}># Snap</button>
+        <details class="tmenu">
+          <summary>Werkzeuge</summary>
+          <div class="tpop">
+            <div class="tsect">
+              <div class="tl">Bewegen</div>
+              <div class="trow">
+                <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(-1, 0)}>←</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(1, 0)}>→</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(0, -1)}>↑</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._nudgeSelected(0, 1)}>↓</button>
+              </div>
+            </div>
+            <div class="tsect">
+              <div class="tl">An Kante / Mitte ausrichten</div>
+              <div class="trow">
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("left")}>⇤</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("center-x")}>↔</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("right")}>⇥</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("top")}>⇡</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("center-y")}>↕</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("bottom")}>⇣</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("col")}>⇤X</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedEdge("row")}>⇡Y</button>
+              </div>
+            </div>
+            <div class="tsect">
+              <div class="tl">Größe / Verteilung</div>
+              <div class="trow">
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedSize("width")}>▭W</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._alignSelectedSize("height")}>▯H</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._distributeSelected("x")}>⋯X</button>
+                <button ?disabled=${multiCount < 2} @click=${() => this._distributeSelected("y")}>⋮Y</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(1,0)}>＋W</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(-1,0)}>－W</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(0,1)}>＋H</button>
+                <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(0,-1)}>－H</button>
+              </div>
+            </div>
+            <div class="tsect">
+              <div class="tl">Raster</div>
+              <div class="trow">
+                <button class=${this._snap ? "p" : ""} @click=${() => this._snap = !this._snap}># Snap</button>
+              </div>
+            </div>
+          </div>
+        </details>
         <div class="sp"></div>
-        <span class="lb">${(this._selMulti || []).length > 1 ? `${this._selMulti.length} Widgets ausgewählt` : (this._sel >= 0 ? `Widget ${this._sel + 1} ausgewählt` : "Kein Widget ausgewählt")}</span>
+        <span class="lb">${multiCount > 1 ? `${multiCount} Widgets ausgewählt` : (this._sel >= 0 ? `Widget ${this._sel + 1} ausgewählt` : "Kein Widget ausgewählt")}</span>
         <button ?disabled=${!this._undo.length} @click=${() => this._doUndo()}>↩</button>
         <button ?disabled=${!this._redo.length} @click=${() => this._doRedo()}>↪</button>
         <button @click=${() => this._prev = this._prev === "landscape" ? "portrait" : "landscape"}>${this._prev === "landscape" ? "🖥" : "📱"}</button>
@@ -1440,9 +1477,9 @@ class TdScreenEditor extends LitElement {
       const w = ws[i];
       const spanX = w.colspan || 1;
       const spanY = w.rowspan || 1;
-      if (mode === "left") ws[i] = { ...w, col: refLeft };
+      if (mode === "left" || mode === "col") ws[i] = { ...w, col: refLeft };
       else if (mode === "right") ws[i] = { ...w, col: Math.max(0, refRight - spanX) };
-      else if (mode === "top") ws[i] = { ...w, row: refTop };
+      else if (mode === "top" || mode === "row") ws[i] = { ...w, row: refTop };
       else if (mode === "bottom") ws[i] = { ...w, row: Math.max(0, refBottom - spanY) };
       else if (mode === "center-x") ws[i] = { ...w, col: Math.max(0, Math.round(refCx - (spanX / 2))) };
       else if (mode === "center-y") ws[i] = { ...w, row: Math.max(0, Math.round(refCy - (spanY / 2))) };
@@ -1797,7 +1834,7 @@ class TdScreenEditor extends LitElement {
 
 
   _renderExtraEntityMetaEditor(w) {
-    const ids = Array.isArray(w?.config?.entities) ? w.config.entities : [];
+    const ids = Array.isArray(w?.config?.entities) ? w.config.entities.map((id) => typeof id === "string" ? id : id?.entity_id || id?.id || "").filter(Boolean) : [];
     if (!ids.length) return html``;
     const meta = w?.config?.entity_meta || {};
     return html`
@@ -1950,7 +1987,11 @@ class TdScreenEditor extends LitElement {
     this._push();
     const ws = [...(this._cfg.widgets || [])];
     const w = ws[this._sel];
-    ws[this._sel] = { ...w, config: { ...(w.config || {}), [k]: v } };
+    let nextValue = v;
+    if (k === "entities") {
+      nextValue = [...new Set((Array.isArray(v) ? v : []).map((item) => typeof item === "string" ? item : item?.entity_id || item?.id || "").filter(Boolean))];
+    }
+    ws[this._sel] = { ...w, config: { ...(w.config || {}), [k]: nextValue } };
     this._cfg = { ...this._cfg, widgets: ws };
   }
   _delW() {
@@ -2015,12 +2056,13 @@ class TdTemplateGallery extends LitElement {
     const ci = { dashboard: "📊", weather: "🌤️", energy: "⚡", security: "🔒", media: "🎵", custom: "📋" };
     return html`
       <div class="hdr">
-        <h2>📋 Vorlagen</h2>
+        <h2>📚 Screen-Bibliothek</h2>
         <div class="ha">
           <button class="b" @click=${() => this._showImport = !this._showImport}>📥 Importieren</button>
           <button class="b p" @click=${() => this._e("create-template", {})}>➕ Neu</button>
         </div>
       </div>
+      <p style="margin:0 0 16px;color:var(--secondary-text-color);font-size:13px">Speichere einzelne Folien oder Grundlayouts und verwende sie später auf neuen Displays wieder.</p>
       ${this._showImport ? html`
         <div class="isec">
           <strong>JSON importieren:</strong>
@@ -2038,7 +2080,7 @@ class TdTemplateGallery extends LitElement {
               <div class="ci">
                 <div class="cname">${t.name || id}</div>
                 <div class="cdesc">${t.description || ""}</div>
-                <div class="cmeta">${t.category || "custom"} · ${t.screen_config?.widgets?.length || 0} Widgets</div>
+                <div class="cmeta">${t.category || "custom"} · ${(t.screen_config?.widgets?.length || 0)} Widgets · ${(t.screen_config?.type || "dashboard")}</div>
                 <div class="cacts">
                   <button class="tb2" @click=${() => this._e("edit-template", { templateId: id })}>✏️</button>
                   <button class="tb2" @click=${() => this._e("export-template", { templateId: id })}>📤</button>
@@ -2164,7 +2206,7 @@ customElements.define("td-template-editor", TdTemplateEditor);
 
 class TdAlertList extends LitElement {
   static get properties() {
-    return { hass: { type: Object }, alertTemplates: { type: Object } };
+    return { hass: { type: Object }, alertTemplates: { type: Object }, sounds: { type: Array } };
   }
   static get styles() {
     return css`
@@ -2194,7 +2236,8 @@ class TdAlertList extends LitElement {
     const list = Object.entries(this.alertTemplates || {});
     const ml = { fullscreen: "Vollbild", banner: "Banner", toast: "Toast", pip: "PIP" };
     return html`
-      <div class="hdr"><h2>🔔 Alert-Vorlagen</h2><button class="b p" @click=${() => this._e("create-alert", {})}>➕ Neu</button></div>
+      <div class="hdr"><h2>🔔 Alert-Studio</h2><button class="b p" @click=${() => this._e("create-alert", {})}>➕ Neue Vorlage</button></div>
+      <p style="margin:0 0 16px;color:var(--secondary-text-color);font-size:13px">Vorlagen für Banner, Vollbild, Toast und PIP. Sounds lassen sich direkt testen und über Automationen wiederverwenden.</p>
       ${list.length === 0 ? html`<div class="empty"><p style="font-size:48px;opacity:.3">🔔</p><p style="font-size:18px">Keine Alert-Vorlagen</p></div>` : html`
         <div class="grid">
           ${list.map(([id, a]) => html`
@@ -2203,11 +2246,11 @@ class TdAlertList extends LitElement {
               <div class="cm">
                 <span>Modus: ${ml[a.mode] || a.mode || "fullscreen"}</span>
                 <span>Dauer: ${a.duration || "∞"}s</span>
-                ${a.sound ? html`<span>Sound: ${a.sound}</span>` : ""}
+                ${a.sound ? html`<span>Sound: ${a.sound}</span>` : (a.sound_url ? html`<span>Audio: HA Medien</span>` : "")}
               </div>
               <div class="ca">
                 <button class="sb2" @click=${() => this._e("edit-alert", { alertId: id })}>✏️</button>
-                <button class="sb2" @click=${() => { if (this.hass) this.hass.callService("ticker_display", "show_alert", { device: "all", ...a }); }}>▶️</button>
+                <button class="sb2" title="Alert testen" @click=${() => { if (this.hass) this.hass.callService("ticker_display", "show_alert", { device: "all", ...a }); }}>👁️</button><button class="sb2" title="Ton testen" @click=${() => this._previewSound(a)}>🔊</button>
                 <button class="sb2" @click=${() => this._e("delete-alert", { alertId: id })}>🗑️</button>
               </div>
             </div>
@@ -2215,6 +2258,15 @@ class TdAlertList extends LitElement {
         </div>
       `}
     `;
+  }
+  _previewSound(a) {
+    const sound = document.createElement("audio");
+    sound.src = a.sound_url || "";
+    if (!sound.src && a.sound && Array.isArray(this.sounds)) {
+      const hit = this.sounds.find((s) => s.id === a.sound);
+      if (hit?.url) sound.src = hit.url;
+    }
+    if (sound.src) sound.play().catch(() => {});
   }
   _e(n, d) { this.dispatchEvent(new CustomEvent(n, { detail: d, bubbles: true, composed: true })); }
 }
@@ -2285,7 +2337,7 @@ class TdAlertEditor extends LitElement {
       </div>
 
       <div class="sec">
-        <h3>🔊 Sound & Verhalten</h3>
+        <h3>🔊 Sound & Verhalten</h3><p style="margin:0 0 12px;color:var(--secondary-text-color);font-size:13px">Du kannst interne Sounds oder Audio aus dem Home-Assistant-Medienbrowser verwenden.</p>
         <div class="row">
           <div class="f"><td-sound-picker .value=${c.sound || ""} .sounds=${this.sounds || []} label="Interner Sound" @value-changed=${(e) => { this._s("sound", e.detail.value); if (e.detail.value) this._s("sound_url", ""); }}></td-sound-picker></div>
           <div class="f"><label>Lautstärke: ${c.volume || 100}%</label><input type="range" min="0" max="100" .value=${c.volume || 100} @input=${(e) => this._s("volume", +e.target.value)}></div>
@@ -2333,12 +2385,20 @@ class TdAlertEditor extends LitElement {
 
       <div class="sb">
         <button class="b" @click=${() => this._e("back", {})}>Abbrechen</button>
-        <button class="b t" @click=${() => { if (this.hass) this.hass.callService("ticker_display", "show_alert", { device: "all", ...this._cfg }); }}>▶️ Testen</button>
+        <button class="b" @click=${() => this._previewSound()}>🔊 Ton testen</button><button class="b t" @click=${() => { if (this.hass) this.hass.callService("ticker_display", "show_alert", { device: "all", ...this._cfg }); }}>👁️ Alert testen</button>
         <button class="b p" @click=${() => this._e("save", { id: this.alertId || `alert_${Date.now()}`, ...this._cfg })}>💾 Speichern</button>
       </div>
     `;
   }
   _s(k, v) { this._cfg = { ...this._cfg, [k]: v }; }
+  _previewSound() {
+    const url = this._cfg?.sound_url || (this.sounds || []).find((s) => s.id === this._cfg?.sound)?.url;
+    if (!url) return;
+    if (this._audio) { this._audio.pause(); this._audio = null; }
+    this._audio = new Audio(url);
+    this._audio.volume = Math.max(0, Math.min(1, Number(this._cfg?.volume || 100) / 100));
+    this._audio.play().catch(() => {});
+  }
   _e(n, d) { this.dispatchEvent(new CustomEvent(n, { detail: d, bubbles: true, composed: true })); }
 }
 customElements.define("td-alert-editor", TdAlertEditor);
@@ -2378,10 +2438,12 @@ class TdThemeList extends LitElement {
       { id: "light", n: "☀️ Light", bg: "#FAFAFA", c: "#FFFFFF", a: "#1976D2", p: "#388E3C", ne: "#D32F2F" },
       { id: "high-contrast", n: "🔲 High Contrast", bg: "#000", c: "#1A1A1A", a: "#00BFFF", p: "#0F0", ne: "#F00" },
       { id: "night", n: "🌃 Night", bg: "#0A0000", c: "#1A0505", a: "#CC3333", p: "#664444", ne: "#CC2222" },
+      { id: "glass-blue", n: "🧊 Glass Blue", bg: "#0C1420", c: "rgba(255,255,255,0.10)", a: "#57B8FF", p: "#60E3A1", ne: "#FF6B6B" },
+      { id: "oled", n: "🖤 OLED", bg: "#000000", c: "#0A0A0A", a: "#35A7FF", p: "#7CFC00", ne: "#FF5050" },
     ];
     const cu = Object.entries(this.customThemes || {});
     return html`
-      <div class="hdr"><h2>🎨 Themes</h2><button class="b p" @click=${() => this._e("create-theme", {})}>➕ Neu</button></div>
+      <div class="hdr"><h2>🎨 Theme-Studio</h2><button class="b p" @click=${() => this._e("create-theme", {})}>➕ Neues Theme</button></div><p style="margin:0 0 16px;color:var(--secondary-text-color);font-size:13px">Themes steuern Anzeige, Ticker und Karten gemeinsam. Screens können zusätzlich ein eigenes Screen-Theme bekommen.</p>
       <div class="cat">Eingebaut (${bi.length})</div>
       <div class="grid">${bi.map((t) => html`
         <div class="card">
@@ -2447,7 +2509,7 @@ class TdThemeEditor extends LitElement {
     const cf = [["bg","Hintergrund"],["card-bg","Karten-BG"],["text-primary","Text primär"],["text-secondary","Text sekundär"],["accent","Akzent"],["positive","Positiv"],["warning","Warnung"],["negative","Negativ"],["info","Info"],["ticker-bg","Ticker BG"]];
     const sf = [["widget-gap","Abstand"],["widget-padding","Padding"],["widget-radius","Radius"],["ticker-height","Ticker Höhe"]];
     return html`
-      <div class="sec"><h3>📝 Name</h3><div class="f"><input .value=${this._cfg.name || ""} @input=${(e) => this._cfg = { ...this._cfg, name: e.target.value }} placeholder="Mein Theme"></div></div>
+      <div class="sec"><h3>📝 Name & Basis</h3><div class="f"><input .value=${this._cfg.name || ""} @input=${(e) => this._cfg = { ...this._cfg, name: e.target.value }} placeholder="Mein Theme"></div><div class="f"><label>Hinweis</label><div style="font-size:13px;color:var(--secondary-text-color)">Dieses Theme wirkt auf Display, Screens, Widgets und Ticker zusammen. Screen-Styles können einzelne Werte zusätzlich überschreiben.</div></div></div>
       <div class="sec"><h3>🎨 Farben</h3><div class="cg">${cf.map(([k,l]) => html`<div class="cf"><input type="color" .value=${this._hex(v[k] || "#121212")} @input=${(e) => this._sv(k, e.target.value)}><span class="cl">${l}</span><span class="cv">${v[k] || ""}</span></div>`)}</div></div>
       <div class="sec"><h3>📐 Abstände</h3><div class="cg">${sf.map(([k,l]) => html`<div class="f"><label>${l}</label><input .value=${v[k] || ""} @input=${(e) => this._sv(k, e.target.value)} placeholder="8px"></div>`)}</div></div>
       <div class="sec"><h3>👁️ Vorschau</h3><div class="pv3" style="background:${v.bg || "#121212"}"><div class="pw"><div class="pwi" style="background:${v["card-bg"] || "#1E1E1E"}"><div class="pwv" style="color:${v["text-primary"] || "#FFF"}">21.5°C</div><div class="pwn" style="color:${v["text-secondary"] || "#999"}">Temp</div></div><div class="pwi" style="background:${v["card-bg"] || "#1E1E1E"}"><div class="pwv" style="color:${v.accent || "#2196F3"}">85%</div><div class="pwn" style="color:${v["text-secondary"] || "#999"}">Feuchte</div></div><div class="pwi" style="background:${v["card-bg"] || "#1E1E1E"}"><div class="pwv" style="color:${v.positive || "#4CAF50"}">ON</div><div class="pwn" style="color:${v["text-secondary"] || "#999"}">Status</div></div></div><div style="margin-top:12px;padding:8px;background:${v["ticker-bg"] || "rgba(255,255,255,.03)"};border-radius:6px;text-align:center;font-size:12px;color:${v["text-secondary"] || "#999"}">▶ Ticker</div></div></div>
@@ -3001,7 +3063,7 @@ class TickerDisplayPanel extends LitElement {
   _renderLibraryInner() {
     switch (this._libraryTab) {
       case "alerts":
-        return html`<td-alert-list .hass=${this.hass} .alertTemplates=${this._alertTemplates}
+        return html`<td-alert-list .hass=${this.hass} .alertTemplates=${this._alertTemplates} .sounds=${this._sounds}
           @create-alert=${() => { this._alertId = null; this._page = "alert-editor"; }}
           @edit-alert=${(e) => { this._alertId = e.detail.alertId; this._page = "alert-editor"; }}
           @delete-alert=${async (e) => { if (await this._confirm("Alert löschen", `Alert ${e.detail.alertId} wirklich löschen?`)) { await this._del(`/api/config/alert/${e.detail.alertId}`); await this._load(); } }}

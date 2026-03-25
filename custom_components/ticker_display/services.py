@@ -42,16 +42,18 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     # ── Alert commands ──
     async def handle_show_alert(call):
         d = _data(call)
-        sound_id = d.get("sound")
-        if not d.get("sound_url") and sound_id:
-            url = media_manager.get_sound_url(sound_id)
-            if url:
-                d["sound_url"] = url
         template_id = d.get("template_id")
         if template_id:
             tmpl = store.get_alert_templates().get(template_id)
             if tmpl:
                 d = {**tmpl, **d}
+
+        sound_id = d.get("sound")
+        if not d.get("sound_url") and sound_id:
+            url = media_manager.get_sound_url(sound_id)
+            if url:
+                d["sound_url"] = url
+
         await websocket.send_command(_dev(call), {"type": "alert", "data": d})
 
     async def handle_show_notification(call):

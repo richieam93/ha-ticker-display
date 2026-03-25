@@ -82,6 +82,13 @@ def _collect_entities(config: dict) -> list[str]:
             eid = widget.get("entity_id")
             if eid:
                 entities.add(eid)
+            for extra in (widget.get("entities", []) or widget.get("config", {}).get("entities", []) or []):
+                if isinstance(extra, dict):
+                    ex_id = extra.get("entity_id") or extra.get("id")
+                else:
+                    ex_id = extra
+                if ex_id:
+                    entities.add(ex_id)
 
         for entity in screen.get("entities", []):
             if isinstance(entity, dict):

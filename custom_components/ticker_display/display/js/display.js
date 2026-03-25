@@ -119,6 +119,16 @@ class DataManager {
     }
   }
 
+  async fetchState(entityId) {
+    try {
+      const r = await fetch(`${this.apiBase}/api/states/${entityId}`);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
   getCameraUrl(entityId, mode = "auto") {
     return `${this.apiBase}/api/image/camera/${entityId}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
   }
@@ -566,6 +576,8 @@ class ScreenManager {
 
     const screen = document.createElement("div");
     screen.className = "screen";
+    screen.style.zIndex = "2";
+    screen.style.isolation = "isolate";
     this._applyScreenStyle(screen, config);
 
     switch (config.type) {
@@ -591,7 +603,7 @@ class ScreenManager {
   }
 
   _applyScreenStyle(screen, config) {
-    if (config.background_color) screen.style.backgroundColor = config.background_color;
+    screen.style.backgroundColor = config.background_color || "var(--td-bg, #121212)";
     if (config.background_image) {
       const overlay = Number(config.background_overlay_opacity ?? 1);
       const shade = Math.max(0, Math.min(1, 1 - overlay));
@@ -797,21 +809,36 @@ class ScreenManager {
     return widget;
   }
 
+  _normalizeEntityIdList(list) {
+    return [...new Set(Utils.safeArray(list).map((item) => typeof item === "string" ? item : item?.entity_id || item?.id || "").filter(Boolean))];
+  }
+
   _renderExtraEntityList(widget, config) {
-    const entityIds = Utils.safeArray(config.config?.entities || config.entities).filter(Boolean);
+    const entityIds = this._normalizeEntityIdList(config.config?.entities || config.entities);
     if (!entityIds.length) return;
-    const rows = entityIds.slice(0, 6).map((entityId) => {
+    const rows = entityIds.map((entityId) => {
       const st = this.app.entityStates[entityId] || {};
       const meta = this._extraEntityMeta(config, entityId);
       const label = meta.hide_name ? "" : (meta.alias || st.attributes?.friendly_name || entityId);
       const unit = st.attributes?.unit_of_measurement || "";
       return `<div class="td-extra-row ${meta.hide_name ? "name-hidden" : ""}" data-entity-id="${entityId}"><span class="td-extra-name">${Utils.text(label)}</span><span class="td-extra-value">${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}</span></div>`;
     }).join("");
-    widget.insertAdjacentHTML("beforeend", `<div class="td-extra-entities">${rows}</div>`);
+    widget.insertAdjacentHTML("beforeend", `<div class="td-extra-entities" data-count="${entityIds.length}">${rows}</div>`);
   }
 
   _updateExtraEntityList(element, config) {
+    const entityIds = this._normalizeEntityIdList(config.config?.entities || config.entities);
+    const container = element.querySelector(".td-extra-entities");
+    if (!entityIds.length) {
+      if (container) container.remove();
+      return;
+    }
     const rows = element.querySelectorAll(".td-extra-row");
+    if (!container || rows.length !== entityIds.length) {
+      if (container) container.remove();
+      this._renderExtraEntityList(element, config);
+      return;
+    }
     rows.forEach((row) => {
       const entityId = row.dataset.entityId;
       const st = this.app.entityStates[entityId] || {};
@@ -1093,7 +1120,7 @@ class ScreenManager {
     this._renderExtraEntityList(widget, config);
     const canvas = widget.querySelector(".chart-canvas");
     if (!canvas || !window.Chart) return;
-    this._buildChart(canvas, config, state);
+    this._scheduleChartBuild(widget, canvas, config, state);
   }
 
   _chartPalette(index = 0, alpha = 1) {
@@ -1113,13 +1140,35 @@ class ScreenManager {
   _chartEntityIds(config) {
     const ids = [];
     if (config.entity_id) ids.push(config.entity_id);
-    for (const extra of Utils.safeArray(config.config?.entities || config.entities)) {
+    for (const extra of this._normalizeEntityIdList(config.config?.entities || config.entities)) {
       if (extra && !ids.includes(extra)) ids.push(extra);
     }
     return ids;
   }
 
-  async _buildChart(canvas, config, state) {
+
+  _destroyElementChart(element) {
+    if (element?._chartInstance) {
+      try { element._chartInstance.destroy(); } catch (e) {}
+      element._chartInstance = null;
+    }
+  }
+
+  _scheduleChartBuild(element, canvas, config, state, attempt = 0) {
+    clearTimeout(element._chartBuildTimer);
+    element._chartBuildTimer = setTimeout(() => {
+      if (!document.body.contains(canvas)) return;
+      const rect = canvas.getBoundingClientRect();
+      if ((rect.width < 24 || rect.height < 24) && attempt < 8) {
+        this._scheduleChartBuild(element, canvas, config, state, attempt + 1);
+        return;
+      }
+      this._destroyElementChart(element);
+      this._buildChart(canvas, config, state, element);
+    }, attempt ? 80 : 20);
+  }
+
+  async _buildChart(canvas, config, state, element = null) {
     try {
       const entityIds = this._chartEntityIds(config);
       const hours = config.config?.hours || config.config?.period || 24;
@@ -1134,12 +1183,17 @@ class ScreenManager {
       }));
 
       const primary = histories[0] || { state: state || {}, points: this._normalizePoints([], state?.state) };
-      const labels = primary.points.map((p) => Utils.shortDateTime(p.x));
+      const maxLen = Math.max(...histories.map((entry) => entry.points.length), primary.points.length, 1);
+      const labels = Array.from({ length: maxLen }, (_, idx) => {
+        const point = primary.points[idx] || primary.points[primary.points.length - 1] || { x: new Date().toISOString() };
+        return Utils.shortDateTime(point.x);
+      });
       const type = config.type || "mini-graph";
       const chartCfg = this._getChartConfig(type, histories, labels, config);
       const chart = new Chart(canvas, chartCfg);
       canvas.dataset.chartType = type;
       canvas.dataset.entityIds = JSON.stringify(entityIds);
+      if (element) element._chartInstance = chart;
       this._chartInstances.push(chart);
     } catch (e) {
       console.warn("Chart build failed:", e);
@@ -1163,7 +1217,7 @@ class ScreenManager {
 
     const lineDatasets = histories.map((entry, idx) => ({
       label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
-      data: entry.points.map((p) => p.y),
+      data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
       borderColor: this._chartPalette(idx, 0.95),
       backgroundColor: this._chartPalette(idx, type === "area-chart" ? 0.22 : 0.16),
       fill: type === "area-chart" || type === "forecast-chart" || type === "energy-flow-mini",
@@ -1193,7 +1247,7 @@ class ScreenManager {
     if (type === "bar-chart" || type === "stacked-bar-chart" || type === "horizontal-bar-chart" || type === "heatmap-mini" || type === "bullet-chart") {
       const datasets = histories.map((entry, idx) => ({
         label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}`,
-        data: entry.points.map((p) => p.y),
+        data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
         borderWidth: 1,
         borderColor: this._chartPalette(idx, 0.95),
         backgroundColor: this._chartPalette(idx, type === "heatmap-mini" ? 0.55 : 0.35),
@@ -1229,11 +1283,10 @@ class ScreenManager {
             data: isGauge ? [gaugeValue, Math.max(gaugeMax - gaugeValue, 0)] : latest,
             backgroundColor: isGauge ? [this._chartPalette(0, 0.95), "rgba(255,255,255,0.08)"] : latest.map((_, idx) => this._chartPalette(idx, 0.78)),
             borderColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
-            cutout: type === "pie-chart" ? "0%" : "70%"
+            borderWidth: 1
           }]
         },
-        options: { ...baseOptions, scales: {}, plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: true } } }
+        options: { ...baseOptions, cutout: type === "pie-chart" ? "0%" : "70%", scales: {}, plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: true } } }
       };
     }
 
@@ -1244,7 +1297,7 @@ class ScreenManager {
           labels,
           datasets: histories.map((entry, idx) => ({
             label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
-            data: entry.points.map((p) => p.y),
+            data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
             borderColor: this._chartPalette(idx, 0.95),
             backgroundColor: this._chartPalette(idx, 0.20),
             pointBackgroundColor: this._chartPalette(idx, 0.95),
@@ -1267,7 +1320,7 @@ class ScreenManager {
             pointRadius: 4
           }))
         },
-        options: baseOptions
+        options: { ...baseOptions, scales: { x: { type: "linear", position: "bottom", grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "rgba(255,255,255,0.45)" } }, y: baseOptions.scales.y } }
       };
     }
 
@@ -1367,10 +1420,7 @@ class ScreenManager {
       }
 
       case "weather": {
-        const val = element.querySelector(".w-value");
-        const sub = element.querySelector(".widget-subvalue");
-        if (val) val.textContent = newState?.attributes?.temperature ?? "—";
-        if (sub) sub.textContent = newState?.state || "—";
+        this._renderWeatherWidget(element, config, newState || this.app.entityStates[config.entity_id] || {});
         break;
       }
 
@@ -1396,6 +1446,8 @@ class ScreenManager {
         if (chartValue) {
           chartValue.innerHTML = `${Utils.text(value)}${unit ? `<span class="chart-unit">${unit}</span>` : ""}`;
         }
+        const canvas = element.querySelector(".chart-canvas");
+        if (canvas && window.Chart) this._scheduleChartBuild(element, canvas, config, this.app.entityStates[config.entity_id] || newState);
         break;
       }
 
@@ -1415,6 +1467,8 @@ class ScreenManager {
     const oldScreen = this.container.querySelector(".screen");
 
     if (oldScreen && type !== "none") {
+      oldScreen.style.zIndex = "1";
+      oldScreen.style.pointerEvents = "none";
       newScreen.classList.add(`screen-enter-${type}`);
       oldScreen.classList.add(`screen-exit-${type}`);
       this.container.appendChild(newScreen);
@@ -1821,6 +1875,7 @@ class TickerDisplayApp {
     this.entityStates = {};
     this.dataManager = new DataManager(this.apiBase);
     this.isPreview = location.pathname.includes("/preview/");
+    this._statePollTimer = null;
   }
 
   async init() {
@@ -1839,6 +1894,7 @@ class TickerDisplayApp {
 
     try {
       this.bridge = new BridgeWrapper();
+      await this._primeEntityStates();
       this.themeManager = new ThemeManager();
       this.screenManager = new ScreenManager(this);
       this.tickerManager = new TickerManager(this);
@@ -1870,6 +1926,7 @@ class TickerDisplayApp {
         });
 
       this._startSensorReporting();
+      this._startStatePolling();
 
       console.log("✅ Ticker Display ready!");
     } catch (e) {
@@ -1944,8 +2001,10 @@ class TickerDisplayApp {
     console.log("📥 Config changed", cfg);
     this.config = cfg || {};
     this.neededEntities = window.TICKER_ENTITIES || this.neededEntities;
+    this._primeEntityStates();
     this.screenManager.rebuild();
     this.tickerManager.rebuild();
+    this._startStatePolling();
 
     const offline = document.getElementById("offline-screen");
     if (offline) {
@@ -1975,6 +2034,33 @@ class TickerDisplayApp {
         data: { device_id: this.deviceId, ...d }
       });
     }
+  }
+
+  async _primeEntityStates() {
+    await this._pollEntityStates(false);
+  }
+
+  async _pollEntityStates(emitChanges = true) {
+    const ids = [...new Set((this.neededEntities || []).filter(Boolean))].slice(0, 250);
+    if (!ids.length) return;
+    const results = await Promise.all(ids.map((id) => this.dataManager.fetchState(id)));
+    results.forEach((state, idx) => {
+      const entityId = ids[idx];
+      if (!state) return;
+      const prev = this.entityStates[entityId];
+      const changed = !prev || prev.state !== state.state || JSON.stringify(prev.attributes || {}) !== JSON.stringify(state.attributes || {});
+      this.entityStates[entityId] = state;
+      if (emitChanges && changed) {
+        this.onEntityStateChanged(entityId, state);
+      }
+    });
+  }
+
+  _startStatePolling() {
+    if (this._statePollTimer) clearInterval(this._statePollTimer);
+    const ms = this.wsClient?.isConnected() ? 30000 : 12000;
+    this._statePollTimer = setInterval(() => this._pollEntityStates(true), ms);
+    setTimeout(() => this._pollEntityStates(true), 1500);
   }
 
   _startSensorReporting() {
