@@ -103,6 +103,95 @@ const TD_CAMERA_SOURCES = [
   ["camera_proxy_stream", "camera_proxy_stream"],
 ];
 
+
+
+function tdNormalizedDefaults(settings = {}) {
+  return {
+    default_theme: settings.default_theme || "dark",
+    default_transition: settings.default_transition || "fade",
+    default_screen_duration: Number(settings.default_screen_duration || 15),
+    default_camera_source: settings.default_camera_source || "auto",
+    default_chart_hours: Number(settings.default_chart_hours || 24),
+    default_widget_opacity: settings.default_widget_opacity ?? 0.75,
+    default_widget_blur: Number(settings.default_widget_blur || 0),
+    default_widget_radius: Number(settings.default_widget_radius || 12),
+    default_background_color: settings.default_background_color || "#121212",
+  };
+}
+
+function tdCreateWidget(type, col, row, settings = {}) {
+  const d = tdNormalizedDefaults(settings);
+  return {
+    id: `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    col,
+    row,
+    colspan: 1,
+    rowspan: 1,
+    entity_id: "",
+    name: "",
+    icon: "",
+    bgOpacity: d.default_widget_opacity,
+    blur: d.default_widget_blur,
+    borderRadius: d.default_widget_radius,
+    bgColor: "#1E1E1E",
+    config: {
+      camera_source: d.default_camera_source,
+      hours: d.default_chart_hours,
+    },
+  };
+}
+
+function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
+  const d = tdNormalizedDefaults(settings);
+  const base = {
+    id: `screen_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: `Screen ${index + 1}`,
+    type: "dashboard",
+    duration: d.default_screen_duration,
+    transition: d.default_transition,
+    grid: { columns: 3, rows: 2 },
+    widgets: [],
+    background_color: d.default_background_color,
+    background_image: "",
+    background_image_size: "cover",
+  };
+
+  if (kind === "weather") {
+    return {
+      ...base,
+      name: `Wetter ${index + 1}`,
+      widgets: [
+        { ...tdCreateWidget("weather", 0, 0, settings), colspan: 2, rowspan: 2, name: "Wetter" },
+        { ...tdCreateWidget("clock", 2, 0, settings), name: "Uhr" },
+        { ...tdCreateWidget("simple-value", 2, 1, settings), name: "Temperatur" },
+      ],
+    };
+  }
+  if (kind === "camera") {
+    return {
+      ...base,
+      name: `Kamera ${index + 1}`,
+      grid: { columns: 2, rows: 2 },
+      widgets: [
+        { ...tdCreateWidget("camera", 0, 0, settings), colspan: 2, rowspan: 2, name: "Kamera" },
+      ],
+    };
+  }
+  if (kind === "charts") {
+    return {
+      ...base,
+      name: `Charts ${index + 1}`,
+      widgets: [
+        { ...tdCreateWidget("multi-line-chart", 0, 0, settings), colspan: 2, rowspan: 2, name: "Verlauf" },
+        { ...tdCreateWidget("donut-chart", 2, 0, settings), name: "Verteilung" },
+        { ...tdCreateWidget("comparison-chart", 2, 1, settings), name: "Vergleich" },
+      ],
+    };
+  }
+  return base;
+}
+
 function downloadJson(filename, data) {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: "application/json" });
@@ -612,6 +701,7 @@ class TdDeviceEditor extends LitElement {
       sounds: { type: Array },
       fonts: { type: Array },
       templates: { type: Object },
+      globalSettings: { type: Object },
       _ed: { type: Object },
       _di: { type: Number },
     };
@@ -657,6 +747,12 @@ class TdDeviceEditor extends LitElement {
         border:2px dashed var(--divider-color); border-radius:10px; background:none; color:var(--secondary-text-color); font-size:14px; cursor:pointer; transition:all .2s;
       }
       .addb:hover { border-color:var(--primary-color); color:var(--primary-color); background:rgba(33,150,243,.05); }
+      .da { display:flex; gap:8px; flex-wrap:wrap; }
+      .ab {
+        display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:1px solid var(--divider-color);
+        border-radius:8px; background:none; color:var(--primary-text-color); font-size:13px; cursor:pointer; transition:all .2s;
+      }
+      .ab:hover { background:rgba(255,255,255,.05); border-color:var(--primary-color); }
       .savebar {
         position:sticky; bottom:0; background:var(--card-background-color); padding:16px; display:flex; justify-content:flex-end; gap:12px;
         margin:0 -16px; border-top:1px solid var(--divider-color); border-radius:0 0 12px 12px;
@@ -697,7 +793,13 @@ class TdDeviceEditor extends LitElement {
 
       <div class="sec">
         <h3>📺 Screens (Rotation)</h3>
-        <p style="font-size:13px;color:var(--secondary-text-color);margin:0 0 16px">Reihenfolge per Drag & Drop ändern.</p>
+        <p style="font-size:13px;color:var(--secondary-text-color);margin:0 0 16px">Reihenfolge per Drag & Drop ändern. Über Schnellstart legst du fertige Grundlayouts an.</p>
+        <div class="da" style="margin-bottom:14px">
+          <button class="ab" @click=${() => this._e("add-screen-preset", { preset: "blank" })}>➕ Leer</button>
+          <button class="ab" @click=${() => this._e("add-screen-preset", { preset: "weather" })}>🌤️ Wetter</button>
+          <button class="ab" @click=${() => this._e("add-screen-preset", { preset: "camera" })}>📹 Kamera</button>
+          <button class="ab" @click=${() => this._e("add-screen-preset", { preset: "charts" })}>📈 Charts</button>
+        </div>
         <ul class="sl">
           ${(d.screens || []).map((s, i) => html`
             <li class="si ${this._di === i ? "drag" : ""}" draggable="true"
@@ -733,7 +835,7 @@ class TdDeviceEditor extends LitElement {
             </li>
           `)}
         </ul>
-        <button class="addb" @click=${() => this._e("add-screen", {})}>➕ Screen hinzufügen</button>
+        <button class="addb" @click=${() => this._e("add-screen-preset", { preset: "blank" })}>➕ Screen hinzufügen</button>
       </div>
 
       <div class="sec">
@@ -806,6 +908,8 @@ class TdScreenEditor extends LitElement {
       fonts: { type: Array },
       sounds: { type: Array },
       templates: { type: Object },
+      images: { type: Array },
+      globalSettings: { type: Object },
       _cfg: { type: Object },
       _sel: { type: Number },
       _prev: { type: String },
@@ -1162,7 +1266,7 @@ sensor.energy_export"></textarea></div>
     if (!this._dwt) return;
     this._push();
     const ws = [...(this._cfg.widgets || [])];
-    ws.push({ id: `w_${Date.now()}`, type: this._dwt, col: c, row: r, colspan: 1, rowspan: 1, entity_id: "", name: "", icon: "", bgOpacity: 0.75, blur: 0, config: {} });
+    ws.push(tdCreateWidget(this._dwt, c, r, this.globalSettings || {}));
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = ws.length - 1;
     this._dwt = null;
@@ -1924,6 +2028,12 @@ class TdGlobalSettings extends LitElement {
           <option value="fade">Fade</option><option value="slide">Slide</option><option value="flip">Flip</option><option value="zoom">Zoom</option><option value="none">Kein</option>
         </select></div>
         <div class="f"><label>Screen-Dauer (s)</label><input type="number" min="3" max="300" .value=${this._ed.default_screen_duration || 15} @change=${(e) => this._ed = { ...this._ed, default_screen_duration: +e.target.value }}></div>
+        <div class="f"><label>Standard-Kameraquelle</label><select .value=${this._ed.default_camera_source || "auto"} @change=${(e) => this._ed = { ...this._ed, default_camera_source: e.target.value }}>${TD_CAMERA_SOURCES.map(([v,l]) => html`<option value=${v}>${l}</option>`)}</select></div>
+        <div class="f"><label>Standard-Chart-Zeitraum (h)</label><input type="number" min="1" max="168" .value=${this._ed.default_chart_hours || 24} @change=${(e) => this._ed = { ...this._ed, default_chart_hours: +e.target.value }}></div>
+        <div class="f"><label>Standard-Hintergrundfarbe</label><input .value=${this._ed.default_background_color || "#121212"} @input=${(e) => this._ed = { ...this._ed, default_background_color: e.target.value }}></div>
+        <div class="f"><label>Widget-Transparenz</label><input type="range" min="0" max="1" step="0.05" .value=${this._ed.default_widget_opacity ?? 0.75} @input=${(e) => this._ed = { ...this._ed, default_widget_opacity: +e.target.value }}></div>
+        <div class="f"><label>Widget-Blur</label><input type="range" min="0" max="20" step="1" .value=${this._ed.default_widget_blur || 0} @input=${(e) => this._ed = { ...this._ed, default_widget_blur: +e.target.value }}></div>
+        <div class="f"><label>Widget-Radius</label><input type="range" min="0" max="32" step="2" .value=${this._ed.default_widget_radius || 12} @input=${(e) => this._ed = { ...this._ed, default_widget_radius: +e.target.value }}></div>
         <button class="b p" @click=${() => this._e("save-settings", this._ed)}>💾 Speichern</button>
       </div>
 
@@ -1956,6 +2066,8 @@ class TickerDisplayPanel extends LitElement {
       panel: { type: Object },
       _page: { type: String },
       _tab: { type: String },
+      _libraryTab: { type: String },
+      _mediaTab: { type: String },
       _devId: { type: String },
       _scrIdx: { type: Number },
       _tplId: { type: String },
@@ -1976,7 +2088,9 @@ class TickerDisplayPanel extends LitElement {
   constructor() {
     super();
     this._page = "main";
-    this._tab = "devices";
+    this._tab = "overview";
+    this._libraryTab = "templates";
+    this._mediaTab = "images";
     this._devId = null;
     this._scrIdx = -1;
     this._tplId = null;
@@ -2066,6 +2180,25 @@ class TickerDisplayPanel extends LitElement {
       .cnt { height:calc(100vh - 56px - 48px); overflow-y:auto; }
       .cnt.nt { height:calc(100vh - 56px); }
       .ld { display:flex; align-items:center; justify-content:center; height:200px; color:var(--secondary-text-color); }
+      .wrap { padding:16px; }
+      .hero { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
+      .card { background:var(--card-background-color,#1e1e1e); border-radius:16px; padding:18px; box-shadow:var(--ha-card-box-shadow,0 2px 6px rgba(0,0,0,.15)); }
+      .card h3 { margin:0 0 10px; font-size:18px; }
+      .muted { color:var(--secondary-text-color); font-size:13px; }
+      .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:16px; }
+      .stat { background:var(--card-background-color,#1e1e1e); border-radius:14px; padding:16px; }
+      .stat .v { font-size:28px; font-weight:600; margin-top:6px; }
+      .qa, .subtabs { display:flex; gap:8px; flex-wrap:wrap; }
+      .chip { padding:8px 12px; border-radius:999px; border:1px solid var(--divider-color); background:none; color:var(--primary-text-color); cursor:pointer; }
+      .chip.a { background:rgba(33,150,243,.12); border-color:var(--td-accent); color:var(--td-accent); }
+      .list { display:grid; gap:10px; }
+      .rowcard { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 14px; border:1px solid var(--divider-color); border-radius:12px; background:rgba(255,255,255,.02); }
+      .rowcard .title { font-weight:600; }
+      .rowcard .meta { color:var(--secondary-text-color); font-size:12px; }
+      .cta { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+      .btn { padding:10px 14px; border-radius:10px; border:1px solid var(--divider-color); background:none; color:var(--primary-text-color); cursor:pointer; }
+      .btn.p { background:var(--td-accent); border-color:var(--td-accent); color:#fff; }
+      @media (max-width: 900px) { .hero { grid-template-columns:1fr; } }
       .sp { width:40px; height:40px; border:3px solid rgba(255,255,255,.1); border-top-color:var(--td-accent); border-radius:50%; animation:spin .8s linear infinite; }
       @keyframes spin { to { transform:rotate(360deg); } }
     `;
@@ -2087,17 +2220,14 @@ class TickerDisplayPanel extends LitElement {
 
   _rMain() {
     const tabs = [
+      { id: "overview", l: "✨ Studio" },
       { id: "devices", l: "📱 Geräte" },
-      { id: "templates", l: "📋 Vorlagen" },
-      { id: "alerts", l: "🔔 Alerts" },
-      { id: "themes", l: "🎨 Themes" },
-      { id: "sounds", l: "🔊 Sounds" },
-      { id: "fonts", l: "🔤 Fonts" },
-      { id: "images", l: "🖼️ Bilder" },
-      { id: "settings", l: "⚙️ Settings" },
+      { id: "library", l: "🧱 Bibliothek" },
+      { id: "media", l: "🖼️ Medien" },
+      { id: "settings", l: "⚙️ Einstellungen" },
     ];
     return html`
-      <div class="top"><span class="t">📱 Ticker Display</span></div>
+      <div class="top"><span class="t">📱 Ticker Display Studio</span></div>
       <div class="tabs">${tabs.map((t) => html`<button class="tab ${this._tab === t.id ? "a" : ""}" @click=${() => this._tab = t.id}>${t.l}</button>`)}</div>
       <div class="cnt">${this._tabContent()}</div>
       <td-toast></td-toast>
@@ -2105,8 +2235,171 @@ class TickerDisplayPanel extends LitElement {
     `;
   }
 
+  _stats() {
+    const online = this._devices.filter((d) => d.online).length;
+    const screens = this._devices.reduce((sum, d) => sum + (d.screens?.length || 0), 0);
+    const widgets = this._devices.reduce((sum, d) => sum + (d.screens || []).reduce((a, s) => a + (s.widgets?.length || 0), 0), 0);
+    return {
+      devices: this._devices.length,
+      online,
+      screens,
+      widgets,
+      templates: Object.keys(this._templates || {}).length,
+      alerts: Object.keys(this._alertTemplates || {}).length,
+      themes: Object.keys(this._customThemes || {}).length,
+      media: (this._images?.length || 0) + (this._sounds?.length || 0) + (this._fonts?.length || 0),
+    };
+  }
+
+  _renderOverview() {
+    const stats = this._stats();
+    const recommendations = [];
+    if (!stats.devices) recommendations.push("Registriere zuerst ein Tablet oder Smartphone mit der App.");
+    if (!stats.templates) recommendations.push("Lege 2–3 Vorlagen an, damit neue Screens schneller entstehen.");
+    if (!stats.themes) recommendations.push("Ein eigenes Theme lohnt sich für Corporate Colors und Lesbarkeit.");
+    if (!stats.media) recommendations.push("Bilder, Sounds und Fonts zentral hochladen, damit Widgets konsistent bleiben.");
+    return html`
+      <div class="wrap">
+        <div class="hero">
+          <div class="card">
+            <h3>Modernisiertes Studio</h3>
+            <div class="muted">Die Oberfläche ist jetzt stärker nach Arbeitsbereichen geordnet: Geräte für den laufenden Betrieb, Bibliothek für wiederverwendbare Bausteine, Medien für Assets und Einstellungen für globale Defaults.</div>
+            <div class="cta">
+              <button class="btn p" @click=${() => this._tab = "devices"}>Geräte verwalten</button>
+              <button class="btn" @click=${() => { this._tab = "library"; this._libraryTab = "templates"; }}>Vorlagen öffnen</button>
+              <button class="btn" @click=${() => { this._tab = "settings"; }}>Defaults anpassen</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Schnellstart</h3>
+            <div class="list">
+              <div class="rowcard"><div><div class="title">Wetter-/Kamera-/Chart-Presets</div><div class="meta">Direkt im Geräte-Editor als Startlayout anlegbar</div></div></div>
+              <div class="rowcard"><div><div class="title">Globale Widget-Defaults</div><div class="meta">Transparenz, Blur, Radius, Kameraquelle, Chart-Zeitraum</div></div></div>
+              <div class="rowcard"><div><div class="title">Bibliothek statt verstreuter Register</div><div class="meta">Vorlagen, Alerts und Themes zusammengeführt</div></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="muted">Geräte</div><div class="v">${stats.devices}</div></div>
+          <div class="stat"><div class="muted">Online</div><div class="v">${stats.online}</div></div>
+          <div class="stat"><div class="muted">Screens</div><div class="v">${stats.screens}</div></div>
+          <div class="stat"><div class="muted">Widgets</div><div class="v">${stats.widgets}</div></div>
+          <div class="stat"><div class="muted">Vorlagen</div><div class="v">${stats.templates}</div></div>
+          <div class="stat"><div class="muted">Medien</div><div class="v">${stats.media}</div></div>
+        </div>
+        <div class="hero">
+          <div class="card">
+            <h3>Geräte im Überblick</h3>
+            <div class="list">
+              ${this._devices.slice(0, 5).map((d) => html`<div class="rowcard"><div><div class="title">${d.name || d.id}</div><div class="meta">${d.model || "Unbekannt"} · ${(d.screens?.length || 0)} Screens · ${d.online ? "Online" : "Offline"}</div></div><button class="btn" @click=${() => this._openDev(d.id)}>Öffnen</button></div>`)}
+              ${!this._devices.length ? html`<div class="muted">Noch keine Geräte vorhanden.</div>` : ""}
+            </div>
+          </div>
+          <div class="card">
+            <h3>Empfehlungen</h3>
+            <div class="list">
+              ${recommendations.length ? recommendations.map((r) => html`<div class="rowcard"><div class="meta">${r}</div></div>`) : html`<div class="rowcard"><div class="meta">Die Grundstruktur sieht gut aus. Als Nächstes würde ich die Bibliothek auf Vorlagen + Themes standardisieren und pro Gerät nur noch Screens pflegen.</div></div>`}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderLibrary() {
+    return html`
+      <div class="wrap">
+        <div class="subtabs">
+          <button class="chip ${this._libraryTab === "templates" ? "a" : ""}" @click=${() => this._libraryTab = "templates"}>📋 Vorlagen</button>
+          <button class="chip ${this._libraryTab === "alerts" ? "a" : ""}" @click=${() => this._libraryTab = "alerts"}>🔔 Alerts</button>
+          <button class="chip ${this._libraryTab === "themes" ? "a" : ""}" @click=${() => this._libraryTab = "themes"}>🎨 Themes</button>
+        </div>
+        <div style="margin-top:16px">${this._renderLibraryInner()}</div>
+      </div>
+    `;
+  }
+
+  _renderLibraryInner() {
+    switch (this._libraryTab) {
+      case "alerts":
+        return html`<td-alert-list .hass=${this.hass} .alertTemplates=${this._alertTemplates}
+          @create-alert=${() => { this._alertId = null; this._page = "alert-editor"; }}
+          @edit-alert=${(e) => { this._alertId = e.detail.alertId; this._page = "alert-editor"; }}
+          @delete-alert=${async (e) => { if (await this._confirm("Alert löschen", `Alert ${e.detail.alertId} wirklich löschen?`)) { await this._del(`/api/config/alert/${e.detail.alertId}`); await this._load(); } }}
+        ></td-alert-list>`;
+      case "themes":
+        return html`<td-theme-list .hass=${this.hass} .customThemes=${this._customThemes}
+          @create-theme=${() => { this._themeId = null; this._page = "theme-editor"; }}
+          @edit-theme=${(e) => { this._themeId = e.detail.themeId; this._page = "theme-editor"; }}
+          @delete-theme=${async (e) => { if (await this._confirm("Theme löschen", `Theme ${e.detail.themeId} wirklich löschen?`)) { await this._del(`/api/config/theme/${e.detail.themeId}`); await this._load(); } }}
+        ></td-theme-list>`;
+      default:
+        return html`<td-template-gallery .hass=${this.hass} .templates=${this._templates} .devices=${this._devices}
+          @create-template=${() => { this._tplId = null; this._page = "template-editor"; }}
+          @edit-template=${(e) => { this._tplId = e.detail.templateId; this._page = "template-editor"; }}
+          @export-template=${async (e) => {
+            try {
+              await copyToClipboard(JSON.stringify(this._templates[e.detail.templateId], null, 2));
+              this._toast("📋 Kopiert");
+            } catch (err) {
+              console.error("Clipboard copy failed:", err);
+              this._toast("❌ Kopieren fehlgeschlagen");
+            }
+          }}
+          @delete-template=${async (e) => { if (await this._confirm("Vorlage löschen", `Vorlage ${e.detail.templateId} wirklich löschen?`)) { await this._del(`/api/config/template/${e.detail.templateId}`); await this._load(); } }}
+          @import-template=${async (e) => {
+            try {
+              const t = JSON.parse(e.detail.json);
+              t.id = `imported_${Date.now()}`;
+              await this._post("/api/config/template", t);
+              await this._load();
+              this._toast("📥 Importiert");
+            } catch {
+              this._toast("❌ Ungültiges JSON");
+            }
+          }}
+        ></td-template-gallery>`;
+    }
+  }
+
+  _renderMedia() {
+    return html`
+      <div class="wrap">
+        <div class="subtabs">
+          <button class="chip ${this._mediaTab === "images" ? "a" : ""}" @click=${() => this._mediaTab = "images"}>🖼️ Bilder</button>
+          <button class="chip ${this._mediaTab === "sounds" ? "a" : ""}" @click=${() => this._mediaTab = "sounds"}>🔊 Sounds</button>
+          <button class="chip ${this._mediaTab === "fonts" ? "a" : ""}" @click=${() => this._mediaTab = "fonts"}>🔤 Fonts</button>
+        </div>
+        <div style="margin-top:16px">${this._renderMediaInner()}</div>
+      </div>
+    `;
+  }
+
+  _renderMediaInner() {
+    switch (this._mediaTab) {
+      case "sounds":
+        return html`<td-sound-manager .hass=${this.hass} .sounds=${this._sounds}
+          @upload-sound=${async (e) => { await this._upload("/api/media/sound/upload", e.detail.file); await this._load(); this._toast("🔊 Hochgeladen"); }}
+          @delete-sound=${async (e) => { await this._del(`/api/media/sound/${e.detail.soundId}`); await this._load(); }}
+        ></td-sound-manager>`;
+      case "fonts":
+        return html`<td-font-manager .hass=${this.hass} .fonts=${this._fonts}
+          @upload-font=${async (e) => { await this._upload("/api/media/font/upload", e.detail.file); await this._load(); this._toast("🔤 Hochgeladen"); }}
+          @delete-font=${async (e) => { await this._del(`/api/media/font/${e.detail.fontId}`); await this._load(); }}
+          @install-google-font=${(e) => this._toast(`ℹ️ Google Font Install noch nicht serverseitig umgesetzt: ${e.detail.fontName}`)}
+        ></td-font-manager>`;
+      default:
+        return html`<td-image-manager .hass=${this.hass} .images=${this._images}
+          @upload-image=${async (e) => { await this._upload("/api/media/image/upload", e.detail.file); await this._load(); this._toast("🖼️ Hochgeladen"); }}
+          @delete-image=${async (e) => { await this._del(`/api/media/image/${e.detail.imageId}`); await this._load(); }}
+        ></td-image-manager>`;
+    }
+  }
+
   _tabContent() {
     switch (this._tab) {
+      case "overview":
+        return this._renderOverview();
       case "devices":
         return html`
           <td-device-list .hass=${this.hass} .devices=${this._devices}
@@ -2118,72 +2411,10 @@ class TickerDisplayPanel extends LitElement {
             @refresh=${() => this._load()}
           ></td-device-list>
         `;
-      case "templates":
-        return html`
-          <td-template-gallery .hass=${this.hass} .templates=${this._templates} .devices=${this._devices}
-            @create-template=${() => { this._tplId = null; this._page = "template-editor"; }}
-            @edit-template=${(e) => { this._tplId = e.detail.templateId; this._page = "template-editor"; }}
-            @export-template=${async (e) => {
-              try {
-                await copyToClipboard(JSON.stringify(this._templates[e.detail.templateId], null, 2));
-                this._toast("📋 Kopiert");
-              } catch (err) {
-                console.error("Clipboard copy failed:", err);
-                this._toast("❌ Kopieren fehlgeschlagen");
-              }
-            }}
-            @delete-template=${async (e) => { if (await this._confirm("Vorlage löschen", `Vorlage ${e.detail.templateId} wirklich löschen?`)) { await this._del(`/api/config/template/${e.detail.templateId}`); await this._load(); } }}
-            @import-template=${async (e) => {
-              try {
-                const t = JSON.parse(e.detail.json);
-                t.id = `imported_${Date.now()}`;
-                await this._post("/api/config/template", t);
-                await this._load();
-                this._toast("📥 Importiert");
-              } catch {
-                this._toast("❌ Ungültiges JSON");
-              }
-            }}
-          ></td-template-gallery>
-        `;
-      case "alerts":
-        return html`
-          <td-alert-list .hass=${this.hass} .alertTemplates=${this._alertTemplates}
-            @create-alert=${() => { this._alertId = null; this._page = "alert-editor"; }}
-            @edit-alert=${(e) => { this._alertId = e.detail.alertId; this._page = "alert-editor"; }}
-            @delete-alert=${async (e) => { if (await this._confirm("Alert löschen", `Alert ${e.detail.alertId} wirklich löschen?`)) { await this._del(`/api/config/alert/${e.detail.alertId}`); await this._load(); } }}
-          ></td-alert-list>
-        `;
-      case "themes":
-        return html`
-          <td-theme-list .hass=${this.hass} .customThemes=${this._customThemes}
-            @create-theme=${() => { this._themeId = null; this._page = "theme-editor"; }}
-            @edit-theme=${(e) => { this._themeId = e.detail.themeId; this._page = "theme-editor"; }}
-            @delete-theme=${async (e) => { if (await this._confirm("Theme löschen", `Theme ${e.detail.themeId} wirklich löschen?`)) { await this._del(`/api/config/theme/${e.detail.themeId}`); await this._load(); } }}
-          ></td-theme-list>
-        `;
-      case "sounds":
-        return html`
-          <td-sound-manager .hass=${this.hass} .sounds=${this._sounds}
-            @upload-sound=${async (e) => { await this._upload("/api/media/sound/upload", e.detail.file); await this._load(); this._toast("🔊 Hochgeladen"); }}
-            @delete-sound=${async (e) => { await this._del(`/api/media/sound/${e.detail.soundId}`); await this._load(); }}
-          ></td-sound-manager>
-        `;
-      case "fonts":
-        return html`
-          <td-font-manager .hass=${this.hass} .fonts=${this._fonts}
-            @upload-font=${async (e) => { await this._upload("/api/media/font/upload", e.detail.file); await this._load(); this._toast("🔤 Hochgeladen"); }}
-            @delete-font=${async (e) => { await this._del(`/api/media/font/${e.detail.fontId}`); await this._load(); }}
-            @install-google-font=${(e) => this._toast(`ℹ️ Google Font Install noch nicht serverseitig umgesetzt: ${e.detail.fontName}`)}
-          ></td-font-manager>
-        `;
-      case "images":
-        return html`
-          <td-image-manager .hass=${this.hass} .images=${this._images}
-            @upload-image=${async (e) => { await this._upload("/api/media/image/upload", e.detail.file); await this._load(); this._toast("🖼️ Hochgeladen"); }}
-            @delete-image=${async (e) => { await this._del(`/api/media/image/${e.detail.imageId}`); await this._load(); }}
-          ></td-image-manager>
-        `;
+      case "library":
+        return this._renderLibrary();
+      case "media":
+        return this._renderMedia();
       case "settings":
         return html`
           <td-global-settings .hass=${this.hass} .settings=${this._globalSettings} .sounds=${this._sounds} .fonts=${this._fonts}
@@ -2203,11 +2434,20 @@ class TickerDisplayPanel extends LitElement {
       <div class="top"><button class="bb" @click=${() => this._page = "main"}>←</button><span class="t">📱 ${d?.name || this._devId}</span></div>
       <div class="cnt nt">
         <td-device-editor .hass=${this.hass} .device=${d} .sounds=${this._sounds} .fonts=${this._fonts} .templates=${this._templates}
+          .globalSettings=${this._globalSettings}
           @save=${async (e) => { await this._post(`/api/config/device/${this._devId}`, e.detail); await this._load(); this._toast("✅ Gespeichert"); }}
           @edit-screen=${(e) => { this._scrIdx = e.detail.screenIndex; this._page = "screen-editor"; }}
           @add-screen=${async () => {
             if (!d) return;
-            const ns = { id:`screen_${Date.now()}`, name:`Screen ${(d.screens?.length || 0) + 1}`, type:"dashboard", duration:15, transition:"fade", grid:{columns:3,rows:2}, widgets:[] };
+            const ns = tdCreateScreenPreset("blank", d.screens?.length || 0, this._globalSettings);
+            await this._post(`/api/config/device/${this._devId}`, { ...d, screens:[...(d.screens || []), ns] });
+            await this._load();
+            this._scrIdx = d.screens?.length || 0;
+            this._page = "screen-editor";
+          }}
+          @add-screen-preset=${async (e) => {
+            if (!d) return;
+            const ns = tdCreateScreenPreset(e.detail.preset || "blank", d.screens?.length || 0, this._globalSettings);
             await this._post(`/api/config/device/${this._devId}`, { ...d, screens:[...(d.screens || []), ns] });
             await this._load();
             this._scrIdx = d.screens?.length || 0;
@@ -2230,6 +2470,8 @@ class TickerDisplayPanel extends LitElement {
     const sc = d?.screens?.[this._scrIdx] || { type:"dashboard", widgets:[], grid:{columns:3,rows:2} };
     return html`
       <td-screen-editor .hass=${this.hass} .deviceId=${this._devId} .screenIndex=${this._scrIdx} .screenConfig=${sc} .fonts=${this._fonts} .sounds=${this._sounds} .templates=${this._templates}
+        .images=${this._images}
+        .globalSettings=${this._globalSettings}
         @save=${async (e) => {
           const scr = [...(d.screens || [])];
           scr[this._scrIdx] = e.detail.screenConfig;

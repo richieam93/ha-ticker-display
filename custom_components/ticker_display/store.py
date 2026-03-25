@@ -26,6 +26,12 @@ class TickerDisplayStore:
                 "default_theme": DEFAULT_THEME,
                 "default_transition": "fade",
                 "default_screen_duration": 15,
+                "default_camera_source": "auto",
+                "default_chart_hours": 24,
+                "default_widget_opacity": 0.75,
+                "default_widget_blur": 0,
+                "default_widget_radius": 12,
+                "default_background_color": "#121212",
                 "device_groups": {},
             },
         }
