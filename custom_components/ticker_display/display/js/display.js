@@ -700,11 +700,12 @@ class ScreenManager {
     const widget = document.createElement("div");
     widget.className = `widget widget-${config.type || "simple-value"}`;
 
-    if (config.entity_id) {
-      if (!this._widgetElements[config.entity_id]) {
-        this._widgetElements[config.entity_id] = [];
+    const trackedIds = [config.entity_id, ...Utils.safeArray(config.config?.entities || config.entities)].filter(Boolean);
+    for (const trackedId of [...new Set(trackedIds)]) {
+      if (!this._widgetElements[trackedId]) {
+        this._widgetElements[trackedId] = [];
       }
-      this._widgetElements[config.entity_id].push({ element: widget, config });
+      this._widgetElements[trackedId].push({ element: widget, config });
     }
 
     const state = this.app.entityStates[config.entity_id] || {};
@@ -781,7 +782,7 @@ class ScreenManager {
         break;
 
       case "icon-value":
-        this._renderIconValueWidget(widget, value, unit, name, icon);
+        this._renderIconValueWidget(widget, config, value, unit, name, icon);
         break;
 
       default:
@@ -793,20 +794,47 @@ class ScreenManager {
     return widget;
   }
 
+  _renderExtraEntityList(widget, config) {
+    const entityIds = Utils.safeArray(config.config?.entities || config.entities).filter(Boolean);
+    if (!entityIds.length) return;
+    const rows = entityIds.slice(0, 6).map((entityId) => {
+      const st = this.app.entityStates[entityId] || {};
+      const friendly = st.attributes?.friendly_name || entityId;
+      const unit = st.attributes?.unit_of_measurement || "";
+      return `<div class="td-extra-row" data-entity-id="${entityId}"><span class="td-extra-name">${Utils.text(friendly)}</span><span class="td-extra-value">${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}</span></div>`;
+    }).join("");
+    widget.insertAdjacentHTML("beforeend", `<div class="td-extra-entities">${rows}</div>`);
+  }
+
+  _updateExtraEntityList(element, config) {
+    const rows = element.querySelectorAll(".td-extra-row");
+    rows.forEach((row) => {
+      const entityId = row.dataset.entityId;
+      const st = this.app.entityStates[entityId] || {};
+      const unit = st.attributes?.unit_of_measurement || "";
+      const nameEl = row.querySelector(".td-extra-name");
+      const valueEl = row.querySelector(".td-extra-value");
+      if (nameEl) nameEl.textContent = st.attributes?.friendly_name || entityId;
+      if (valueEl) valueEl.textContent = `${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}`;
+    });
+  }
+
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
       <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
       <div class="w-name">${name}</div>
     `;
+    this._renderExtraEntityList(widget, config);
   }
 
-  _renderIconValueWidget(widget, value, unit, name, icon) {
+  _renderIconValueWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `
       <div class="w-icon"><span style="font-size:28px">${icon}</span></div>
       <div><span class="w-value">${Utils.text(value)}</span><span class="w-unit">${unit}</span></div>
       <div class="w-name">${name}</div>
     `;
+    this._renderExtraEntityList(widget, config);
   }
 
   _renderGaugeWidget(widget, config, value, unit, name) {
@@ -824,6 +852,7 @@ class ScreenManager {
         <text x="100" y="118" class="gauge-text-label">${name}</text>
       </svg>
     `;
+    this._renderExtraEntityList(widget, config);
   }
 
   _renderProgressBarWidget(widget, config, value, unit, name) {
@@ -840,6 +869,7 @@ class ScreenManager {
         <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
       </div>
     `;
+    this._renderExtraEntityList(widget, config);
   }
 
   _renderStatusDotWidget(widget, config, value, name) {
@@ -850,6 +880,7 @@ class ScreenManager {
       <div class="w-name">${name}</div>
       <div class="widget-subvalue">${Utils.text(value)}</div>
     `;
+    this._renderExtraEntityList(widget, config);
   }
 
   _renderCameraWidget(widget, config, name) {
@@ -1017,6 +1048,7 @@ class ScreenManager {
       </div>
     `;
 
+    this._renderExtraEntityList(widget, config);
     const canvas = widget.querySelector(".chart-canvas");
     if (!canvas || !window.Chart) return;
     this._buildChart(canvas, config, state);
@@ -1331,6 +1363,7 @@ class ScreenManager {
       }
     }
 
+    this._updateExtraEntityList(element, config);
     element.classList.remove("value-changed");
     void element.offsetWidth;
     element.classList.add("value-changed");

@@ -406,6 +406,118 @@ class TdEntityPicker extends LitElement {
 }
 customElements.define("td-entity-picker", TdEntityPicker);
 
+class TdEntityMultiPicker extends LitElement {
+  static get properties() {
+    return {
+      hass: { type: Object },
+      value: { type: Array },
+      domain: { type: String },
+      label: { type: String },
+      placeholder: { type: String },
+      _search: { type: String },
+      _open: { type: Boolean },
+    };
+  }
+  constructor() {
+    super();
+    this.value = [];
+    this._search = "";
+    this._open = false;
+    this.placeholder = "Weitere Sensoren hinzufügen...";
+  }
+  static get styles() {
+    return css`
+      :host { display:block; position:relative; }
+      label { display:block; font-size:12px; color:var(--secondary-text-color); margin-bottom:4px; }
+      input { width:100%; padding:8px 12px; border:1px solid var(--divider-color); border-radius:8px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
+      .chips { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px; }
+      .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,.08); font-size:12px; }
+      .chip button { border:none; background:none; color:inherit; cursor:pointer; font-size:12px; padding:0; }
+      .dd { position:absolute; top:100%; left:0; right:0; max-height:280px; overflow-y:auto; background:var(--card-background-color); border:1px solid var(--divider-color); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.3); z-index:100; margin-top:2px; }
+      .op { padding:8px 12px; cursor:pointer; font-size:13px; display:flex; flex-direction:column; gap:2px; border-bottom:1px solid rgba(255,255,255,.04); }
+      .op:hover { background:rgba(255,255,255,.06); }
+      .top { display:flex; justify-content:space-between; gap:8px; }
+      .fn { font-weight:500; }
+      .id { font-family:monospace; font-size:11px; color:var(--secondary-text-color); }
+    `;
+  }
+  render() {
+    const values = Array.isArray(this.value) ? this.value : [];
+    const ents = this._filter();
+    return html`
+      ${this.label ? html`<label>${this.label}</label>` : ""}
+      ${values.length ? html`<div class="chips">${values.map((id) => html`<span class="chip">${id}<button @click=${() => this._remove(id)}>✕</button></span>`)}</div>` : ""}
+      <input
+        .value=${this._search}
+        placeholder=${this.placeholder || "Weitere Sensoren hinzufügen..."}
+        @focus=${() => this._open = true}
+        @input=${(e) => { this._search = e.target.value; this._open = true; }}
+        @blur=${() => setTimeout(() => { this._open = false; }, 200)}
+      >
+      ${this._open && ents.length ? html`<div class="dd">${ents.slice(0, 200).map((e) => html`
+        <div class="op" @mousedown=${() => this._add(e.entity_id)}>
+          <div class="top"><span class="fn">${e.friendly_name}</span><span>${e.state}</span></div>
+          <div class="id">${e.entity_id}</div>
+        </div>
+      `)}</div>` : ""}
+    `;
+  }
+  _entities() { return getAllEntities(this.hass, this.domain || ""); }
+  _filter() {
+    const selected = new Set(Array.isArray(this.value) ? this.value : []);
+    const s = (this._search || "").toLowerCase().trim();
+    return this._entities().filter((e) => !selected.has(e.entity_id)).filter((e) => !s || e.entity_id.toLowerCase().includes(s) || (e.friendly_name || "").toLowerCase().includes(s));
+  }
+  _emit(next) {
+    this.value = next;
+    this.dispatchEvent(new CustomEvent("value-changed", { detail: { value: next }, bubbles: true, composed: true }));
+  }
+  _add(id) {
+    const next = [...new Set([...(Array.isArray(this.value) ? this.value : []), id])];
+    this._search = "";
+    this._emit(next);
+  }
+  _remove(id) { this._emit((Array.isArray(this.value) ? this.value : []).filter((x) => x !== id)); }
+}
+customElements.define("td-entity-multi-picker", TdEntityMultiPicker);
+
+class TdHaMediaPicker extends LitElement {
+  static get properties() {
+    return { value: { type: String }, items: { type: Array }, label: { type: String }, placeholder: { type: String } };
+  }
+  constructor() {
+    super();
+    this.items = [];
+    this.value = "";
+    this.placeholder = "Home Assistant Medien auswählen";
+  }
+  static get styles() {
+    return css`
+      :host { display:block; }
+      label { display:block; font-size:12px; color:var(--secondary-text-color); margin-bottom:4px; }
+      select { width:100%; padding:8px 12px; border:1px solid var(--divider-color); border-radius:8px; background:var(--primary-background-color); color:var(--primary-text-color); font-size:13px; }
+      .meta { margin-top:4px; font-size:11px; color:var(--secondary-text-color); }
+    `;
+  }
+  render() {
+    const current = (this.items || []).find((i) => i.url === this.value);
+    return html`
+      ${this.label ? html`<label>${this.label}</label>` : ""}
+      <select .value=${this.value || ""} @change=${(e) => this._emit(e.target.value)}>
+        <option value="">${this.placeholder || "Auswählen..."}</option>
+        ${(this.items || []).map((item) => html`<option value=${item.url}>${item.path || item.title || item.url}</option>`)}
+      </select>
+      ${current ? html`<div class="meta">${current.url}</div>` : ""}
+    `;
+  }
+  _emit(value) {
+    this.value = value;
+    const item = (this.items || []).find((i) => i.url === value) || null;
+    this.dispatchEvent(new CustomEvent("value-changed", { detail: { value, item }, bubbles: true, composed: true }));
+  }
+}
+customElements.define("td-ha-media-picker", TdHaMediaPicker);
+
 /* ══════════════════════════════════════════════════════════
    SHARED: ICON PICKER
    ══════════════════════════════════════════════════════════ */
@@ -909,6 +1021,7 @@ class TdScreenEditor extends LitElement {
       sounds: { type: Array },
       templates: { type: Object },
       images: { type: Array },
+      haImages: { type: Array },
       globalSettings: { type: Object },
       _cfg: { type: Object },
       _sel: { type: Number },
@@ -1139,7 +1252,8 @@ class TdScreenEditor extends LitElement {
         <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.background_image_size || "cover"} @change=${(e) => this._ss("background_image_size", e.target.value)}>
           <option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option>
         </select></div>
-        ${(this.images || []).length ? html`<div class="pf2"><label>Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
+        ${(this.images || []).length ? html`<div class="pf2"><label>Lokales Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
+        ${(this.haImages || []).length ? html`<div class="pf2"><td-ha-media-picker .items=${this.haImages || []} .value=${this._cfg.background_image || ""} label="Home Assistant Medienbild" placeholder="Bild aus Medienbrowser wählen" @value-changed=${(e) => this._ss("background_image", e.detail.value)}></td-ha-media-picker></div>` : ""}
         <div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div>
       </div>`;
     }
@@ -1186,6 +1300,8 @@ class TdScreenEditor extends LitElement {
               @value-changed=${(e) => this._uw("entity_id", e.detail.value)}
             ></td-entity-picker>
           </div>
+
+          ${this._supportsMultiEntity(w.type) ? html`<div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${this._mergeEntityList("", w.config?.entities || []).filter((id) => id !== w.entity_id)} .domain=${this._entityDomainForWidget(w.type)} label="Zusätzliche Sensoren / Entities" placeholder="Weitere Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>` : ""}
           <div class="pf2"><label>Name</label><input .value=${w.name || ""} placeholder="Auto" @input=${(e) => this._uw("name", e.target.value)}></div>
           <div class="pf2">
             <td-icon-picker .value=${w.icon || ""} label="Icon" @value-changed=${(e) => this._uw("icon", e.detail.value)}></td-icon-picker>
@@ -1212,14 +1328,14 @@ class TdScreenEditor extends LitElement {
           ${TD_CHART_TYPES.has(w.type) ? html`
             <div class="pg4">Chart</div>
             <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
-            <div class="pf2"><label>Zusätzliche Entities (eine pro Zeile)</label><textarea rows="4" .value=${(w.config?.entities || []).join("\n")} @change=${(e) => this._uwc("entities", e.target.value.split(/\n|,/).map((v) => v.trim()).filter(Boolean))} placeholder="sensor.energy_import
-sensor.energy_export"></textarea></div>
+            <div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${w.config?.entities || []} label="Zusätzliche Entities" placeholder="Weitere Chart-Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>
             ${(w.type === "gauge" || w.type === "radial-gauge-advanced" || w.type === "bullet-chart") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Min</label><input type="number" .value=${w.config?.min || 0} @change=${(e) => this._uwc("min", +e.target.value)}></div><div class="pf2"><label>Max</label><input type="number" .value=${w.config?.max || 100} @change=${(e) => this._uwc("max", +e.target.value)}></div></div>` : ""}
           ` : ""}
           ${w.type === "image" ? html`
             <div class="pg4">Bild</div>
             <div class="pf2"><label>Bild-URL</label><input .value=${w.imageUrl || w.image_url || ""} placeholder="/ticker-display/media/images/xyz.png" @input=${(e) => this._uw("imageUrl", e.target.value)}></div>
-            ${(this.images || []).length ? html`<div class="pf2"><label>Bild wählen</label><select .value=${w.imageUrl || w.image_url || ""} @change=${(e) => this._uw("imageUrl", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
+            ${(this.images || []).length ? html`<div class="pf2"><label>Lokales Bild wählen</label><select .value=${w.imageUrl || w.image_url || ""} @change=${(e) => this._uw("imageUrl", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
+            ${(this.haImages || []).length ? html`<div class="pf2"><td-ha-media-picker .items=${this.haImages || []} .value=${w.imageUrl || w.image_url || ""} label="Home Assistant Medienbild" placeholder="Bild aus Medienbrowser wählen" @value-changed=${(e) => this._uw("imageUrl", e.detail.value)}></td-ha-media-picker></div>` : ""}
           ` : ""}
         ` : ""}
 
@@ -1255,6 +1371,19 @@ sensor.energy_export"></textarea></div>
     if (type === "camera") return "camera";
     if (type === "weather") return "weather";
     return "";
+  }
+
+  _supportsMultiEntity(type) {
+    return !["camera", "weather", "clock", "countdown", "qr-code", "button", "color-block"].includes(type);
+  }
+
+  _mergeEntityList(primary, extras) {
+    const out = [];
+    if (primary) out.push(primary);
+    for (const item of Array.isArray(extras) ? extras : []) {
+      if (item && !out.includes(item)) out.push(item);
+    }
+    return out;
   }
 
   _ss(k, v) {
@@ -1552,7 +1681,7 @@ customElements.define("td-alert-list", TdAlertList);
 
 class TdAlertEditor extends LitElement {
   static get properties() {
-    return { hass: { type: Object }, alert: { type: Object }, alertId: { type: String }, sounds: { type: Array }, _cfg: { type: Object } };
+    return { hass: { type: Object }, alert: { type: Object }, alertId: { type: String }, sounds: { type: Array }, haAudio: { type: Array }, _cfg: { type: Object } };
   }
   constructor() {
     super();
@@ -1560,7 +1689,7 @@ class TdAlertEditor extends LitElement {
   }
   updated(c) {
     if (c.has("alert")) {
-      this._cfg = this.alert ? deepClone(this.alert) : { name:"", title:"", message:"", severity:"info", mode:"fullscreen", icon:"", sound:"", duration:10, flash_screen:false, vibrate:false, persistent:false, color:"", volume:100 };
+      this._cfg = this.alert ? deepClone(this.alert) : { name:"", title:"", message:"", severity:"info", mode:"fullscreen", icon:"", sound:"", sound_url:"", duration:10, flash_screen:false, vibrate:false, persistent:false, color:"", volume:100 };
     }
   }
   static get styles() {
@@ -1617,9 +1746,10 @@ class TdAlertEditor extends LitElement {
       <div class="sec">
         <h3>🔊 Sound & Verhalten</h3>
         <div class="row">
-          <div class="f"><td-sound-picker .value=${c.sound || ""} .sounds=${this.sounds || []} label="Sound" @value-changed=${(e) => this._s("sound", e.detail.value)}></td-sound-picker></div>
+          <div class="f"><td-sound-picker .value=${c.sound || ""} .sounds=${this.sounds || []} label="Interner Sound" @value-changed=${(e) => { this._s("sound", e.detail.value); if (e.detail.value) this._s("sound_url", ""); }}></td-sound-picker></div>
           <div class="f"><label>Lautstärke: ${c.volume || 100}%</label><input type="range" min="0" max="100" .value=${c.volume || 100} @input=${(e) => this._s("volume", +e.target.value)}></div>
         </div>
+        ${(this.haAudio || []).length ? html`<div class="f"><td-ha-media-picker .items=${this.haAudio || []} .value=${c.sound_url || ""} label="Home Assistant Audio" placeholder="Audio aus Medienbrowser wählen" @value-changed=${(e) => { this._s("sound_url", e.detail.value); if (e.detail.value) this._s("sound", ""); }}></td-ha-media-picker></div>` : ""}
         <div class="row">
           <div class="f"><label>Dauer (0=manuell)</label><input type="number" min="0" max="300" .value=${c.duration || 10} @change=${(e) => this._s("duration", +e.target.value)}></div>
           <div class="f"><td-color-picker .value=${c.color || "#2196F3"} label="Farbe" @value-changed=${(e) => this._s("color", e.detail.value)}></td-color-picker></div>
@@ -2080,6 +2210,8 @@ class TickerDisplayPanel extends LitElement {
       _sounds: { type: Array },
       _fonts: { type: Array },
       _images: { type: Array },
+      _haMediaImages: { type: Array },
+      _haMediaAudio: { type: Array },
       _globalSettings: { type: Object },
       _loading: { type: Boolean },
     };
@@ -2103,6 +2235,8 @@ class TickerDisplayPanel extends LitElement {
     this._sounds = [];
     this._fonts = [];
     this._images = [];
+    this._haMediaImages = [];
+    this._haMediaAudio = [];
     this._globalSettings = {};
     this._loading = true;
   }
@@ -2141,7 +2275,7 @@ class TickerDisplayPanel extends LitElement {
   async _load() {
     this._loading = true;
     try {
-      const [dv, tp, al, th, so, fo, im, gs] = await Promise.all([
+      const [dv, tp, al, th, so, fo, im, haim, haau, gs] = await Promise.all([
         this._get("/api/config/devices"),
         this._get("/api/config/templates"),
         this._get("/api/config/alerts"),
@@ -2149,6 +2283,8 @@ class TickerDisplayPanel extends LitElement {
         this._get("/api/media/sounds"),
         this._get("/api/media/fonts"),
         this._get("/api/media/images"),
+        this._get("/api/ha-media/items?kind=image").catch(() => []),
+        this._get("/api/ha-media/items?kind=audio").catch(() => []),
         this._get("/api/config/global"),
       ]);
       this._devices = dv;
@@ -2158,6 +2294,8 @@ class TickerDisplayPanel extends LitElement {
       this._sounds = so;
       this._fonts = fo;
       this._images = im;
+      this._haMediaImages = haim;
+      this._haMediaAudio = haau;
       this._globalSettings = gs;
     } catch (e) {
       console.error(e);
@@ -2471,6 +2609,7 @@ class TickerDisplayPanel extends LitElement {
     return html`
       <td-screen-editor .hass=${this.hass} .deviceId=${this._devId} .screenIndex=${this._scrIdx} .screenConfig=${sc} .fonts=${this._fonts} .sounds=${this._sounds} .templates=${this._templates}
         .images=${this._images}
+        .haImages=${this._haMediaImages}
         .globalSettings=${this._globalSettings}
         @save=${async (e) => {
           const scr = [...(d.screens || [])];
@@ -2504,7 +2643,7 @@ class TickerDisplayPanel extends LitElement {
     return html`
       <div class="top"><button class="bb" @click=${() => this._page = "main"}>←</button><span class="t">🔔 Alert ${a ? "bearbeiten" : "erstellen"}</span></div>
       <div class="cnt nt">
-        <td-alert-editor .hass=${this.hass} .alert=${a} .alertId=${this._alertId} .sounds=${this._sounds}
+        <td-alert-editor .hass=${this.hass} .alert=${a} .alertId=${this._alertId} .sounds=${this._sounds} .haAudio=${this._haMediaAudio}
           @save=${async (e) => { await this._post("/api/config/alert", e.detail); await this._load(); this._page = "main"; this._toast("✅ Alert gespeichert"); }}
           @back=${() => this._page = "main"}
         ></td-alert-editor>

@@ -280,6 +280,36 @@ body {
 
 /* CHARTS */
 
+
+.td-extra-entities {
+  width: 100%;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.td-extra-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--td-text-secondary, rgba(255,255,255,.7));
+  padding-top: 4px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
+.td-extra-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-extra-value {
+  flex-shrink: 0;
+  color: var(--td-text-primary, #fff);
+}
+
 .widget-chart {
   align-items: stretch;
   justify-content: flex-start;

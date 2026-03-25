@@ -43,7 +43,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     async def handle_show_alert(call):
         d = _data(call)
         sound_id = d.get("sound")
-        if sound_id:
+        if not d.get("sound_url") and sound_id:
             url = media_manager.get_sound_url(sound_id)
             if url:
                 d["sound_url"] = url
@@ -92,8 +92,10 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
 
     # ── Audio ──
     async def handle_play_sound(call):
+        url = call.data.get("sound_url")
         sound_id = call.data.get("sound", "")
-        url = media_manager.get_sound_url(sound_id)
+        if not url:
+            url = media_manager.get_sound_url(sound_id)
         if not url:
             _LOGGER.error("Sound not found: %s", sound_id)
             return

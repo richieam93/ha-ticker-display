@@ -73,6 +73,7 @@ class TickerDisplayAPI:
         app.router.add_get(f"{API_BASE}/api/states/{{entity_id}}", self._states)
         app.router.add_get(f"{API_BASE}/api/persons", self._persons)
         app.router.add_get(f"{API_BASE}/api/entities", self._entities_list)
+        app.router.add_get(f"{API_BASE}/api/ha-media/items", self._ha_media_items)
 
         # Config API
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
@@ -331,6 +332,85 @@ class TickerDisplayAPI:
                 }
             )
         return web.json_response(entities)
+
+    async def _ha_media_items(self, request):
+        kind = request.query.get("kind", "image").lower()
+        limit = max(1, min(int(request.query.get("limit", 300)), 1000))
+
+        try:
+            from homeassistant.components import media_source
+        except Exception as err:
+            _LOGGER.debug("media_source not available: %s", err)
+            return web.json_response([])
+
+        items = []
+        seen = set()
+
+        def _mime_matches(mime_type: str | None) -> bool:
+            mime = (mime_type or "").lower()
+            if kind == "audio":
+                return mime.startswith("audio/")
+            return mime.startswith("image/")
+
+        def _class_matches(media_class: str | None) -> bool:
+            cls = str(media_class or "").lower()
+            if kind == "audio":
+                return cls in {"music", "track", "audio", "podcast", "album", "artist", "playlist"}
+            return cls in {"image", "photo"}
+
+        async def _resolve_url(media_content_id: str | None):
+            if not media_content_id:
+                return None, None
+            try:
+                resolved = await media_source.async_resolve_media(self.hass, media_content_id, None)
+                return getattr(resolved, "url", None), getattr(resolved, "mime_type", None)
+            except Exception:
+                return None, None
+
+        async def _walk(node, path=""):
+            if not node or len(items) >= limit:
+                return
+
+            title = getattr(node, "title", None) or getattr(node, "media_content_id", None) or ""
+            node_path = f"{path}/{title}" if path and title else title or path
+            media_content_id = getattr(node, "media_content_id", None)
+            media_class = getattr(node, "media_class", None)
+            media_type = getattr(node, "media_content_type", None)
+            can_play = bool(getattr(node, "can_play", False))
+            can_expand = bool(getattr(node, "can_expand", False))
+
+            if can_play and media_content_id and media_content_id not in seen:
+                url, mime_type = await _resolve_url(media_content_id)
+                if url and (_mime_matches(mime_type) or _class_matches(media_class) or _class_matches(media_type)):
+                    seen.add(media_content_id)
+                    items.append(
+                        {
+                            "id": media_content_id,
+                            "title": title or media_content_id,
+                            "path": node_path,
+                            "media_content_id": media_content_id,
+                            "media_class": str(media_class or media_type or ""),
+                            "mime_type": mime_type,
+                            "url": url,
+                            "thumbnail": getattr(node, "thumbnail", None),
+                        }
+                    )
+
+            if can_expand:
+                children = getattr(node, "children", None) or []
+                for child in children:
+                    if len(items) >= limit:
+                        break
+                    await _walk(child, node_path)
+
+        try:
+            root = await media_source.async_browse_media(self.hass, None)
+            await _walk(root)
+        except Exception as err:
+            _LOGGER.warning("HA media browser listing failed: %s", err)
+            return web.json_response([])
+
+        return web.json_response(items)
 
     # ── Config API ──
 
