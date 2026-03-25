@@ -992,6 +992,13 @@ class TdDeviceEditor extends LitElement {
             </select>
           </div>
           <div class="f">
+            <label>Position</label>
+            <select .value=${d.ticker?.position || "bottom"} @change=${(e) => this._un("ticker", "position", e.target.value)}>
+              <option value="bottom">Unten</option>
+              <option value="top">Oben</option>
+            </select>
+          </div>
+          <div class="f">
             <label>Höhe</label>
             <input type="number" min="24" max="120" .value=${d.ticker?.height || 36} @change=${(e) => this._un("ticker", "height", +e.target.value)}>
           </div>
@@ -1007,6 +1014,12 @@ class TdDeviceEditor extends LitElement {
             <label>Transparenz</label>
             <input type="number" min="0.1" max="1" step="0.05" .value=${d.ticker?.opacity || 1} @change=${(e) => this._un("ticker", "opacity", +e.target.value)}>
           </div>
+          <div class="f"><label>Textfarbe</label><input .value=${d.ticker?.text_color || "#e8eef7"} @change=${(e) => this._un("ticker", "text_color", e.target.value)}></div>
+          <div class="f"><label>Hintergrund</label><input .value=${d.ticker?.background_color || "rgba(12,18,28,.72)"} @change=${(e) => this._un("ticker", "background_color", e.target.value)}></div>
+          <div class="f"><label>Akzent/Separator</label><input .value=${d.ticker?.accent_color || "#4fc3f7"} @change=${(e) => this._un("ticker", "accent_color", e.target.value)}></div>
+          <div class="f"><label>Trennzeichen</label><input .value=${d.ticker?.separator || "│"} @change=${(e) => this._un("ticker", "separator", e.target.value || "│")}></div>
+          <div class="f"><label>Radius</label><input type="number" min="0" max="40" .value=${d.ticker?.border_radius || 0} @change=${(e) => this._un("ticker", "border_radius", +e.target.value)}></div>
+          <div class="f"><label>Feste Meldungen</label><input .value=${(d.ticker?.fixed_messages || []).join(" | ")} placeholder="Text 1 | Text 2" @change=${(e) => this._un("ticker", "fixed_messages", String(e.target.value || "").split("|").map((x) => x.trim()).filter(Boolean))}></div>
         </div>
       </div>
 
@@ -1053,6 +1066,8 @@ class TdScreenEditor extends LitElement {
       _recentWidgets: { type: Array },
       _selMulti: { type: Array },
       _snap: { type: Boolean },
+      _dragState: { type: Object },
+      _resizeState: { type: Object },
     };
   }
   constructor() {
@@ -1071,6 +1086,8 @@ class TdScreenEditor extends LitElement {
     this._recentWidgets = safeJsonParse(localStorage.getItem("td_widget_recent"), []) || [];
     this._selMulti = [];
     this._snap = true;
+    this._dragState = null;
+    this._resizeState = null;
   }
   updated(c) {
     if (c.has("screenConfig") && this.screenConfig) this._cfg = deepClone(this.screenConfig);
@@ -1119,7 +1136,14 @@ class TdScreenEditor extends LitElement {
       .wb:hover { border-color:rgba(255,255,255,.15); }
       .wb.sel { border-color:var(--primary-color); box-shadow:0 0 0 1px rgba(33,150,243,.2), 0 10px 24px rgba(0,0,0,.25); }
       .wb.ms { border-color:#8BC34A; }
+      .wb.locked { outline:1px dashed rgba(255,193,7,.7); }
       .wb .wi { font-size:20px; opacity:.5; }
+      .wb .layerb { position:absolute; top:6px; right:6px; font-size:9px; padding:2px 4px; border-radius:999px; background:rgba(0,0,0,.35); color:#fff; }
+      .wb .groupb { position:absolute; top:6px; left:6px; font-size:9px; padding:2px 4px; border-radius:999px; background:rgba(33,150,243,.22); color:#fff; max-width:50%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .wbh { position:absolute; width:12px; height:12px; border-radius:50%; background:var(--primary-color); border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.35); z-index:5; }
+      .wbh.se { right:4px; bottom:4px; cursor:nwse-resize; }
+      .wbh.e { right:4px; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+      .wbh.s { left:50%; bottom:4px; transform:translateX(-50%); cursor:ns-resize; }
       .wb .wv { font-size:22px; font-weight:500; color:#fff; margin:2px 0; }
       .wb .wn { font-size:10px; color:rgba(255,255,255,.5); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
       .wb .wx { font-size:9px; color:rgba(255,255,255,.38); margin-top:2px; text-align:center; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1186,6 +1210,18 @@ class TdScreenEditor extends LitElement {
         <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("row")}>⇡Y</button>
         <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedSize("width")}>▭W</button>
         <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedSize("height")}>▯H</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("left")}>⇤</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("center-x")}>↔</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("right")}>⇥</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("top")}>⇡</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("center-y")}>↕</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._alignSelectedEdge("bottom")}>⇣</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._distributeSelected("x")}>⋯X</button>
+        <button ?disabled=${(this._selMulti || []).length < 2} @click=${() => this._distributeSelected("y")}>⋮Y</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(1,0)}>＋W</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(-1,0)}>－W</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(0,1)}>＋H</button>
+        <button ?disabled=${this._sel < 0} @click=${() => this._resizeSelected(0,-1)}>－H</button>
         <button class=${this._snap ? "p" : ""} @click=${() => this._snap = !this._snap}># Snap</button>
         <div class="sp"></div>
         <span class="lb">${(this._selMulti || []).length > 1 ? `${this._selMulti.length} Widgets ausgewählt` : (this._sel >= 0 ? `Widget ${this._sel + 1} ausgewählt` : "Kein Widget ausgewählt")}</span>
@@ -1193,7 +1229,7 @@ class TdScreenEditor extends LitElement {
         <button ?disabled=${!this._redo.length} @click=${() => this._doRedo()}>↪</button>
         <button @click=${() => this._prev = this._prev === "landscape" ? "portrait" : "landscape"}>${this._prev === "landscape" ? "🖥" : "📱"}</button>
         <select .value=${String(this._cfg.duration || 15)} @change=${(e) => this._cfg = { ...this._cfg, duration: +e.target.value }}>${[5,10,15,20,30,60].map((n) => html`<option value=${n}>${n}s</option>`)}</select>
-        <button @click=${() => window.open(`/ticker-display/preview/${this.deviceId}`, "_blank")}>👁️</button>
+        <button @click=${() => this._openDraftPreview()}>👁️</button>
         <button @click=${() => {
           const n = prompt("Vorlagenname:", this._cfg.name || "Vorlage");
           if (n) this._e("save-as-template", { name: n, screenConfig: this._cfg });
@@ -1336,19 +1372,25 @@ class TdScreenEditor extends LitElement {
   }
 
   _duplicateSelected() {
-    if (this._sel < 0 || !this._cfg.widgets?.[this._sel]) return;
-    const src = this._cfg.widgets[this._sel];
-    const { c, r } = this._findNextFreeCell();
+    const idxs = this._getSelectedIndices();
+    if (!idxs.length) return;
     this._push();
-    const copy = deepClone(src);
-    copy.id = `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    copy.col = c;
-    copy.row = r;
-    const ws = [...(this._cfg.widgets || []), copy];
+    const ws = [...(this._cfg.widgets || [])];
+    const created = [];
+    for (const idx of idxs) {
+      const src = ws[idx];
+      if (!src) continue;
+      const copy = deepClone(src);
+      copy.id = `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      copy.col = Math.max(0, (src.col || 0) + 1);
+      copy.row = Math.max(0, (src.row || 0) + 1);
+      ws.push(copy);
+      created.push(ws.length - 1);
+      this._rememberWidgetType(copy.type);
+    }
     this._cfg = { ...this._cfg, widgets: ws };
-    this._sel = ws.length - 1;
-    this._selMulti = [this._sel];
-    this._rememberWidgetType(copy.type);
+    this._sel = created.length ? created[created.length - 1] : -1;
+    this._selMulti = created;
   }
 
   _deleteSelected() {
@@ -1382,14 +1424,29 @@ class TdScreenEditor extends LitElement {
     this._selMulti = [i];
   }
 
-  _alignSelectedEdge(axis) {
+  _alignSelectedEdge(mode) {
     const idxs = this._getSelectedIndices();
     if (idxs.length < 2) return;
-    const first = this._cfg.widgets[idxs[0]];
-    const value = axis === "col" ? (first.col || 0) : (first.row || 0);
-    this._push();
     const ws = [...(this._cfg.widgets || [])];
-    for (const i of idxs) ws[i] = { ...ws[i], [axis]: value };
+    const first = ws[idxs[0]];
+    this._push();
+    const refLeft = first.col || 0;
+    const refRight = (first.col || 0) + (first.colspan || 1);
+    const refTop = first.row || 0;
+    const refBottom = (first.row || 0) + (first.rowspan || 1);
+    const refCx = refLeft + ((first.colspan || 1) / 2);
+    const refCy = refTop + ((first.rowspan || 1) / 2);
+    for (const i of idxs) {
+      const w = ws[i];
+      const spanX = w.colspan || 1;
+      const spanY = w.rowspan || 1;
+      if (mode === "left") ws[i] = { ...w, col: refLeft };
+      else if (mode === "right") ws[i] = { ...w, col: Math.max(0, refRight - spanX) };
+      else if (mode === "top") ws[i] = { ...w, row: refTop };
+      else if (mode === "bottom") ws[i] = { ...w, row: Math.max(0, refBottom - spanY) };
+      else if (mode === "center-x") ws[i] = { ...w, col: Math.max(0, Math.round(refCx - (spanX / 2))) };
+      else if (mode === "center-y") ws[i] = { ...w, row: Math.max(0, Math.round(refCy - (spanY / 2))) };
+    }
     this._cfg = { ...this._cfg, widgets: ws };
   }
 
@@ -1402,6 +1459,42 @@ class TdScreenEditor extends LitElement {
     this._push();
     const ws = [...(this._cfg.widgets || [])];
     for (const i of idxs) ws[i] = { ...ws[i], [key]: value };
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+
+  _distributeSelected(axis) {
+    const idxs = this._getSelectedIndices();
+    if (idxs.length < 3) return;
+    const ws = [...(this._cfg.widgets || [])];
+    const ordered = [...idxs].sort((a, b) => axis === "x" ? (ws[a].col || 0) - (ws[b].col || 0) : (ws[a].row || 0) - (ws[b].row || 0));
+    const first = ws[ordered[0]];
+    const last = ws[ordered[ordered.length - 1]];
+    const start = axis === "x" ? (first.col || 0) : (first.row || 0);
+    const end = axis === "x" ? (last.col || 0) : (last.row || 0);
+    const step = ordered.length > 1 ? (end - start) / (ordered.length - 1) : 0;
+    this._push();
+    ordered.forEach((idx, pos) => {
+      const w = ws[idx];
+      const next = Math.round(start + (step * pos));
+      ws[idx] = { ...w, [axis === "x" ? "col" : "row"]: Math.max(0, next) };
+    });
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _resizeSelected(dw, dh) {
+    const idxs = this._getSelectedIndices();
+    if (!idxs.length) return;
+    const cols = this._cfg.grid?.columns || 3;
+    const rows = this._cfg.grid?.rows || 2;
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    for (const i of idxs) {
+      const w = ws[i];
+      const spanX = Math.max(1, Math.min(cols - (w.col || 0), (w.colspan || 1) + dw));
+      const spanY = Math.max(1, Math.min(rows - (w.row || 0), (w.rowspan || 1) + dh));
+      ws[i] = { ...w, colspan: spanX, rowspan: spanY };
+    }
     this._cfg = { ...this._cfg, widgets: ws };
   }
 
@@ -1472,14 +1565,18 @@ class TdScreenEditor extends LitElement {
       const u = st?.attributes?.unit_of_measurement || "";
       const nm = w.name || st?.attributes?.friendly_name || w.type || "";
       els.push(html`
-        <div class="wb ${this._sel === i ? "sel" : ""} ${(this._selMulti || []).includes(i) && this._sel !== i ? "ms" : ""}" style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1};background:${w.bgColor || "#1E1E1E"};${w.bgOpacity != null ? `opacity:${Math.max(0.25, Math.min(1, Number(w.bgOpacity) || 1))};` : ""}"
-          @click=${(e) => this._handleWidgetSelect(i, e)} draggable="true"
-          @dragstart=${(e) => { e.dataTransfer.setData("widget-index", String(i)); e.dataTransfer.effectAllowed = "move"; }}
+        <div class="wb ${this._sel === i ? "sel" : ""} ${(this._selMulti || []).includes(i) && this._sel !== i ? "ms" : ""} ${w.locked ? "locked" : ""}" style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1};background:${w.bgColor || "#1E1E1E"};z-index:${w.z_index || i + 1};${w.bgOpacity != null ? `opacity:${Math.max(0.25, Math.min(1, Number(w.bgOpacity) || 1))};` : ""}"
+          @click=${(e) => this._handleWidgetSelect(i, e)} draggable=${!w.locked ? "true" : "false"}
+          @pointerdown=${(e) => this._startWidgetDrag(e, i)}
+          @dragstart=${(e) => { if (w.locked) { e.preventDefault(); return; } e.dataTransfer.setData("widget-index", String(i)); e.dataTransfer.effectAllowed = "move"; }}
         >
+          ${w.group ? html`<span class="groupb">${w.group}</span>` : ""}
+          <span class="layerb">L${w.z_index || i + 1}${w.locked ? " 🔒" : ""}</span>
           <span class="wi">${ti[w.type] || "📊"}</span>
           <span class="wv">${v}${u ? ` ${u}` : ""}</span>
           <span class="wn">${nm}</span>
           ${(w.config?.entities || []).length ? html`<span class="wx">+ ${(w.config.entities || []).slice(0, 3).join(" · ")}</span>` : ""}
+          ${this._sel === i && !w.locked ? html`<span class="wbh e" @pointerdown=${(e) => this._startWidgetResize(e, i, "e")}></span><span class="wbh s" @pointerdown=${(e) => this._startWidgetResize(e, i, "s")}></span><span class="wbh se" @pointerdown=${(e) => this._startWidgetResize(e, i, "se")}></span>` : ""}
         </div>
       `);
     }
@@ -1505,10 +1602,10 @@ class TdScreenEditor extends LitElement {
     }
     return html`
       <div class="pva">
-        <div class="pf ${this._prev === "landscape" ? "l" : "p"}" style="background:${this._cfg.background_color || "#121212"};${this._cfg.background_image ? `background-image:url(${this._cfg.background_image});background-size:${this._cfg.background_image_size || "cover"};background-position:center;background-repeat:no-repeat;` : ""}">
+        <div class="pf ${this._prev === "landscape" ? "l" : "p"}" style="background-color:${this._cfg.background_color || "#121212"};${this._cfg.background_image ? `background-image:linear-gradient(rgba(0,0,0,${1 - Number(this._cfg.background_overlay_opacity ?? 1)}), rgba(0,0,0,${1 - Number(this._cfg.background_overlay_opacity ?? 1)})), url(${this._cfg.background_image});background-size:100% 100%, ${this._cfg.background_image_size || "cover"};background-position:center;background-repeat:no-repeat;` : ""}">
           <div class="pg" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${els}</div>
           ${this._snap ? html`<div class="guides">${guides}</div>` : ""}
-          <div class="ptk" style="height:${this._cfg.ticker_style?.height || this.globalSettings?.default_ticker_height || 36}px;font-size:${this._cfg.ticker_style?.font_size || 12}px">▶ Ticker-Leiste</div>
+          <div class="ptk" style="height:${this._cfg.ticker_style?.height || this.globalSettings?.default_ticker_height || 36}px;font-size:${this._cfg.ticker_style?.font_size || 12}px;background:${this._cfg.ticker_style?.background_color || "rgba(12,18,28,.72)"};color:${this._cfg.ticker_style?.text_color || "#e8eef7"};opacity:${this._cfg.ticker_style?.opacity || 1};border-radius:${this._cfg.ticker_style?.border_radius || 0}px">${(this._cfg.ticker_style?.fixed_messages || ["Ticker-Leiste"]).slice(0,2).join(` ${this._cfg.ticker_style?.separator || "│"} `)}</div>
         </div>
       </div>
     `;
@@ -1531,13 +1628,26 @@ class TdScreenEditor extends LitElement {
         <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.background_image_size || "cover"} @change=${(e) => this._ss("background_image_size", e.target.value)}>
           <option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option>
         </select></div>
+        <div class="pf2"><label>Farb-Overlay über Bild: ${Math.round(Number(this._cfg.background_overlay_opacity ?? 1) * 100)}%</label><input type="range" min="0" max="1" step="0.05" .value=${this._cfg.background_overlay_opacity ?? 1} @input=${(e) => this._ss("background_overlay_opacity", +e.target.value)}></div>
+        <div class="pf2"><button class="ab" @click=${() => this._ss("background_image", "")}>Hintergrundbild entfernen</button></div>
         <div class="pg4">Ticker-Leiste</div>
+        <div class="pf2"><label>Stil-Vorlage</label><select .value=${this._cfg.ticker_style?.style_template || "classic"} @change=${(e) => this._applyTickerTemplate(e.target.value)}><option value="classic">Classic</option><option value="glass">Glass</option><option value="alert">Alert</option><option value="minimal">Minimal</option></select></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="pf2"><label>Höhe</label><input type="number" min="24" max="120" .value=${this._cfg.ticker_style?.height || this.globalSettings?.default_ticker_height || 36} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), height: +e.target.value })}></div>
           <div class="pf2"><label>Schriftgröße</label><input type="number" min="10" max="40" .value=${this._cfg.ticker_style?.font_size || 12} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), font_size: +e.target.value })}></div>
           <div class="pf2"><label>Padding X</label><input type="number" min="4" max="40" .value=${this._cfg.ticker_style?.item_padding_x || 22} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), item_padding_x: +e.target.value })}></div>
           <div class="pf2"><label>Transparenz</label><input type="number" min="0.1" max="1" step="0.05" .value=${this._cfg.ticker_style?.opacity || 1} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), opacity: +e.target.value })}></div>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="pf2"><label>Position</label><select .value=${this._cfg.ticker_style?.position || "bottom"} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), position: e.target.value })}><option value="bottom">unten</option><option value="top">oben</option></select></div>
+          <div class="pf2"><label>Separator</label><input .value=${this._cfg.ticker_style?.separator || "│"} @input=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), separator: e.target.value })}></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="pf2"><td-color-picker .value=${this._cfg.ticker_style?.text_color || "#e8eef7"} label="Textfarbe" @value-changed=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), text_color: e.detail.value })}></td-color-picker></div>
+          <div class="pf2"><td-color-picker .value=${this._cfg.ticker_style?.accent_color || "#40c4ff"} label="Akzentfarbe" @value-changed=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), accent_color: e.detail.value })}></td-color-picker></div>
+        </div>
+        <div class="pf2"><label>Feste Meldungen (eine pro Zeile)</label><textarea rows="4" .value=${(this._cfg.ticker_style?.fixed_messages || []).join("\n")} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), fixed_messages: String(e.target.value || "").split(/\n+/).map((x) => x.trim()).filter(Boolean) })}></textarea></div>
+        <div class="pf2"><label>Ticker-Regeln JSON</label><textarea rows="7" .value=${JSON.stringify(this._cfg.ticker_style?.rules || [], null, 2)} @change=${(e) => { const parsed = safeJsonParse(e.target.value, null); if (parsed) this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), rules: parsed }); }} placeholder='[{"priority":10,"domain":"binary_sensor","condition":"state=on","template":"Alarm: {friendly_name}","icon":"⚠️","color":"#ff5252"}]'></textarea></div>
         ${(this.images || []).length ? html`<div class="pf2"><label>Lokales Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
         ${(this.haImages || []).length ? html`<div class="pf2"><td-ha-media-picker .items=${this.haImages || []} .value=${this._cfg.background_image || ""} label="Home Assistant Medienbild" placeholder="Bild aus Medienbrowser wählen" @value-changed=${(e) => this._ss("background_image", e.detail.value)}></td-ha-media-picker></div>` : ""}
         <div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div>
@@ -1587,7 +1697,8 @@ class TdScreenEditor extends LitElement {
             ></td-entity-picker>
           </div>
 
-          ${this._supportsMultiEntity(w.type) ? html`<div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${this._mergeEntityList("", w.config?.entities || []).filter((id) => id !== w.entity_id)} .domain=${this._entityDomainForWidget(w.type)} label="Zusätzliche Sensoren / Entities" placeholder="Weitere Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>` : ""}
+          ${this._supportsMultiEntity(w.type) ? html`<div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${this._mergeEntityList("", w.config?.entities || []).filter((id) => id !== w.entity_id)} .domain=${this._entityDomainForWidget(w.type)} label="Zusätzliche Sensoren / Entities" placeholder="Weitere Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>
+          ${this._renderExtraEntityMetaEditor(w)}` : ""}
           <div class="pf2"><label>Name</label><input .value=${w.name || ""} placeholder="Auto" @input=${(e) => this._uw("name", e.target.value)}></div>
           <div class="pf2">
             <td-icon-picker .value=${w.icon || ""} label="Icon" @value-changed=${(e) => this._uw("icon", e.detail.value)}></td-icon-picker>
@@ -1599,6 +1710,13 @@ class TdScreenEditor extends LitElement {
             <div class="pf2"><label>Breite</label><input type="number" min="1" .value=${w.colspan || 1} @change=${(e) => this._uw("colspan", +e.target.value)}></div>
             <div class="pf2"><label>Höhe</label><input type="number" min="1" .value=${w.rowspan || 1} @change=${(e) => this._uw("rowspan", +e.target.value)}></div>
           </div>
+          <div class="pg4">Gruppierung & Ebenen</div>
+          <div class="pf2"><label>Gruppe</label><input .value=${w.group || ""} placeholder="z. B. header / energie / fenster" @input=${(e) => this._uw("group", e.target.value)}></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="pf2"><label>Ebene (z-index)</label><input type="number" min="1" max="999" .value=${w.z_index || (this._sel + 1)} @change=${(e) => this._uw("z_index", +e.target.value)}></div>
+            <div class="pf2"><label>Ebenen</label><div style="display:flex;gap:6px"><button class="ib" @click=${() => this._setSelectedLayer(1)}>Vor</button><button class="ib" @click=${() => this._setSelectedLayer(-1)}>Zurück</button></div></div>
+          </div>
+          <div class="tog"><input type="checkbox" .checked=${w.locked || false} @change=${(e) => this._setSelectedLock(e.target.checked)}><span>Sperren (Drag/Resize aus)</span></div>
           ${w.type === "gauge" ? html`
             <div class="pg4">Gauge</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1616,6 +1734,11 @@ class TdScreenEditor extends LitElement {
             <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
             <div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${w.config?.entities || []} label="Zusätzliche Entities" placeholder="Weitere Chart-Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>
             ${(w.type === "gauge" || w.type === "radial-gauge-advanced" || w.type === "bullet-chart") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Min</label><input type="number" .value=${w.config?.min || 0} @change=${(e) => this._uwc("min", +e.target.value)}></div><div class="pf2"><label>Max</label><input type="number" .value=${w.config?.max || 100} @change=${(e) => this._uwc("max", +e.target.value)}></div></div>` : ""}
+          ` : ""}
+          ${w.type === "weather" ? html`
+            <div class="pg4">Wetter-Karte</div>
+            <div class="tog"><input type="checkbox" .checked=${w.config?.weather_animation !== false} @change=${(e) => this._uwc("weather_animation", e.target.checked)}><span>Animationen aktivieren</span></div>
+            <div class="pf2"><label>Stil</label><select .value=${w.config?.weather_style || "modern"} @change=${(e) => this._uwc("weather_style", e.target.value)}><option value="modern">Modern</option><option value="glass">Glass</option><option value="minimal">Minimal</option></select></div>
           ` : ""}
           ${w.type === "image" ? html`
             <div class="pg4">Bild</div>
@@ -1672,6 +1795,38 @@ class TdScreenEditor extends LitElement {
     return out;
   }
 
+
+  _renderExtraEntityMetaEditor(w) {
+    const ids = Array.isArray(w?.config?.entities) ? w.config.entities : [];
+    if (!ids.length) return html``;
+    const meta = w?.config?.entity_meta || {};
+    return html`
+      <div class="pg4">Zusatzsensoren Anzeige</div>
+      <div class="tog"><input type="checkbox" .checked=${w.config?.show_extra_entity_names !== false} @change=${(e) => this._uwc("show_extra_entity_names", e.target.checked)}><span>Namen standardmäßig anzeigen</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${ids.map((id) => {
+        const m = meta[id] || {};
+        return html`<div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(255,255,255,.03)">
+          <div style="font-size:11px;opacity:.8;margin-bottom:6px;word-break:break-all">${id}</div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+            <input .value=${m.alias || ""} placeholder="Kurzer Name, z.B. ober-max" @input=${(e) => this._setExtraEntityMeta(id, { alias: e.target.value })}>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" .checked=${m.hide_name || false} @change=${(e) => this._setExtraEntityMeta(id, { hide_name: e.target.checked })}>Name ausblenden</label>
+          </div>
+        </div>`;
+      })}</div>`;
+  }
+
+  _setExtraEntityMeta(entityId, patch) {
+    this._push();
+    const ws = [...(this._cfg.widgets || [])];
+    const w = ws[this._sel] || {};
+    const cfg = { ...(w.config || {}) };
+    const meta = { ...(cfg.entity_meta || {}) };
+    meta[entityId] = { ...(meta[entityId] || {}), ...patch };
+    cfg.entity_meta = meta;
+    ws[this._sel] = { ...w, config: cfg };
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
   _ss(k, v) {
     this._push();
     this._cfg = { ...this._cfg, [k]: v };
@@ -1692,6 +1847,98 @@ class TdScreenEditor extends LitElement {
     this._selMulti = [this._sel];
     this._rememberWidgetType(this._dwt);
     this._dwt = null;
+  }
+
+  _openDraftPreview() {
+    const key = `td_preview_${this.deviceId || "device"}_${this.screenIndex ?? 0}`;
+    const payload = { screens: [deepClone(this._cfg)], ticker: { ...(this.globalSettings?.ticker || {}), ...(this._cfg.ticker_style || {}) }, rotation: { transition: this._cfg.transition || "fade" } };
+    try { localStorage.setItem(key, JSON.stringify(payload)); } catch (e) {}
+    window.open(`/ticker-display/preview/${this.deviceId}?td_preview_key=${encodeURIComponent(key)}`, "_blank");
+  }
+
+  _startWidgetDrag(e, index) {
+    if (e.target?.classList?.contains("wbh")) return;
+    const w = this._cfg?.widgets?.[index];
+    if (!w || w.locked || e.button !== 0) return;
+    this._handleWidgetSelect(index, e);
+    const grid = this.renderRoot?.querySelector('.pg');
+    if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const cols = this._cfg.grid?.columns || 3;
+    const rows = this._cfg.grid?.rows || 2;
+    const cw = rect.width / cols; const ch = rect.height / rows;
+    const idxs = this._getSelectedIndices();
+    const base = idxs.map((i) => ({ i, col: this._cfg.widgets[i].col || 0, row: this._cfg.widgets[i].row || 0 }));
+    const startX = e.clientX, startY = e.clientY;
+    const move = (ev) => {
+      const dc = Math.round((ev.clientX - startX) / cw);
+      const dr = Math.round((ev.clientY - startY) / ch);
+      const ws = [...(this._cfg.widgets || [])];
+      for (const item of base) {
+        const src = ws[item.i]; if (!src || src.locked) continue;
+        const maxC = Math.max(0, cols - (src.colspan || 1));
+        const maxR = Math.max(0, rows - (src.rowspan || 1));
+        ws[item.i] = { ...src, col: Math.max(0, Math.min(maxC, item.col + dc)), row: Math.max(0, Math.min(maxR, item.row + dr)) };
+      }
+      this._cfg = { ...this._cfg, widgets: ws };
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this._dragState = null; };
+    this._push(); this._dragState = { index };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+
+  _startWidgetResize(e, index, dir) {
+    e.stopPropagation();
+    const w = this._cfg?.widgets?.[index];
+    if (!w || w.locked) return;
+    const grid = this.renderRoot?.querySelector('.pg'); if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const cols = this._cfg.grid?.columns || 3; const rows = this._cfg.grid?.rows || 2;
+    const cw = rect.width / cols; const ch = rect.height / rows;
+    const startX = e.clientX, startY = e.clientY;
+    const base = { colspan: w.colspan || 1, rowspan: w.rowspan || 1, col: w.col || 0, row: w.row || 0 };
+    const move = (ev) => {
+      const dc = Math.round((ev.clientX - startX) / cw);
+      const dr = Math.round((ev.clientY - startY) / ch);
+      const ws = [...(this._cfg.widgets || [])]; const cur = { ...ws[index] };
+      if (dir === 'e' || dir === 'se') cur.colspan = Math.max(1, Math.min(cols - base.col, base.colspan + dc));
+      if (dir === 's' || dir === 'se') cur.rowspan = Math.max(1, Math.min(rows - base.row, base.rowspan + dr));
+      ws[index] = cur; this._cfg = { ...this._cfg, widgets: ws };
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this._resizeState = null; };
+    this._push(); this._resizeState = { index, dir };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+
+  _distributeSelected(axis) {
+    const idxs = this._getSelectedIndices(); if (idxs.length < 3) return;
+    this._push(); const ws = [...(this._cfg.widgets || [])]; const key = axis === 'x' ? 'col' : 'row';
+    idxs.sort((a,b) => (ws[a][key]||0) - (ws[b][key]||0));
+    const first = ws[idxs[0]][key] || 0; const last = ws[idxs[idxs.length - 1]][key] || 0; const step = (last - first) / (idxs.length - 1 || 1);
+    idxs.forEach((idx, pos) => { ws[idx] = { ...ws[idx], [key]: Math.round(first + step * pos) }; });
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _resizeSelected(dw, dh) {
+    const idxs = this._getSelectedIndices(); if (!idxs.length) return;
+    this._push(); const cols = this._cfg.grid?.columns || 3; const rows = this._cfg.grid?.rows || 2; const ws = [...(this._cfg.widgets || [])];
+    for (const idx of idxs) { const w = { ...ws[idx] }; if (w.locked) continue; w.colspan = Math.max(1, Math.min(cols - (w.col || 0), (w.colspan || 1) + dw)); w.rowspan = Math.max(1, Math.min(rows - (w.row || 0), (w.rowspan || 1) + dh)); ws[idx] = w; }
+    this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _setSelectedLock(locked) {
+    const idxs = this._getSelectedIndices(); if (!idxs.length) return;
+    this._push(); const ws = [...(this._cfg.widgets || [])]; for (const idx of idxs) ws[idx] = { ...ws[idx], locked }; this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _setSelectedLayer(delta) {
+    const idxs = this._getSelectedIndices(); if (!idxs.length) return;
+    this._push(); const ws = [...(this._cfg.widgets || [])]; for (const idx of idxs) ws[idx] = { ...ws[idx], z_index: Math.max(1, (ws[idx].z_index || (idx + 1)) + delta) }; this._cfg = { ...this._cfg, widgets: ws };
+  }
+
+  _applyTickerTemplate(name) {
+    const presets = { classic: { background_color: 'rgba(12,18,28,.78)', text_color: '#e8eef7', accent_color: '#40c4ff', border_radius: 0, font_weight: 600 }, glass: { background_color: 'rgba(20,24,32,.45)', text_color: '#ffffff', accent_color: '#7dd3fc', border_radius: 14, font_weight: 600, opacity: 0.92 }, alert: { background_color: 'rgba(120,8,8,.85)', text_color: '#fff5f5', accent_color: '#ffd54f', border_radius: 0, font_weight: 700 }, minimal: { background_color: 'rgba(0,0,0,.22)', text_color: '#f3f4f6', accent_color: '#9ca3af', border_radius: 10, font_weight: 500 } };
+    this._ss('ticker_style', { ...(this._cfg.ticker_style || {}), style_template: name, ...(presets[name] || {}) });
   }
   _uw(k, v) {
     this._push();

@@ -591,12 +591,14 @@ class ScreenManager {
   }
 
   _applyScreenStyle(screen, config) {
-    if (config.background_color) screen.style.background = config.background_color;
+    if (config.background_color) screen.style.backgroundColor = config.background_color;
     if (config.background_image) {
-      screen.style.backgroundImage = `url(${config.background_image})`;
-      screen.style.backgroundRepeat = "no-repeat";
-      screen.style.backgroundPosition = "center center";
-      screen.style.backgroundSize = config.background_image_size || "cover";
+      const overlay = Number(config.background_overlay_opacity ?? 1);
+      const shade = Math.max(0, Math.min(1, 1 - overlay));
+      screen.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url(${config.background_image})`;
+      screen.style.backgroundRepeat = "no-repeat, no-repeat";
+      screen.style.backgroundPosition = "center center, center center";
+      screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
     }
   }
 
@@ -653,23 +655,21 @@ class ScreenManager {
   }
 
   _buildWeatherScreen(screen, config) {
+    const state = config.entity_id ? (this.app.entityStates[config.entity_id] || {}) : {};
+    const visual = this._weatherVisual(state?.state, config.config || config);
+    const temp = state?.attributes?.temperature ?? "--";
+    const feels = state?.attributes?.temperature ?? temp;
     screen.innerHTML = `
-      <div class="full-screen-center">
-        <div class="weather-emoji-large">🌤️</div>
-        <div id="weather-temp" class="weather-temp-large">--°C</div>
-        <div id="weather-condition" class="weather-cond-large">Laden...</div>
+      <div class="weather-screen ${visual.theme}">
+        <div class="weather-animated-bg ${visual.animClass} ${visual.animate ? "animate" : ""}">${this._weatherFxMarkup(visual.animClass)}</div>
+        <div class="weather-screen-card">
+          <div class="weather-hero-icon">${visual.icon}</div>
+          <div id="weather-temp" class="weather-temp-large">${temp}°C</div>
+          <div id="weather-condition" class="weather-cond-large">${visual.label}</div>
+          <div class="weather-meta-row"><span>Gefühlt</span><strong>${feels}°C</strong></div>
+        </div>
       </div>
     `;
-
-    if (config.entity_id) {
-      const s = this.app.entityStates[config.entity_id];
-      if (s) {
-        const t = screen.querySelector("#weather-temp");
-        const c = screen.querySelector("#weather-condition");
-        if (t) t.textContent = `${s.attributes?.temperature || "--"}°C`;
-        if (c) c.textContent = s.state || "";
-      }
-    }
   }
 
   _buildCameraScreen(screen, config) {
@@ -802,9 +802,10 @@ class ScreenManager {
     if (!entityIds.length) return;
     const rows = entityIds.slice(0, 6).map((entityId) => {
       const st = this.app.entityStates[entityId] || {};
-      const friendly = st.attributes?.friendly_name || entityId;
+      const meta = this._extraEntityMeta(config, entityId);
+      const label = meta.hide_name ? "" : (meta.alias || st.attributes?.friendly_name || entityId);
       const unit = st.attributes?.unit_of_measurement || "";
-      return `<div class="td-extra-row" data-entity-id="${entityId}"><span class="td-extra-name">${Utils.text(friendly)}</span><span class="td-extra-value">${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}</span></div>`;
+      return `<div class="td-extra-row ${meta.hide_name ? "name-hidden" : ""}" data-entity-id="${entityId}"><span class="td-extra-name">${Utils.text(label)}</span><span class="td-extra-value">${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}</span></div>`;
     }).join("");
     widget.insertAdjacentHTML("beforeend", `<div class="td-extra-entities">${rows}</div>`);
   }
@@ -815,11 +816,42 @@ class ScreenManager {
       const entityId = row.dataset.entityId;
       const st = this.app.entityStates[entityId] || {};
       const unit = st.attributes?.unit_of_measurement || "";
+      const meta = this._extraEntityMeta(config, entityId);
+      const label = meta.hide_name ? "" : (meta.alias || st.attributes?.friendly_name || entityId);
       const nameEl = row.querySelector(".td-extra-name");
       const valueEl = row.querySelector(".td-extra-value");
-      if (nameEl) nameEl.textContent = st.attributes?.friendly_name || entityId;
+      row.classList.toggle("name-hidden", !!meta.hide_name);
+      if (nameEl) nameEl.textContent = label;
       if (valueEl) valueEl.textContent = `${Utils.text(st.state ?? "—")}${unit ? ` ${unit}` : ""}`;
     });
+  }
+
+
+  _extraEntityMeta(config, entityId) {
+    const meta = config?.config?.entity_meta || config?.entity_meta || {};
+    const entry = meta?.[entityId] || {};
+    const showNames = config?.config?.show_extra_entity_names !== false && config?.show_extra_entity_names !== false;
+    return { alias: entry.alias || "", hide_name: entry.hide_name || !showNames };
+  }
+
+  _weatherVisual(condition, cfg = {}) {
+    const text = String(condition || "").toLowerCase();
+    const animate = cfg.weather_animation !== false;
+    if (/(lightning|thunder|gewitter)/.test(text)) return { icon: "⛈️", label: "Gewitter", animClass: "storm", theme: "theme-storm", animate };
+    if (/(snow|schnee|sleet|hail)/.test(text)) return { icon: "🌨️", label: "Schnee", animClass: "snow", theme: "theme-snow", animate };
+    if (/(rain|regen|pouring|shower|drizzle)/.test(text)) return { icon: "🌧️", label: "Regen", animClass: "rain", theme: "theme-rain", animate };
+    if (/(fog|mist|nebel|haze)/.test(text)) return { icon: "🌫️", label: "Nebel", animClass: "fog", theme: "theme-fog", animate };
+    if (/(wind|breeze|gust|windy|sturm)/.test(text)) return { icon: "💨", label: "Windig", animClass: "wind", theme: "theme-wind", animate };
+    if (/(cloud|bew|overcast)/.test(text)) return { icon: "☁️", label: "Bewölkt", animClass: "clouds", theme: "theme-clouds", animate };
+    if (/(clear|sun|sonn)/.test(text)) return { icon: "☀️", label: "Sonnig", animClass: "sun", theme: "theme-sun", animate };
+    return { icon: "🌤️", label: Utils.text(condition || "Wetter"), animClass: "clouds", theme: "theme-default", animate };
+  }
+
+  _weatherFxMarkup(kind) {
+    if (kind === "rain" || kind === "storm") return '<span></span><span></span><span></span><span></span><span></span><span></span>';
+    if (kind === "snow") return '<span></span><span></span><span></span><span></span><span></span><span></span>';
+    if (kind === "clouds" || kind === "fog" || kind === "wind" || kind === "sun") return '<span></span><span></span><span></span>';
+    return '';
   }
 
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
@@ -910,11 +942,18 @@ class ScreenManager {
     const attrs = state?.attributes || {};
     const temp = attrs.temperature ?? "—";
     const condition = state?.state || "—";
+    const visual = this._weatherVisual(condition, config.config || config);
+    widget.classList.add("widget-weather-modern");
     widget.innerHTML = `
-      <div class="w-icon"><span style="font-size:24px">🌤️</span></div>
-      <div><span class="w-value">${temp}</span><span class="w-unit">°C</span></div>
-      <div class="w-name">${config.name || attrs.friendly_name || "Wetter"}</div>
-      <div class="widget-subvalue">${condition}</div>
+      <div class="weather-card ${visual.theme}">
+        <div class="weather-animated-bg ${visual.animClass} ${visual.animate ? "animate" : ""}">${this._weatherFxMarkup(visual.animClass)}</div>
+        <div class="weather-card-top">
+          <div class="weather-card-icon">${visual.icon}</div>
+          <div class="weather-card-reading"><span class="w-value">${temp}</span><span class="w-unit">°C</span></div>
+        </div>
+        <div class="w-name">${config.name || attrs.friendly_name || "Wetter"}</div>
+        <div class="widget-subvalue">${visual.label || condition}</div>
+      </div>
     `;
   }
 
@@ -1499,13 +1538,55 @@ class TickerManager {
     this._rebuild();
   }
 
+  _conditionMatches(state, condition) {
+    if (!condition) return true;
+    const raw = String(condition).trim();
+    const lower = raw.toLowerCase();
+    const value = Number(state?.state);
+    if (lower.startsWith("state=")) return String(state?.state) === raw.slice(6);
+    if (lower.startsWith("state!=")) return String(state?.state) !== raw.slice(7);
+    if (lower.startsWith("gt:")) return Number.isFinite(value) && value > Number(raw.slice(3));
+    if (lower.startsWith("gte:")) return Number.isFinite(value) && value >= Number(raw.slice(4));
+    if (lower.startsWith("lt:")) return Number.isFinite(value) && value < Number(raw.slice(3));
+    if (lower.startsWith("lte:")) return Number.isFinite(value) && value <= Number(raw.slice(4));
+    if (lower.startsWith("contains:")) return String(state?.state || "").includes(raw.slice(9));
+    return true;
+  }
+
+  _buildRuleItems() {
+    const rules = Utils.safeArray(this.app.config.ticker?.rules).filter((r) => r && (r.domain || r.entity_id || r.condition));
+    const items = [];
+    for (const rule of rules.sort((a,b) => (b.priority || 0) - (a.priority || 0))) {
+      for (const [entityId, state] of Object.entries(this.app.entityStates || {})) {
+        if (rule.entity_id && rule.entity_id !== entityId) continue;
+        if (rule.domain && !String(entityId).startsWith(`${rule.domain}.`)) continue;
+        if (!this._conditionMatches(state, rule.condition)) continue;
+        const tpl = String(rule.template || '{friendly_name}: {state}{unit}');
+        const text = tpl.replaceAll('{entity_id}', entityId).replaceAll('{state}', state?.state || '').replaceAll('{friendly_name}', state?.attributes?.friendly_name || entityId).replaceAll('{unit}', state?.attributes?.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : '');
+        items.push({ text, color: rule.color, icon: rule.icon, priority: rule.priority || 0 });
+      }
+    }
+    return items;
+  }
+
   _applyStyle(cfg = {}) {
     const root = document.documentElement;
     if (!root) return;
+    const preset = { classic: {}, glass: { background_color: "rgba(20,24,32,.45)", text_color: "#ffffff", accent_color: "#7dd3fc", border_radius: 14, font_weight: 600, opacity: 0.92 }, alert: { background_color: "rgba(120,8,8,.85)", text_color: "#fff5f5", accent_color: "#ffd54f", border_radius: 0, font_weight: 700 }, minimal: { background_color: "rgba(0,0,0,.22)", text_color: "#f3f4f6", accent_color: "#9ca3af", border_radius: 10, font_weight: 500 } }[cfg.style_template || "classic"] || {};
+    cfg = { ...preset, ...cfg };
     if (cfg.height) root.style.setProperty("--td-ticker-height", `${cfg.height}px`);
     if (cfg.font_size) root.style.setProperty("--td-ticker-font-size", `${cfg.font_size}px`);
     if (cfg.item_padding_x) root.style.setProperty("--td-ticker-padding-x", `${cfg.item_padding_x}px`);
+    if (cfg.text_color) root.style.setProperty("--td-ticker-text-color", String(cfg.text_color));
+    if (cfg.background_color) root.style.setProperty("--td-ticker-bg", String(cfg.background_color));
+    if (cfg.accent_color) root.style.setProperty("--td-ticker-accent", String(cfg.accent_color));
+    if (cfg.border_radius != null) root.style.setProperty("--td-ticker-radius", `${cfg.border_radius}px`);
+    if (cfg.font_weight != null) root.style.setProperty("--td-ticker-font-weight", String(cfg.font_weight));
     if (cfg.opacity != null && this.bar) this.bar.style.opacity = String(cfg.opacity);
+    if (this.bar) {
+      this.bar.classList.toggle("top", (cfg.position || "bottom") === "top");
+      this.bar.classList.toggle("bottom", (cfg.position || "bottom") !== "top");
+    }
   }
 
   addMessages(msgs) {
@@ -1542,6 +1623,10 @@ class TickerManager {
     if (!this.container) return;
     let items = [];
 
+    for (const msg of Utils.safeArray(this.app.config.ticker?.fixed_messages)) {
+      items.push({ text: typeof msg === "string" ? msg : (msg?.text || ""), color: typeof msg === "object" ? msg.color : null, icon: typeof msg === "object" ? msg.icon : null });
+    }
+
     for (const tmpl of this.entityTemplates) {
       const eid = typeof tmpl === "string" ? tmpl : tmpl.entity_id;
       const tpl = typeof tmpl === "string" ? "{friendly_name}: {state}" : (tmpl.template || "{state}");
@@ -1564,19 +1649,23 @@ class TickerManager {
       items.push({ text: m.text, color: m.color, icon: m.icon });
     }
 
+    items.push(...this._buildRuleItems());
+    items.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
     if (!items.length) {
       this.container.innerHTML = "";
       this.container.classList.remove("scrolling");
       return;
     }
 
+    const separator = String(this.app.config.ticker?.separator || "│");
     const build = (list) => list.map((item, i) => {
       const style = item.color ? `color:${item.color}` : "";
       return `<span class="ticker-item" style="${style}">${item.icon ? `<span class="ticker-icon">${item.icon}</span>` : ""}${item.text}</span>` +
-        (i < list.length - 1 ? `<span class="ticker-separator">│</span>` : "");
+        (i < list.length - 1 ? `<span class="ticker-separator">${separator}</span>` : "");
     }).join("");
 
-    this.container.innerHTML = build(items) + `<span class="ticker-separator">│</span>` + build(items);
+    this.container.innerHTML = build(items) + `<span class="ticker-separator">${separator}</span>` + build(items);
     this.container.classList.add("scrolling");
 
     const speed = this.app.config.ticker?.speed || "normal";
@@ -1736,6 +1825,17 @@ class TickerDisplayApp {
 
   async init() {
     console.log("🚀 Ticker Display starting...", this.deviceId);
+    try {
+      const qp = new URLSearchParams(location.search);
+      const previewKey = qp.get("td_preview_key");
+      if (this.isPreview && previewKey) {
+        const raw = localStorage.getItem(previewKey);
+        if (raw) {
+          const draft = JSON.parse(raw);
+          if (draft && typeof draft === "object") this.config = { ...(this.config || {}), ...draft, screens: Array.isArray(draft.screens) ? draft.screens : (this.config.screens || []) };
+        }
+      }
+    } catch (e) { console.warn("Preview draft load failed", e); }
 
     try {
       this.bridge = new BridgeWrapper();
