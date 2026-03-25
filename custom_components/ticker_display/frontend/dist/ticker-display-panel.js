@@ -4,7 +4,10 @@
  * Drop-in replacement for frontend/dist/ticker-display-panel.js
  */
 
-import { LitElement, html, css } from "https://unpkg.com/lit@2.8.0/index.js?module";
+const { LitElement, html, css } = window.Lit || {};
+if (!LitElement || !html || !css) {
+  throw new Error("Ticker Display: Lit runtime not available in Home Assistant frontend");
+}
 
 const API = "/ticker-display";
 
@@ -1102,9 +1105,7 @@ class TdScreenEditor extends LitElement {
           ${TD_CHART_TYPES.has(w.type) ? html`
             <div class="pg4">Chart</div>
             <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
-            <div class="pf2"><label>Zusätzliche Entities (eine pro Zeile)</label><textarea rows="4" .value=${(w.config?.entities || []).join("
-")} @change=${(e) => this._uwc("entities", e.target.value.split(/
-|,/).map((v) => v.trim()).filter(Boolean))} placeholder="sensor.energy_import
+            <div class="pf2"><label>Zusätzliche Entities (eine pro Zeile)</label><textarea rows="4" .value=${(w.config?.entities || []).join("\n")} @change=${(e) => this._uwc("entities", e.target.value.split(/\n|,/).map((v) => v.trim()).filter(Boolean))} placeholder="sensor.energy_import
 sensor.energy_export"></textarea></div>
             ${(w.type === "gauge" || w.type === "radial-gauge-advanced" || w.type === "bullet-chart") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Min</label><input type="number" .value=${w.config?.min || 0} @change=${(e) => this._uwc("min", +e.target.value)}></div><div class="pf2"><label>Max</label><input type="number" .value=${w.config?.max || 100} @change=${(e) => this._uwc("max", +e.target.value)}></div></div>` : ""}
           ` : ""}
