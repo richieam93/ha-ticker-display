@@ -4,10 +4,13 @@
  * Drop-in replacement for frontend/dist/ticker-display-panel.js
  */
 
-const { LitElement, html, css } = window.Lit || {};
-if (!LitElement || !html || !css) {
-  throw new Error("Ticker Display: Lit runtime not available in Home Assistant frontend");
-}
+const LitElement = window.LitElement || Object.getPrototypeOf(
+  customElements.get("ha-panel-lovelace") ||
+  customElements.get("home-assistant-main") ||
+  HTMLElement
+);
+const html = window.html || LitElement.prototype.html;
+const css = window.css || LitElement.prototype.css;
 
 const API = "/ticker-display";
 
