@@ -1098,8 +1098,8 @@ class TdScreenEditor extends LitElement {
 
   static get styles() {
     return css`
-      :host { display:grid; grid-template-columns:280px 1fr 340px; grid-template-rows:52px 1fr; height:100vh; overflow:hidden; }
-      .tb { grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:0 12px; background:var(--app-header-background-color,#1e1e1e); border-bottom:1px solid var(--divider-color); overflow-x:auto; }
+      :host { display:grid; grid-template-columns:280px 1fr 340px; grid-template-rows:auto 1fr; height:100vh; overflow:hidden; }
+      .tb { grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:8px 12px; background:var(--app-header-background-color,#1e1e1e); border-bottom:1px solid var(--divider-color); overflow:visible; position:relative; z-index:30; }
       .tb button { padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; background:none; color:var(--primary-text-color); font-size:13px; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:4px; }
       .tb button:hover { background:rgba(255,255,255,.05); }
       .tb button.p { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
@@ -1113,7 +1113,7 @@ class TdScreenEditor extends LitElement {
       .tb details.tmenu summary { list-style:none; padding:6px 12px; border:1px solid var(--divider-color); border-radius:6px; cursor:pointer; white-space:nowrap; }
       .tb details.tmenu summary::-webkit-details-marker { display:none; }
       .tb details.tmenu[open] summary { background:rgba(255,255,255,.06); }
-      .tpop { position:absolute; top:calc(100% + 6px); left:0; min-width:280px; padding:10px; border:1px solid var(--divider-color); border-radius:10px; background:var(--card-background-color); box-shadow:0 10px 30px rgba(0,0,0,.28); z-index:20; display:grid; gap:10px; }
+      .tpop { position:absolute; top:calc(100% + 6px); left:0; min-width:320px; max-width:min(92vw, 520px); max-height:min(70vh, 560px); overflow:auto; padding:10px; border:1px solid var(--divider-color); border-radius:10px; background:var(--card-background-color); box-shadow:0 10px 30px rgba(0,0,0,.28); z-index:50; display:grid; gap:10px; }
       .tsect { display:grid; gap:6px; }
       .tsect .tl { font-size:11px; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.04em; }
       .trow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
@@ -1354,6 +1354,7 @@ class TdScreenEditor extends LitElement {
               >
                 <div class="pvm">${this._paletteMini(it)}</div>
                 <div>
+                  <div class="pti">${it.i || "◼"}</div>
                   <div>${it.l}</div>
                   <div class="meta">${it.d}</div>
                 </div>

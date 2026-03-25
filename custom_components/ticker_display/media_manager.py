@@ -6,6 +6,14 @@ from pathlib import Path
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN, DEFAULT_SOUNDS, DEFAULT_FONTS
 
+SOUND_ALIASES = {
+    "alarm_siren": "alarm_critical",
+    "critical_alarm": "alarm_critical",
+    "siren": "alarm_critical",
+    "notify": "notification",
+    "bell": "doorbell",
+}
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -35,6 +43,8 @@ class MediaManager:
                         shutil.copy2(f, target)
 
     def _resolve_sound_file(self, sound_id: str, declared_filename: str | None = None) -> Path | None:
+        sound_id = (sound_id or "").strip()
+        sound_id = SOUND_ALIASES.get(sound_id, sound_id)
         candidates = []
         if declared_filename:
             candidates.append(self._sounds_path / declared_filename)
@@ -76,6 +86,7 @@ class MediaManager:
         return path if path.exists() else None
 
     def get_sound_url(self, sound_id: str) -> str | None:
+        sound_id = SOUND_ALIASES.get((sound_id or "").strip(), (sound_id or "").strip())
         if sound_id in DEFAULT_SOUNDS:
             fp = self._resolve_sound_file(sound_id, DEFAULT_SOUNDS[sound_id]["file"])
             if fp:

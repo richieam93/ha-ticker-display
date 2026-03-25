@@ -4,7 +4,7 @@ show_dashboard:
   fields:
     device:
       name: Device
-      description: Device ID, a list of device IDs, or "all".
+      description: Device-ID, Gerätename, Liste davon oder "all".
       example: "all"
 
 show_graph:
@@ -125,8 +125,8 @@ show_alert:
       example: "fullscreen"
     sound:
       name: Sound
-      description: Sound ID to play.
-      example: "alarm"
+      description: Sound-ID oder Alias, z. B. alarm, alarm_critical, notification oder doorbell.
+      example: "alarm_critical"
 
 show_notification:
   name: Show notification
@@ -264,7 +264,7 @@ play_sound:
       example: "all"
     sound:
       name: Sound
-      description: Sound ID to play.
+      description: Sound-ID oder Alias, z. B. alarm, alarm_critical, notification oder doorbell.
       example: "doorbell"
     volume:
       name: Volume

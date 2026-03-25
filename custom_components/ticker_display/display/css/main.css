@@ -655,3 +655,34 @@ body {
   0% { transform:translateX(-120%); }
   100% { transform:translateX(120%); }
 }
+
+.widget.widget-anim-gauge svg,
+.widget.widget-anim-radial-gauge-advanced svg { filter: drop-shadow(0 0 16px rgba(33,150,243,.18)); }
+.widget.widget-anim-progress-bar .progress-fill { position:relative; overflow:hidden; }
+.widget.widget-anim-progress-bar .progress-fill::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent); animation: tdProgressSweep 2.8s linear infinite; }
+.widget.widget-anim-status-dot .status-dot-indicator.on { animation:pulse 1.6s ease infinite; }
+.widget.widget-anim-trend-arrow .trend-arrow-chip.up,
+.widget.widget-anim-trend-arrow .trend-arrow-chip.down { animation: tdTrendPulse 1.8s ease-in-out infinite; }
+.widget.widget-anim-trend-arrow .trend-arrow-icon { animation: tdTrendWobble 3.4s ease-in-out infinite; transform-origin:center; }
+.widget.widget-anim-weather .weather-card-icon { animation: tdWeatherBob 3.6s ease-in-out infinite; }
+.widget.widget-anim-mini-graph canvas,
+.widget.widget-anim-sparkline canvas,
+.widget.widget-anim-bar-chart canvas,
+.widget.widget-anim-area-chart canvas,
+.widget.widget-anim-multi-line-chart canvas,
+.widget.widget-anim-stacked-bar-chart canvas,
+.widget.widget-anim-horizontal-bar-chart canvas,
+.widget.widget-anim-donut-chart canvas,
+.widget.widget-anim-pie-chart canvas,
+.widget.widget-anim-radar-chart canvas,
+.widget.widget-anim-heatmap-mini canvas,
+.widget.widget-anim-timeline-chart canvas,
+.widget.widget-anim-scatter-chart canvas,
+.widget.widget-anim-forecast-chart canvas,
+.widget.widget-anim-energy-flow-mini canvas,
+.widget.widget-anim-comparison-chart canvas,
+.widget.widget-anim-bullet-chart canvas { filter: drop-shadow(0 0 12px rgba(255,255,255,.08)); }
+@keyframes tdProgressSweep { 0% { transform:translateX(-120%);} 100% { transform:translateX(120%);} }
+@keyframes tdTrendPulse { 0%,100% { transform:scale(1);} 50% { transform:scale(1.05);} }
+@keyframes tdTrendWobble { 0%,100% { transform:rotate(0deg);} 25% { transform:rotate(-4deg);} 75% { transform:rotate(4deg);} }
+@keyframes tdWeatherBob { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-3px);} }

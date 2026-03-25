@@ -10,7 +10,26 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_services(hass, store, coordinator, websocket, media_manager):
 
     def _dev(call):
-        return call.data.get("device", "all")
+        raw = call.data.get("device", "all")
+        devices = store.get_devices() or {}
+
+        def _resolve_one(value):
+            if not isinstance(value, str):
+                return value
+            v = value.strip()
+            if not v or v == "all" or v in devices:
+                return v or "all"
+            vl = v.lower()
+            for did, cfg in devices.items():
+                if str(cfg.get("name", "")).strip().lower() == vl:
+                    return did
+            return v
+
+        if isinstance(raw, list):
+            return [_resolve_one(v) for v in raw]
+        if isinstance(raw, str) and "," in raw:
+            return [_resolve_one(v) for v in raw.split(",") if str(v).strip()]
+        return _resolve_one(raw)
 
     def _data(call):
         d = dict(call.data)
@@ -53,6 +72,8 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             url = media_manager.get_sound_url(sound_id)
             if url:
                 d["sound_url"] = url
+            else:
+                _LOGGER.warning("Alert sound not found: %s", sound_id)
 
         await websocket.send_command(_dev(call), {"type": "alert", "data": d})
 

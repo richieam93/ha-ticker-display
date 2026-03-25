@@ -812,6 +812,7 @@ class ScreenManager {
     this._applyCommonWidgetStyle(widget, config);
     widget.classList.toggle("widget-animated", config.animations !== false);
     widget.classList.toggle(`widget-anim-${config.type || "generic"}`, config.animations !== false);
+    widget.dataset.widgetType = config.type || "generic";
     return widget;
   }
 
@@ -961,7 +962,7 @@ class ScreenManager {
     const unit = state?.attributes?.unit_of_measurement || config.unit || "";
     widget.classList.add("widget-trend-arrow");
     widget.innerHTML = `
-      <div class="w-icon"><span style="font-size:24px">${icon}</span></div>
+      <div class="w-icon trend-arrow-icon"><span style="font-size:24px">${icon}</span></div>
       <div class="trend-main">
         <div><span class="w-value">${Utils.text(state?.state ?? "—")}</span><span class="w-unit">${unit}</span></div>
         <div class="trend-arrow-chip ${direction}" style="color:${trendColor}">${arrow} <span class="trend-delta">${Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '0.0'}${unit}</span></div>
