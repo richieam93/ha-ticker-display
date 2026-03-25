@@ -1090,6 +1090,7 @@ class TdScreenEditor extends LitElement {
     this._paletteFilter = "all";
     this._favoriteWidgets = safeJsonParse(localStorage.getItem("td_widget_favorites"), []) || [];
     this._recentWidgets = safeJsonParse(localStorage.getItem("td_widget_recent"), []) || [];
+    this._paletteFolders = safeJsonParse(localStorage.getItem("td_palette_folders"), {}) || {};
     this._selMulti = [];
     this._snap = true;
     this._toolMenuOpen = false;
@@ -1383,7 +1384,7 @@ class TdScreenEditor extends LitElement {
           <div class="lb">${total} Widgets in der Palette</div>
         </div>
         ${groups.map((c) => html`
-          <details class="folder" ?open=${this._paletteFolders[c.n] !== false} @toggle=${(e) => this._togglePaletteFolder(c.n, e.currentTarget.open)}>
+          <details class="folder" ?open=${(this._paletteFolders || {})[c.n] !== false} @toggle=${(e) => this._togglePaletteFolder(c.n, e.currentTarget.open)}>
             <summary>
               <div class="fleft">
                 <div>${c.n}</div>
