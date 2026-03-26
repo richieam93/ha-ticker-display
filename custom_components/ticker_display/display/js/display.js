@@ -121,12 +121,14 @@ class DataManager {
   }
 
   async fetchHistory(entityId, hours = 24) {
-    const key = `h_${entityId}_${hours}`;
+    const normalizedHours = Math.max(1, Math.min(Number(hours || 24), 24 * 30));
+    const key = `h_${entityId}_${normalizedHours}`;
     const cached = this._cache[key];
     if (cached && Date.now() - cached.t < 60000) return cached.d;
 
     try {
-      const r = await fetch(`${this.apiBase}/api/history/${entityId}?hours=${hours}`);
+      const r = await fetch(`${this.apiBase}/api/history/${entityId}?hours=${normalizedHours}`);
+      if (!r.ok) throw new Error(`history ${r.status}`);
       const d = await r.json();
       this._cache[key] = { d, t: Date.now() };
       return d;
@@ -1218,6 +1220,13 @@ class ScreenManager {
     });
   }
 
+  _extraEntityMeta(config, entityId) {
+    const meta = config?.config?.entity_meta || config?.entity_meta || {};
+    const entry = meta?.[entityId] || {};
+    const showNames = config?.config?.show_extra_entity_names !== false && config?.show_extra_entity_names !== false;
+    return { alias: entry.alias || "", hide_name: !!(entry.hide_name || !showNames), color: entry.color || "" };
+  }
+
   _chartSeriesLabel(config, entityId, fallback, idx = 0) {
     const meta = this._extraEntityMeta(config, entityId);
     if (meta.hide_name) return `Serie ${idx + 1}`;
@@ -1681,8 +1690,8 @@ class ScreenManager {
     try {
       const entityIds = this._chartEntityIds(config);
       const useHistory = config.config?.chart_use_history !== false;
-      const hours = config.config?.hours || config.config?.period || 24;
-      const maxPoints = config.config?.chart_mobile_compact ? 20 : (config.config?.chart_max_points || 36);
+      const hours = Number(config.config?.hours || config.config?.period || 24);
+      const maxPoints = Number(config.config?.chart_mobile_compact ? 20 : (config.config?.chart_max_points || 36));
       const histories = await Promise.all(entityIds.map(async (entityId) => {
         const liveState = this.app.entityStates[entityId] || (entityId === config.entity_id ? state : null) || {};
         let points = this._normalizePoints([], liveState?.state);
@@ -1700,11 +1709,8 @@ class ScreenManager {
       }));
 
       const primary = histories[0] || { state: state || {}, points: this._normalizePoints([], state?.state), meta: this._extraEntityMeta(config, config.entity_id || "") };
-      const maxLen = Math.max(...histories.map((entry) => entry.points.length), primary.points.length, 1);
-      const labels = Array.from({ length: maxLen }, (_, idx) => {
-        const point = primary.points[idx] || primary.points[primary.points.length - 1] || { x: new Date().toISOString() };
-        return Utils.shortDateTime(point.x);
-      });
+      const labelSource = primary.points.length ? primary.points : [{ x: new Date().toISOString(), y: 0 }];
+      const labels = labelSource.map((point) => Utils.shortDateTime(point.x));
       const type = config.type || "mini-graph";
       const chartCfg = this._getChartConfig(type, histories, labels, config);
       const chart = new Chart(canvas, chartCfg);
@@ -1723,23 +1729,25 @@ class ScreenManager {
     const showGrid = config.config?.chart_show_grid !== false;
     const showPoints = config.config?.chart_show_points !== false;
     const lineWidth = Number(config.config?.chart_line_width || 2);
-    const tension = Number(config.config?.chart_tension ?? ((type === "line-chart" || type === "multi-line-chart" || type === "area-chart") ? 0.35 : 0.25));
-    const fillOpacity = Number(config.config?.chart_fill_opacity ?? (type === "area-chart" ? 0.22 : 0.14));
+    const tension = Number(config.config?.chart_tension ?? 0.32);
+    const fillOpacity = Number(config.config?.chart_fill_opacity ?? 0.18);
     const stacked = config.config?.chart_stacked === true || type === "stacked-bar-chart";
     const compact = config.config?.chart_mobile_compact === true;
     const beginAtZero = config.config?.chart_begin_at_zero === true;
     const legendPosition = config.config?.chart_legend_position || (compact ? "bottom" : "top");
     const curveMode = config.config?.chart_curve_mode || "default";
     const pointStyle = config.config?.chart_point_style || "circle";
+    const forecastStyle = config.config?.forecast_style || 'band';
+    const heatmapMode = config.config?.heatmap_mode || 'intensity';
 
-    const legendOptions = {
-      display: showLegend && (histories.length > 1 || ["donut-chart", "pie-chart", "radar-chart", "line-chart", "multi-line-chart"].includes(type)),
+    const commonLegend = {
+      display: showLegend,
       position: legendPosition,
       labels: {
-        color: "rgba(255,255,255,0.72)",
+        color: "rgba(255,255,255,0.76)",
         boxWidth: compact ? 10 : 14,
-        usePointStyle: true,
         padding: compact ? 10 : 14,
+        usePointStyle: true,
         filter: (item, data) => {
           const ds = data?.datasets?.[item.datasetIndex];
           return !ds?.tdHideName;
@@ -1750,138 +1758,172 @@ class ScreenManager {
     const baseOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: compact ? 220 : 360 },
-      interaction: { mode: "nearest", intersect: false },
+      animation: { duration: compact ? 260 : 420 },
+      interaction: { mode: "index", intersect: false },
+      layout: { padding: compact ? 4 : 8 },
       plugins: {
-        legend: legendOptions,
+        legend: commonLegend,
         tooltip: { enabled: true, displayColors: true }
       },
       scales: {
-        x: { display: showAxes, grid: { display: showGrid, color: "rgba(255,255,255,0.05)" }, ticks: { maxTicksLimit: compact ? 4 : 6, color: "rgba(255,255,255,0.5)" } },
-        y: { display: showAxes, beginAtZero: beginAtZero, grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: compact ? 4 : 5, color: "rgba(255,255,255,0.5)" } }
+        x: {
+          display: showAxes,
+          grid: { display: showGrid, color: "rgba(255,255,255,0.05)" },
+          ticks: { maxTicksLimit: compact ? 4 : 6, color: "rgba(255,255,255,0.52)" }
+        },
+        y: {
+          display: showAxes,
+          beginAtZero,
+          grid: { display: showGrid, color: "rgba(255,255,255,0.06)" },
+          ticks: { maxTicksLimit: compact ? 4 : 5, color: "rgba(255,255,255,0.52)" }
+        }
       }
     };
 
     const lineDatasets = histories.map((entry, idx) => ({
       label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
       tdHideName: !!entry.meta?.hide_name,
-      data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
+      data: entry.points.map((p) => p.y),
       borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
       backgroundColor: this._chartPalette(idx, fillOpacity, config, entry.entityId),
-      fill: type === "area-chart" || type === "forecast-chart" || type === "energy-flow-mini",
-      tension: curveMode === "stepped" ? 0 : tension,
-      stepped: curveMode === "stepped",
-      cubicInterpolationMode: curveMode === "monotone" ? "monotone" : "default",
+      pointBackgroundColor: this._chartPalette(idx, 0.96, config, entry.entityId),
+      pointBorderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
       pointStyle,
       pointRadius: showPoints ? (compact ? 1.5 : 2.5) : 0,
-      pointHoverRadius: showPoints ? 4 : 0,
+      pointHoverRadius: showPoints ? (compact ? 3 : 5) : 0,
       borderWidth: lineWidth,
+      fill: false,
       spanGaps: true,
-      stack: stacked ? "stack" : undefined
+      tension: curveMode === 'stepped' ? 0 : tension,
+      stepped: curveMode === 'stepped',
+      cubicInterpolationMode: curveMode === 'monotone' ? 'monotone' : 'default',
+      stack: stacked ? 'stack' : undefined
     }));
 
     if (["mini-graph", "sparkline", "line-chart", "area-chart", "multi-line-chart", "forecast-chart", "comparison-chart", "energy-flow-mini", "timeline-chart"].includes(type)) {
+      const datasets = lineDatasets.map((ds) => ({
+        ...ds,
+        fill: type === 'area-chart' || type === 'energy-flow-mini' || (type === 'forecast-chart' && forecastStyle === 'band'),
+        borderDash: type === 'forecast-chart' && forecastStyle === 'step' ? [6, 4] : undefined,
+        stepped: type === 'forecast-chart' && forecastStyle === 'step' ? true : ds.stepped,
+      }));
       return {
-        type: "line",
-        data: { labels, datasets: lineDatasets },
+        type: 'line',
+        data: { labels, datasets },
         options: {
           ...baseOptions,
-          plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || ["line-chart","multi-line-chart","comparison-chart","forecast-chart"].includes(type)) } },
+          plugins: {
+            ...baseOptions.plugins,
+            legend: { ...commonLegend, display: showLegend && (histories.length > 1 || ['line-chart','multi-line-chart','comparison-chart','forecast-chart'].includes(type)) }
+          },
           scales: {
-            ...baseOptions.scales,
-            x: { ...baseOptions.scales.x, display: showAxes && type !== "sparkline" },
-            y: { ...baseOptions.scales.y, display: showAxes && type !== "sparkline", stacked }
-          }
+            x: { ...baseOptions.scales.x, display: showAxes && type !== 'sparkline' },
+            y: { ...baseOptions.scales.y, display: showAxes && type !== 'sparkline', stacked }
+          },
+          elements: { line: { tension: curveMode === 'stepped' ? 0 : tension } }
         }
       };
     }
 
     if (["bar-chart", "stacked-bar-chart", "horizontal-bar-chart", "heatmap-mini", "bullet-chart"].includes(type)) {
-      const heatmapMode = config.config?.heatmap_mode || "intensity";
       const datasets = histories.map((entry, idx) => ({
         label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
         tdHideName: !!entry.meta?.hide_name,
-        data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
+        data: entry.points.map((p) => p.y),
         borderWidth: 1,
-        borderRadius: compact ? 6 : 8,
+        borderRadius: compact ? 5 : 7,
         borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
-        backgroundColor: type === "heatmap-mini"
-          ? labels.map((_, pidx) => {
-              const val = entry.points[pidx]?.y ?? 0;
-              const alpha = heatmapMode === "zones"
-                ? (Math.abs(val) >= 75 ? 0.78 : Math.abs(val) >= 50 ? 0.58 : Math.abs(val) >= 25 ? 0.38 : 0.22)
-                : Utils.clamp(Math.abs(val) / 100, 0.18, 0.82);
+        backgroundColor: type === 'heatmap-mini'
+          ? entry.points.map((p) => {
+              const val = Number(p.y || 0);
+              const alpha = heatmapMode === 'zones'
+                ? (Math.abs(val) >= 75 ? 0.82 : Math.abs(val) >= 50 ? 0.6 : Math.abs(val) >= 25 ? 0.42 : 0.24)
+                : Utils.clamp(Math.abs(val) / 100, 0.18, 0.84);
               return this._chartPalette(idx, alpha, config, entry.entityId);
             })
-          : this._chartPalette(idx, 0.42, config, entry.entityId),
-        barPercentage: type === "bullet-chart" ? 0.55 : 0.78,
-        categoryPercentage: type === "bullet-chart" ? 0.92 : 0.84
+          : this._chartPalette(idx, type === 'bullet-chart' ? 0.58 : 0.42, config, entry.entityId),
+        barPercentage: type === 'bullet-chart' ? 0.62 : 0.84,
+        categoryPercentage: type === 'bullet-chart' ? 0.96 : 0.8
       }));
       return {
-        type: "bar",
+        type: 'bar',
         data: { labels, datasets },
         options: {
           ...baseOptions,
-          indexAxis: type === "horizontal-bar-chart" || type === "bullet-chart" ? "y" : "x",
+          indexAxis: type === 'horizontal-bar-chart' || type === 'bullet-chart' ? 'y' : 'x',
+          plugins: { ...baseOptions.plugins, legend: { ...commonLegend, display: showLegend && (histories.length > 1 || stacked) } },
           scales: {
             x: { ...baseOptions.scales.x, stacked },
             y: { ...baseOptions.scales.y, stacked }
-          },
-          plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || stacked) } }
+          }
         }
       };
     }
 
     if (["donut-chart", "pie-chart", "radial-gauge-advanced", "polar-area-chart"].includes(type)) {
       const latest = histories.map((entry) => entry.points[entry.points.length - 1]?.y ?? 0);
-      const doughnutLabels = histories.map((entry, idx) => this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx));
-      const isGauge = type === "radial-gauge-advanced";
+      const chartLabels = histories.map((entry, idx) => this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx));
+      const isGauge = type === 'radial-gauge-advanced';
       const gaugeMax = Number(config.config?.max ?? 100);
       const gaugeValue = Number(latest[0] ?? 0);
       return {
-        type: type === "polar-area-chart" ? "polarArea" : "doughnut",
+        type: type === 'polar-area-chart' ? 'polarArea' : 'doughnut',
         data: {
-          labels: isGauge ? [doughnutLabels[0] || "Wert", "Rest"] : doughnutLabels,
+          labels: isGauge ? [chartLabels[0] || 'Wert', 'Rest'] : chartLabels,
           datasets: [{
-            tdHideName: false,
             data: isGauge ? [gaugeValue, Math.max(gaugeMax - gaugeValue, 0)] : latest,
-            backgroundColor: isGauge ? [this._chartPalette(0, 0.95, config, histories[0]?.entityId), "rgba(255,255,255,0.08)"] : histories.map((entry, idx) => this._chartPalette(idx, 0.82, config, entry.entityId)),
-            borderColor: "rgba(255,255,255,0.08)",
+            backgroundColor: isGauge ? [this._chartPalette(0, 0.96, config, histories[0]?.entityId), 'rgba(255,255,255,0.08)'] : histories.map((entry, idx) => this._chartPalette(idx, 0.82, config, entry.entityId)),
+            borderColor: 'rgba(255,255,255,0.08)',
             borderWidth: 1
           }]
         },
-        options: { ...baseOptions, cutout: type === "pie-chart" || type === "polar-area-chart" ? "0%" : "68%", scales: {}, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend } } }
+        options: {
+          ...baseOptions,
+          scales: {},
+          cutout: type === 'pie-chart' || type === 'polar-area-chart' ? '0%' : '68%',
+          plugins: { ...baseOptions.plugins, legend: { ...commonLegend, display: showLegend } }
+        }
       };
     }
 
-    if (type === "radar-chart") {
+    if (type === 'radar-chart') {
       return {
-        type: "radar",
+        type: 'radar',
         data: {
           labels,
           datasets: histories.map((entry, idx) => ({
             label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
             tdHideName: !!entry.meta?.hide_name,
-            data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
+            data: entry.points.map((p) => p.y),
             borderColor: this._chartPalette(idx, 0.95, config, entry.entityId),
-            backgroundColor: this._chartPalette(idx, 0.2, config, entry.entityId),
+            backgroundColor: this._chartPalette(idx, 0.22, config, entry.entityId),
             pointBackgroundColor: this._chartPalette(idx, 0.95, config, entry.entityId),
             pointRadius: showPoints ? 2 : 0,
             borderWidth: lineWidth
           }))
         },
-        options: { ...baseOptions, scales: { r: { angleLines: { color: "rgba(255,255,255,0.08)" }, grid: { color: "rgba(255,255,255,0.08)" }, pointLabels: { color: "rgba(255,255,255,0.6)" }, ticks: { backdropColor: "transparent", color: "rgba(255,255,255,0.45)" } } } }
+        options: {
+          ...baseOptions,
+          scales: {
+            r: {
+              angleLines: { color: 'rgba(255,255,255,0.08)' },
+              grid: { color: 'rgba(255,255,255,0.08)' },
+              pointLabels: { color: 'rgba(255,255,255,0.66)' },
+              ticks: { backdropColor: 'transparent', color: 'rgba(255,255,255,0.45)' }
+            }
+          }
+        }
       };
     }
 
-    if (type === "scatter-chart" || type === "bubble-chart") {
+    if (type === 'scatter-chart' || type === 'bubble-chart') {
       return {
-        type: type === "bubble-chart" ? "bubble" : "scatter",
+        type: type === 'bubble-chart' ? 'bubble' : 'scatter',
         data: {
           datasets: histories.map((entry, idx) => ({
             label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
             tdHideName: !!entry.meta?.hide_name,
-            data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y, r: type === "bubble-chart" ? Utils.clamp(Math.abs(Number(p.y) || 0) / 8, 4, compact ? 11 : 16) : undefined })),
+            data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y, r: type === 'bubble-chart' ? Utils.clamp(Math.abs(Number(p.y) || 0) / 8, 4, compact ? 11 : 16) : undefined })),
             borderColor: this._chartPalette(idx, 0.95, config, entry.entityId),
             backgroundColor: this._chartPalette(idx, 0.48, config, entry.entityId),
             pointStyle,
@@ -1892,14 +1934,14 @@ class ScreenManager {
         options: {
           ...baseOptions,
           scales: {
-            x: { display: showAxes, type: "linear", position: "bottom", grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { color: "rgba(255,255,255,0.45)" } },
+            x: { display: showAxes, type: 'linear', position: 'bottom', grid: { display: showGrid, color: 'rgba(255,255,255,0.06)' }, ticks: { color: 'rgba(255,255,255,0.45)' } },
             y: baseOptions.scales.y
           }
         }
       };
     }
 
-    return { type: "line", data: { labels, datasets: lineDatasets }, options: baseOptions };
+    return { type: 'line', data: { labels, datasets: lineDatasets }, options: baseOptions };
   }
 
   _updateWidget(widgetInfo, entityId, newState) {

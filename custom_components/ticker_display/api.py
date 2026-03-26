@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from homeassistant.components.recorder import history as recorder_history
 from pathlib import Path
 
 from aiohttp import web
@@ -244,26 +245,46 @@ class TickerDisplayAPI:
 
     async def _history(self, request):
         entity_id = request.match_info["entity_id"]
-        hours = int(request.query.get("hours", 24))
+        hours = max(1, min(int(request.query.get("hours", 24)), 24 * 30))
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
+
+        def _load_history():
+            try:
+                return recorder_history.state_changes_during_period(
+                    self.hass,
+                    start_time,
+                    end_time=end_time,
+                    entity_id=entity_id,
+                    include_start_time_state=True,
+                    no_attributes=False,
+                )
+            except TypeError:
+                # Older HA variants
+                return recorder_history.state_changes_during_period(
+                    start_time,
+                    end_time,
+                    entity_id,
+                )
+
         try:
-            history = await self.hass.async_add_executor_job(
-                self.hass.components.recorder.history.state_changes_during_period,
-                start_time,
-                end_time,
-                entity_id,
-            )
+            history = await self.hass.async_add_executor_job(_load_history)
+            states = history.get(entity_id, []) if isinstance(history, dict) else []
             data_points = []
-            for state in history.get(entity_id, []):
+            unit = ""
+            for state in states:
+                if not unit:
+                    unit = getattr(state, 'attributes', {}).get('unit_of_measurement', '')
                 try:
-                    data_points.append(
-                        {"x": state.last_changed.isoformat(), "y": float(state.state)}
-                    )
+                    value = float(str(state.state).replace(',', '.'))
                 except (ValueError, TypeError):
                     continue
-            return web.json_response({"entity_id": entity_id, "data": data_points})
-        except Exception:
+                data_points.append(
+                    {"x": state.last_changed.isoformat(), "y": value}
+                )
+            return web.json_response({"entity_id": entity_id, "unit": unit, "data": data_points})
+        except Exception as err:
+            _LOGGER.debug("History load failed for %s: %s", entity_id, err)
             return web.json_response({"entity_id": entity_id, "data": []})
 
     async def _weather(self, request):
