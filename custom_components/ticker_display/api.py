@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from homeassistant.components.recorder import history as recorder_history
 from pathlib import Path
 
 from aiohttp import web
@@ -97,7 +96,9 @@ class TickerDisplayAPI:
         self._registered = True
         _LOGGER.info("API routes registered")
 
-    # ── Device API ──
+    # ══════════════════════════════════════════════════════
+    # Device API
+    # ══════════════════════════════════════════════════════
 
     async def _device_register(self, request):
         data = await request.json()
@@ -144,7 +145,9 @@ class TickerDisplayAPI:
         await self.store.async_remove_device(request.match_info["device_id"])
         return web.json_response({"status": "ok"})
 
-    # ── Display Page ──
+    # ══════════════════════════════════════════════════════
+    # Display Page
+    # ══════════════════════════════════════════════════════
 
     async def _display_page(self, request):
         device_id = request.match_info["device_id"]
@@ -152,7 +155,9 @@ class TickerDisplayAPI:
         html = render_display_page(self.hass, self.store, self.media, device_id)
         return web.Response(text=html, content_type="text/html")
 
-    # ── Media Files ──
+    # ══════════════════════════════════════════════════════
+    # Media Files
+    # ══════════════════════════════════════════════════════
 
     async def _media_file(self, request):
         filename = request.match_info.get("filename", "")
@@ -169,7 +174,9 @@ class TickerDisplayAPI:
 
         return web.FileResponse(path)
 
-    # ── Media Management ──
+    # ══════════════════════════════════════════════════════
+    # Media Management
+    # ══════════════════════════════════════════════════════
 
     async def _list_media(self, request):
         path = request.path
@@ -203,7 +210,9 @@ class TickerDisplayAPI:
             ok = await self.media.async_delete_image(item_id)
         return web.json_response({"status": "ok" if ok else "not_found"})
 
-    # ── Data API ──
+    # ══════════════════════════════════════════════════════
+    # Data API
+    # ══════════════════════════════════════════════════════
 
     async def _camera_proxy(self, request):
         entity_id = request.match_info["entity_id"]
@@ -213,7 +222,9 @@ class TickerDisplayAPI:
         state = self.hass.states.get(entity_id)
 
         async def _snapshot():
-            image = await self.hass.components.camera.async_get_image(self.hass, entity_id)
+            image = await self.hass.components.camera.async_get_image(
+                self.hass, entity_id
+            )
             return web.Response(body=image.content, content_type=image.content_type)
 
         try:
@@ -227,65 +238,322 @@ class TickerDisplayAPI:
             if state:
                 entity_picture = state.attributes.get("entity_picture")
                 if entity_picture and mode in ("auto", "entity_picture"):
-                    return web.json_response({"redirect": entity_picture, "mode": "entity_picture"})
+                    return web.json_response(
+                        {"redirect": entity_picture, "mode": "entity_picture"}
+                    )
 
                 token = state.attributes.get("access_token")
                 if token and mode in ("auto", "camera_proxy"):
                     proxy_url = f"/api/camera_proxy/{entity_id}?token={token}"
-                    return web.json_response({"redirect": proxy_url, "mode": "camera_proxy"})
+                    return web.json_response(
+                        {"redirect": proxy_url, "mode": "camera_proxy"}
+                    )
 
                 if token and mode in ("auto", "camera_proxy_stream"):
-                    stream_url = f"/api/camera_proxy_stream/{entity_id}?token={token}"
-                    return web.json_response({"redirect": stream_url, "mode": "camera_proxy_stream"})
+                    stream_url = (
+                        f"/api/camera_proxy_stream/{entity_id}?token={token}"
+                    )
+                    return web.json_response(
+                        {"redirect": stream_url, "mode": "camera_proxy_stream"}
+                    )
 
             return web.Response(status=500)
         except Exception as e:
             _LOGGER.error("Camera proxy error for %s: %s", entity_id, e)
             return web.Response(status=500)
 
+    # ══════════════════════════════════════════════════════════
+    # ██  HISTORY – KOMPLETT NEU  ██
+    # Unterstützt HA 2023.x, 2024.x und 2025.x
+    # ══════════════════════════════════════════════════════════
+
     async def _history(self, request):
+        """Fetch history data for an entity."""
         entity_id = request.match_info["entity_id"]
-        hours = max(1, min(int(request.query.get("hours", 24)), 24 * 30))
-        end_time = datetime.now()
+        hours = min(int(request.query.get("hours", 24)), 168)  # Max 7 Tage
+
+        # ── UTC verwenden (HA arbeitet intern mit UTC) ──
+        try:
+            from homeassistant.util import dt as dt_util
+            end_time = dt_util.utcnow()
+        except ImportError:
+            from datetime import timezone
+            end_time = datetime.now(timezone.utc)
+
         start_time = end_time - timedelta(hours=hours)
 
-        def _load_history():
-            try:
-                return recorder_history.state_changes_during_period(
-                    self.hass,
-                    start_time,
-                    end_time=end_time,
-                    entity_id=entity_id,
-                    include_start_time_state=True,
-                    no_attributes=False,
+        try:
+            # History-Daten abrufen (mit Fallback für verschiedene HA-Versionen)
+            states = await self._fetch_history_states(
+                entity_id, start_time, end_time
+            )
+
+            # Numerische Datenpunkte extrahieren
+            data_points = []
+            for state in states:
+                # Ungültige States filtern
+                if state.state in (
+                    "unavailable",
+                    "unknown",
+                    "",
+                    None,
+                    "None",
+                ):
+                    continue
+
+                try:
+                    val = float(state.state)
+                except (ValueError, TypeError):
+                    continue
+
+                # NaN / Infinity filtern
+                if not __import__("math").isfinite(val):
+                    continue
+
+                data_points.append(
+                    {
+                        "x": state.last_changed.isoformat(),
+                        "y": round(val, 4),
+                    }
                 )
-            except TypeError:
-                # Older HA variants
-                return recorder_history.state_changes_during_period(
+
+            _LOGGER.debug(
+                "History for %s: %d numeric points from %d raw states (%dh)",
+                entity_id,
+                len(data_points),
+                len(states),
+                hours,
+            )
+
+            return web.json_response(
+                {"entity_id": entity_id, "data": data_points}
+            )
+
+        except Exception as e:
+            _LOGGER.error(
+                "History fetch failed for %s: %s", entity_id, e, exc_info=True
+            )
+            return web.json_response(
+                {"entity_id": entity_id, "data": [], "error": str(e)}
+            )
+
+    async def _fetch_history_states(self, entity_id, start_time, end_time):
+        """Fetch history states with fallback for different HA versions."""
+
+        # ════════════════════════════════════════════════════
+        # Methode 1: Moderner Import (HA 2023.6+)
+        # ════════════════════════════════════════════════════
+        try:
+            from homeassistant.components.recorder import (  # noqa: F401
+                history as recorder_history,
+            )
+
+            # state_changes_during_period braucht hass als 1. Parameter!
+            if hasattr(recorder_history, "state_changes_during_period"):
+                _LOGGER.debug(
+                    "Using recorder_history.state_changes_during_period"
+                )
+                history = await self.hass.async_add_executor_job(
+                    recorder_history.state_changes_during_period,
+                    self.hass,
                     start_time,
                     end_time,
                     entity_id,
                 )
+                result = history.get(entity_id, [])
+                if result:
+                    return result
 
+        except (ImportError, TypeError, AttributeError) as e:
+            _LOGGER.debug("Method 1 (state_changes) failed: %s", e)
+
+        # ════════════════════════════════════════════════════
+        # Methode 2: get_significant_states (HA 2024.x+)
+        # ════════════════════════════════════════════════════
         try:
-            history = await self.hass.async_add_executor_job(_load_history)
-            states = history.get(entity_id, []) if isinstance(history, dict) else []
-            data_points = []
-            unit = ""
-            for state in states:
-                if not unit:
-                    unit = getattr(state, 'attributes', {}).get('unit_of_measurement', '')
-                try:
-                    value = float(str(state.state).replace(',', '.'))
-                except (ValueError, TypeError):
-                    continue
-                data_points.append(
-                    {"x": state.last_changed.isoformat(), "y": value}
+            from homeassistant.components.recorder import (  # noqa: F401
+                history as recorder_history,
+            )
+
+            if hasattr(recorder_history, "get_significant_states"):
+                _LOGGER.debug(
+                    "Using recorder_history.get_significant_states"
                 )
-            return web.json_response({"entity_id": entity_id, "unit": unit, "data": data_points})
-        except Exception as err:
-            _LOGGER.debug("History load failed for %s: %s", entity_id, err)
-            return web.json_response({"entity_id": entity_id, "data": []})
+                history = await self.hass.async_add_executor_job(
+                    recorder_history.get_significant_states,
+                    self.hass,
+                    start_time,
+                    end_time,
+                    [entity_id],
+                )
+                result = history.get(entity_id, [])
+                if result:
+                    return result
+
+        except (ImportError, TypeError, AttributeError) as e:
+            _LOGGER.debug("Method 2 (get_significant_states) failed: %s", e)
+
+        # ════════════════════════════════════════════════════
+        # Methode 3: Async-Variante (neuere HA 2024.4+)
+        # ════════════════════════════════════════════════════
+        try:
+            from homeassistant.components.recorder import (  # noqa: F401
+                history as recorder_history,
+            )
+
+            if hasattr(recorder_history, "async_get_significant_states"):
+                _LOGGER.debug(
+                    "Using recorder_history.async_get_significant_states"
+                )
+                history = (
+                    await recorder_history.async_get_significant_states(
+                        self.hass,
+                        start_time,
+                        end_time,
+                        [entity_id],
+                    )
+                )
+                result = history.get(entity_id, [])
+                if result:
+                    return result
+
+        except (ImportError, TypeError, AttributeError) as e:
+            _LOGGER.debug("Method 3 (async_get_significant) failed: %s", e)
+
+        # ════════════════════════════════════════════════════
+        # Methode 4: get_instance + Session (HA 2024.6+)
+        # ════════════════════════════════════════════════════
+        try:
+            from homeassistant.components.recorder import get_instance
+            from homeassistant.components.recorder.history import (
+                get_significant_states,
+            )
+
+            instance = get_instance(self.hass)
+            if instance:
+                _LOGGER.debug("Using get_instance + get_significant_states")
+
+                def _fetch():
+                    with instance.get_session() as session:
+                        return get_significant_states(
+                            self.hass,
+                            session,
+                            start_time,
+                            end_time,
+                            [entity_id],
+                        )
+
+                history = await self.hass.async_add_executor_job(_fetch)
+                result = history.get(entity_id, [])
+                if result:
+                    return result
+
+        except (ImportError, TypeError, AttributeError) as e:
+            _LOGGER.debug("Method 4 (get_instance) failed: %s", e)
+
+        # ════════════════════════════════════════════════════
+        # Methode 5: Alte Legacy-API (HA < 2023.6)
+        # ════════════════════════════════════════════════════
+        try:
+            _LOGGER.debug("Using legacy self.hass.components.recorder")
+            history = await self.hass.async_add_executor_job(
+                self.hass.components.recorder.history.state_changes_during_period,
+                start_time,
+                end_time,
+                entity_id,
+            )
+            result = history.get(entity_id, [])
+            if result:
+                return result
+
+        except (ImportError, TypeError, AttributeError) as e:
+            _LOGGER.debug("Method 5 (legacy) failed: %s", e)
+
+        # ════════════════════════════════════════════════════
+        # Methode 6: HA History-Komponente direkt
+        # ════════════════════════════════════════════════════
+        try:
+            _LOGGER.debug("Using hass.components.history")
+            history = await self.hass.async_add_executor_job(
+                self.hass.components.history.state_changes_during_period,
+                self.hass,
+                start_time,
+                end_time,
+                entity_id,
+            )
+            result = history.get(entity_id, [])
+            if result:
+                return result
+
+        except (ImportError, TypeError, AttributeError) as e:
+            _LOGGER.debug("Method 6 (components.history) failed: %s", e)
+
+        # ════════════════════════════════════════════════════
+        # Methode 7: Direkte Recorder-DB-Abfrage (Notfall)
+        # ════════════════════════════════════════════════════
+        try:
+            from homeassistant.components.recorder import get_instance
+
+            instance = get_instance(self.hass)
+            if instance and hasattr(instance, "async_add_executor_job"):
+                _LOGGER.debug("Using direct recorder DB query")
+
+                def _direct_query():
+                    from homeassistant.components.recorder.db_schema import (
+                        States,
+                        StatesMeta,
+                    )
+                    from sqlalchemy import select
+
+                    with instance.get_session() as session:
+                        # Finde metadata_id für entity
+                        meta = session.execute(
+                            select(StatesMeta.metadata_id).where(
+                                StatesMeta.entity_id == entity_id
+                            )
+                        ).scalar_one_or_none()
+
+                        if meta is None:
+                            return []
+
+                        rows = session.execute(
+                            select(States)
+                            .where(
+                                States.metadata_id == meta,
+                                States.last_changed_ts >= start_time.timestamp(),
+                                States.last_changed_ts <= end_time.timestamp(),
+                            )
+                            .order_by(States.last_changed_ts)
+                            .limit(500)
+                        ).scalars().all()
+
+                        # Konvertiere zu State-ähnlichen Objekten
+                        class FakeState:
+                            def __init__(self, state_val, ts):
+                                self.state = state_val
+                                self.last_changed = datetime.utcfromtimestamp(ts)
+
+                        return [
+                            FakeState(r.state, r.last_changed_ts)
+                            for r in rows
+                            if r.state is not None and r.last_changed_ts
+                        ]
+
+                return await self.hass.async_add_executor_job(_direct_query)
+
+        except Exception as e:
+            _LOGGER.debug("Method 7 (direct DB) failed: %s", e)
+
+        _LOGGER.warning(
+            "All history methods failed for %s – "
+            "check if recorder integration is loaded",
+            entity_id,
+        )
+        return []
+
+    # ══════════════════════════════════════════════════════
+    # Weather
+    # ══════════════════════════════════════════════════════
 
     async def _weather(self, request):
         entity_id = request.match_info["entity_id"]
@@ -306,6 +574,10 @@ class TickerDisplayAPI:
             }
         )
 
+    # ══════════════════════════════════════════════════════
+    # States
+    # ══════════════════════════════════════════════════════
+
     async def _states(self, request):
         entity_id = request.match_info["entity_id"]
         state = self.hass.states.get(entity_id)
@@ -319,6 +591,10 @@ class TickerDisplayAPI:
                 "last_changed": state.last_changed.isoformat(),
             }
         )
+
+    # ══════════════════════════════════════════════════════
+    # Persons
+    # ══════════════════════════════════════════════════════
 
     async def _persons(self, request):
         persons = []
@@ -337,6 +613,10 @@ class TickerDisplayAPI:
             )
         return web.json_response(persons)
 
+    # ══════════════════════════════════════════════════════
+    # Entities List
+    # ══════════════════════════════════════════════════════
+
     async def _entities_list(self, request):
         domain_filter = request.query.get("domain")
         entities = []
@@ -353,6 +633,10 @@ class TickerDisplayAPI:
                 }
             )
         return web.json_response(entities)
+
+    # ══════════════════════════════════════════════════════
+    # HA Media Items
+    # ══════════════════════════════════════════════════════
 
     async def _ha_media_items(self, request):
         kind = request.query.get("kind", "image").lower()
@@ -376,15 +660,23 @@ class TickerDisplayAPI:
         def _class_matches(media_class: str | None) -> bool:
             cls = str(media_class or "").lower()
             if kind == "audio":
-                return cls in {"music", "track", "audio", "podcast", "album", "artist", "playlist"}
+                return cls in {
+                    "music", "track", "audio", "podcast",
+                    "album", "artist", "playlist",
+                }
             return cls in {"image", "photo"}
 
         async def _resolve_url(media_content_id: str | None):
             if not media_content_id:
                 return None, None
             try:
-                resolved = await media_source.async_resolve_media(self.hass, media_content_id, None)
-                return getattr(resolved, "url", None), getattr(resolved, "mime_type", None)
+                resolved = await media_source.async_resolve_media(
+                    self.hass, media_content_id, None
+                )
+                return (
+                    getattr(resolved, "url", None),
+                    getattr(resolved, "mime_type", None),
+                )
             except Exception:
                 return None, None
 
@@ -392,17 +684,31 @@ class TickerDisplayAPI:
             if not node or len(items) >= limit:
                 return
 
-            title = getattr(node, "title", None) or getattr(node, "media_content_id", None) or ""
-            node_path = f"{path}/{title}" if path and title else title or path
+            title = (
+                getattr(node, "title", None)
+                or getattr(node, "media_content_id", None)
+                or ""
+            )
+            node_path = (
+                f"{path}/{title}" if path and title else title or path
+            )
             media_content_id = getattr(node, "media_content_id", None)
             media_class = getattr(node, "media_class", None)
             media_type = getattr(node, "media_content_type", None)
             can_play = bool(getattr(node, "can_play", False))
             can_expand = bool(getattr(node, "can_expand", False))
 
-            if can_play and media_content_id and media_content_id not in seen:
+            if (
+                can_play
+                and media_content_id
+                and media_content_id not in seen
+            ):
                 url, mime_type = await _resolve_url(media_content_id)
-                if url and (_mime_matches(mime_type) or _class_matches(media_class) or _class_matches(media_type)):
+                if url and (
+                    _mime_matches(mime_type)
+                    or _class_matches(media_class)
+                    or _class_matches(media_type)
+                ):
                     seen.add(media_content_id)
                     items.append(
                         {
@@ -410,7 +716,9 @@ class TickerDisplayAPI:
                             "title": title or media_content_id,
                             "path": node_path,
                             "media_content_id": media_content_id,
-                            "media_class": str(media_class or media_type or ""),
+                            "media_class": str(
+                                media_class or media_type or ""
+                            ),
                             "mime_type": mime_type,
                             "url": url,
                             "thumbnail": getattr(node, "thumbnail", None),
@@ -433,7 +741,9 @@ class TickerDisplayAPI:
 
         return web.json_response(items)
 
-    # ── Config API ──
+    # ══════════════════════════════════════════════════════
+    # Config API
+    # ══════════════════════════════════════════════════════
 
     async def _config_devices(self, request):
         devices = self.store.get_devices()
@@ -457,7 +767,10 @@ class TickerDisplayAPI:
         await self.store.async_update_device(device_id, config)
         await self.ws.send_to_device(
             device_id,
-            {"type": "config_changed", "config": self.store.get_device(device_id)},
+            {
+                "type": "config_changed",
+                "config": self.store.get_device(device_id),
+            },
         )
         return web.json_response({"status": "ok"})
 
@@ -471,7 +784,9 @@ class TickerDisplayAPI:
         return web.json_response({"status": "ok", "id": tid})
 
     async def _config_template_delete(self, request):
-        await self.store.async_delete_template(request.match_info["template_id"])
+        await self.store.async_delete_template(
+            request.match_info["template_id"]
+        )
         return web.json_response({"status": "ok"})
 
     async def _config_alerts(self, request):
@@ -484,7 +799,9 @@ class TickerDisplayAPI:
         return web.json_response({"status": "ok", "id": aid})
 
     async def _config_alert_delete(self, request):
-        await self.store.async_delete_alert_template(request.match_info["alert_id"])
+        await self.store.async_delete_alert_template(
+            request.match_info["alert_id"]
+        )
         return web.json_response({"status": "ok"})
 
     async def _config_themes(self, request):

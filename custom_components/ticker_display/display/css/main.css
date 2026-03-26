@@ -861,3 +861,673 @@ body {
   .screen-motion .widget { animation-duration: calc(var(--td-screen-motion-cycle, 18s) * 1.15); }
   .widget-chart .chart-body { min-height: 90px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   NEUE ANIMATIONEN & VERBESSERUNGEN
+   ══════════════════════════════════════════════════════════ */
+
+/* ─── Widget Entry (gestaffelt) ─── */
+
+.widget-enter {
+  animation: widgetEnter 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--widget-enter-delay, 0ms);
+}
+
+@keyframes widgetEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* ─── Glassmorphism ─── */
+
+.widget-glass {
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ─── Glow Effect ─── */
+
+.widget-glow {
+  box-shadow:
+    0 0 0 1px rgba(33, 150, 243, 0.15),
+    0 0 20px rgba(33, 150, 243, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  animation: widgetGlow 4s ease-in-out infinite;
+}
+
+@keyframes widgetGlow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(33, 150, 243, 0.15),
+      0 0 20px rgba(33, 150, 243, 0.08),
+      0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(33, 150, 243, 0.25),
+      0 0 35px rgba(33, 150, 243, 0.15),
+      0 12px 32px rgba(0, 0, 0, 0.16);
+  }
+}
+
+/* ─── Elevated Shadow ─── */
+
+.widget-elevated {
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.06),
+    0 16px 48px rgba(0, 0, 0, 0.16),
+    0 24px 64px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ─── Ripple Effect ─── */
+
+.widget-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.08) 40%,
+    transparent 70%
+  );
+  transform: scale(0);
+  animation: rippleExpand 0.6s cubic-bezier(0, 0.5, 0.5, 1) forwards;
+  pointer-events: none;
+  z-index: 100;
+}
+
+@keyframes rippleExpand {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* ─── Value Change Animation (besser) ─── */
+
+.widget.value-changed {
+  animation: valueChangePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes valueChangePop {
+  0% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+  20% {
+    box-shadow: inset 0 0 32px rgba(33, 150, 243, 0.18);
+    transform: scale(1.015);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+    transform: scale(1);
+  }
+}
+
+/* ─── Gauge Arc Animation ─── */
+
+.gauge-arc-animated {
+  animation: gaugeArcDraw 1.2s cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: center;
+}
+
+@keyframes gaugeArcDraw {
+  from {
+    stroke-dasharray: 0 251;
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.gauge-svg {
+  filter: drop-shadow(0 0 18px rgba(33, 150, 243, 0.12));
+}
+
+/* ─── Progress Bar Animation ─── */
+
+.progress-animated {
+  animation: progressSlideIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) both;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes progressSlideIn {
+  from {
+    width: 0% !important;
+    opacity: 0.5;
+  }
+}
+
+.progress-animated::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+  animation: progressSweep 2.8s linear infinite;
+}
+
+@keyframes progressSweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* ─── Status Dot Pulse ─── */
+
+.status-dot-animated.on {
+  animation: statusDotPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusDotPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+/* ─── Status Dot State Transition ─── */
+
+.status-dot-indicator {
+  transition:
+    background-color 0.4s ease,
+    box-shadow 0.4s ease,
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ─── Trend Arrow Chip Animation ─── */
+
+.trend-chip-animated.up {
+  animation: trendChipUp 0.6s ease both;
+}
+
+.trend-chip-animated.down {
+  animation: trendChipDown 0.6s ease both;
+}
+
+@keyframes trendChipUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes trendChipDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── Weather Icon Bounce ─── */
+
+.weather-icon-animated {
+  animation: weatherIconFloat 3.5s ease-in-out infinite;
+}
+
+@keyframes weatherIconFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-3px) rotate(-2deg); }
+  75% { transform: translateY(-1px) rotate(2deg); }
+}
+
+/* ─── Chart Value Counting Effect ─── */
+
+.chart-value-animated {
+  animation: chartValuePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes chartValuePop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── Chart Type Badge ─── */
+
+.chart-type-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+
+.widget-chart:hover .chart-type-badge {
+  opacity: 1;
+}
+
+/* ─── Clock Digit Animation ─── */
+
+.clock-digit-animated {
+  animation: clockDigitPulse 1s ease infinite;
+}
+
+@keyframes clockDigitPulse {
+  0%, 40%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+.clock-animated {
+  text-shadow:
+    0 0 40px rgba(33, 150, 243, 0.15),
+    0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* ─── Countdown Urgency ─── */
+
+.countdown-animated {
+  transition: color 0.5s ease;
+}
+
+/* ─── Button Press ─── */
+
+.widget-button-face {
+  transition: transform 0.15s ease;
+}
+
+.widget.widget-interactive:active .widget-button-face,
+.widget.widget-interactive:active .button-icon-animated {
+  transform: scale(0.92);
+}
+
+.button-icon-animated {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.widget:hover .button-icon-animated {
+  transform: scale(1.08);
+}
+
+/* ─── Camera Widget Loading State ─── */
+
+.camera-loading {
+  opacity: 0.5;
+  filter: blur(2px);
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+.camera-loaded {
+  opacity: 1;
+  filter: blur(0);
+  animation: cameraFadeIn 0.4s ease both;
+}
+
+.camera-error {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+@keyframes cameraFadeIn {
+  from {
+    opacity: 0.5;
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ─── Media Player Cover Shimmer ─── */
+
+.widget-media-modern .media-widget-cover {
+  position: relative;
+  overflow: hidden;
+}
+
+.widget-media-modern .media-widget-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.06) 45%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 55%,
+    transparent 70%
+  );
+  animation: mediaShimmer 8s ease-in-out infinite;
+}
+
+@keyframes mediaShimmer {
+  0%, 100% { transform: translateX(-120%); }
+  50% { transform: translateX(120%); }
+}
+
+/* ─── Media Progress Glow ─── */
+
+.media-widget-progress span {
+  position: relative;
+}
+
+.media-widget-progress span::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: -3px;
+  width: 8px;
+  height: calc(100% + 6px);
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 0 8px rgba(64, 196, 255, 0.6);
+  opacity: 0.8;
+}
+
+/* ─── Widget Hover Lift ─── */
+
+.widget.widget-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.12),
+    0 16px 40px rgba(0, 0, 0, 0.16);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.widget.widget-interactive:active {
+  transform: translateY(0) scale(0.985);
+  transition: transform 0.1s ease;
+}
+
+/* ─── W-Value Wrap (für Number-Animation) ─── */
+
+.w-value-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+/* ─── Breathing Indicator für Live-Daten ─── */
+
+.widget[data-widget-type="camera"]::before,
+.widget[data-widget-type="weather"]::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--td-positive, #4caf50);
+  z-index: 10;
+  animation: liveBreathing 2s ease-in-out infinite;
+}
+
+@keyframes liveBreathing {
+  0%, 100% {
+    opacity: 0.4;
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(76, 175, 80, 0);
+  }
+}
+
+/* ─── Toggle Badge Animation ─── */
+
+.widget-toggle-badge {
+  animation: badgeSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.widget-toggle-badge.on {
+  animation: badgePulseOn 0.4s ease both;
+}
+
+.widget-toggle-badge.off {
+  animation: badgePulseOff 0.4s ease both;
+}
+
+@keyframes badgeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes badgePulseOn {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes badgePulseOff {
+  0% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* ─── Icon Hover/Active Micro-Interactions ─── */
+
+.widget .w-icon {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.widget.widget-interactive:hover .w-icon {
+  transform: scale(1.12) rotate(-3deg);
+}
+
+.widget.widget-interactive:active .w-icon {
+  transform: scale(0.94);
+}
+
+/* ─── Shimmer Loading Placeholder ─── */
+
+.widget-shimmer {
+  background: linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.02) 0%,
+    rgba(255, 255, 255, 0.06) 25%,
+    rgba(255, 255, 255, 0.02) 50%,
+    rgba(255, 255, 255, 0.06) 75%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  background-size: 400% 400%;
+  animation: shimmerMove 2s ease-in-out infinite;
+}
+
+@keyframes shimmerMove {
+  0% { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+
+/* ─── Stacked Widgets Z-Index Hover ─── */
+
+.dashboard-grid .widget:hover {
+  z-index: 10;
+}
+
+/* ─── Smooth Number Transitions ─── */
+
+.w-value {
+  transition: color 0.3s ease;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ─── Extra Entity Row Hover ─── */
+
+.td-extra-row {
+  transition: background 0.2s ease;
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+}
+
+.td-extra-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Gradient Border on Focus/Hover ─── */
+
+.widget.widget-interactive::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(33, 150, 243, 0),
+    rgba(33, 150, 243, 0),
+    rgba(33, 150, 243, 0)
+  );
+  z-index: -1;
+  transition: background 0.4s ease;
+  pointer-events: none;
+}
+
+.widget.widget-interactive:hover::before {
+  background: linear-gradient(
+    135deg,
+    rgba(33, 150, 243, 0.15),
+    rgba(156, 39, 176, 0.08),
+    rgba(33, 150, 243, 0.15)
+  );
+}
+
+/* Überschreibe ::before für Camera/Weather live-dot */
+.widget[data-widget-type="camera"].widget-interactive::before,
+.widget[data-widget-type="weather"].widget-interactive::before {
+  background: none;
+}
+
+/* ─── Donut/Pie Label Animation ─── */
+
+.widget-chart[data-widget-type*="donut"] .chart-body,
+.widget-chart[data-widget-type*="pie"] .chart-body {
+  animation: donutSpin 0.8s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes donutSpin {
+  from {
+    opacity: 0;
+    transform: rotate(-30deg) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+}
+
+/* ─── Scrollbar für Extra-Entities ─── */
+
+.td-extra-entities::-webkit-scrollbar {
+  width: 3px;
+}
+
+.td-extra-entities::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.td-extra-entities::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+
+/* ─── Ticker Bar Glassmorphism Upgrade ─── */
+
+.ticker-bar {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.01)
+  );
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+/* ─── Popup Entrance ─── */
+
+.widget-popup-overlay:not([hidden]) {
+  animation: popupOverlayIn 0.3s ease both;
+}
+
+.widget-popup-overlay:not([hidden]) .widget-popup-panel {
+  animation: popupPanelIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes popupOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popupPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* ─── Responsive Chart Improvements ─── */
+
+@media (max-width: 500px) {
+  .chart-body {
+    min-height: 72px;
+  }
+  .chart-type-badge {
+    display: none;
+  }
+  .widget-chart {
+    padding: 8px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .chart-body {
+    min-height: 140px;
+  }
+}

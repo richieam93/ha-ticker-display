@@ -2010,8 +2010,8 @@ class TdScreenEditor extends LitElement {
             ></td-entity-picker>
           </div>
 
-          ${this._supportsMultiEntity(w.type) ? html`<div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${this._mergeEntityList("", w.config?.entities || []).filter((id) => id !== w.entity_id)} .domain=${this._entityDomainForWidget(w.type)} label="Zusätzliche Sensoren / Entities" placeholder="Weitere Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>` : ""}
-          ${(w.entity_id || (w.config?.entities || []).length) ? this._renderExtraEntityMetaEditor(w) : ""}
+          ${this._supportsMultiEntity(w.type) ? html`<div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${this._mergeEntityList("", w.config?.entities || []).filter((id) => id !== w.entity_id)} .domain=${this._entityDomainForWidget(w.type)} label="Zusätzliche Sensoren / Entities" placeholder="Weitere Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>
+          ${this._renderExtraEntityMetaEditor(w)}` : ""}
           ${this._supportsValueFormatting(w.type) ? html`
             <div class="pg4">Wertformat</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
