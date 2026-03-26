@@ -85,14 +85,15 @@ const Utils = {
 };
 
 const CHART_WIDGET_TYPES = new Set([
-  "mini-graph", "sparkline", "bar-chart", "area-chart", "multi-line-chart", "stacked-bar-chart",
+  "mini-graph", "sparkline", "line-chart", "bar-chart", "area-chart", "multi-line-chart", "stacked-bar-chart",
   "horizontal-bar-chart", "donut-chart", "pie-chart", "radar-chart", "heatmap-mini", "timeline-chart",
-  "scatter-chart", "forecast-chart", "energy-flow-mini", "comparison-chart", "radial-gauge-advanced", "bullet-chart"
+  "scatter-chart", "bubble-chart", "polar-area-chart", "forecast-chart", "energy-flow-mini", "comparison-chart", "radial-gauge-advanced", "bullet-chart"
 ]);
 
 const CHART_TYPE_ICONS = {
   "mini-graph": "📉",
   "sparkline": "〰️",
+  "line-chart": "📈",
   "bar-chart": "📊",
   "area-chart": "🌊",
   "multi-line-chart": "📈",
@@ -104,6 +105,8 @@ const CHART_TYPE_ICONS = {
   "heatmap-mini": "🔥",
   "timeline-chart": "🕒",
   "scatter-chart": "✳️",
+  "bubble-chart": "🫧",
+  "polar-area-chart": "🧿",
   "forecast-chart": "🔮",
   "energy-flow-mini": "⚡",
   "comparison-chart": "⚖️",
@@ -839,6 +842,7 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
+      case "line-chart":
       case "bar-chart":
       case "area-chart":
       case "multi-line-chart":
@@ -850,6 +854,8 @@ class ScreenManager {
       case "heatmap-mini":
       case "timeline-chart":
       case "scatter-chart":
+      case "bubble-chart":
+      case "polar-area-chart":
       case "forecast-chart":
       case "energy-flow-mini":
       case "comparison-chart":
@@ -874,11 +880,37 @@ class ScreenManager {
     widget.classList.remove("anim-auto", "anim-soft", "anim-lively", "anim-pulse");
     widget.classList.add(`anim-${config.animation_style || "auto"}`);
     widget.dataset.widgetType = config.type || "generic";
-    this._syncWidgetToggleBadge(widget, config);
-    this._bindWidgetInteraction(widget, config);
+    const interactionConfig = this._effectiveWidgetInteractionConfig(config);
+    this._syncWidgetToggleBadge(widget, interactionConfig);
+    this._bindWidgetInteraction(widget, interactionConfig);
     return widget;
   }
 
+
+  _effectiveWidgetInteractionConfig(config) {
+    if (!config) return {};
+    const hasOwnAction = config.tap_action && config.tap_action !== "none";
+    const cameraFullscreen = (config.type === "camera" && (config.config?.camera_tap_fullscreen || config.camera_tap_fullscreen));
+    if (hasOwnAction || cameraFullscreen) return config;
+    const group = String(config.group || "").trim();
+    if (!group) return config;
+    const current = this.temporaryScreen || this.screens[this.currentIndex] || {};
+    const widgets = Utils.safeArray(current.widgets);
+    const master = widgets.find((w) => String(w?.group || "").trim() === group && w?.group_touch_enabled);
+    if (!master) return config;
+    return {
+      ...config,
+      tap_action: master.group_tap_action || master.tap_action || "none",
+      tap_target_entity: master.group_tap_target_entity || master.tap_target_entity || config.tap_target_entity || config.entity_id || "",
+      toggle_mode: master.group_toggle_mode || master.toggle_mode || config.toggle_mode || "toggle",
+      toggle_badge: master.group_toggle_badge ?? master.toggle_badge ?? config.toggle_badge,
+      tap_popup_kind: master.group_tap_popup_kind || master.tap_popup_kind || config.tap_popup_kind,
+      tap_screen_id: master.group_tap_screen_id || master.tap_screen_id || config.tap_screen_id,
+      tap_url: master.group_tap_url || master.tap_url || config.tap_url,
+      tap_autoclose: master.group_tap_autoclose ?? master.tap_autoclose ?? config.tap_autoclose,
+      tap_scale: master.group_tap_scale ?? master.tap_scale ?? config.tap_scale,
+    };
+  }
 
   _bindWidgetInteraction(widget, config) {
     const cameraFullscreen = (config.type === "camera" && (config.config?.camera_tap_fullscreen || config.camera_tap_fullscreen));
@@ -1031,7 +1063,7 @@ class ScreenManager {
     const close = () => this._closeWidgetPopup();
     overlay.querySelector(".widget-popup-close").onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
-    const entityId = config.entity_id || config.tap_target_entity || "";
+    const entityId = config.tap_target_entity || config.entity_id || "";
     const st = this.app.entityStates[entityId] || {};
     const domain = String(entityId || "").split(".")[0];
     const kind = config.tap_popup_kind || (config.type === "weather" || domain === "weather" ? "weather" : config.type === "camera" ? "camera" : config.type === "image" ? "image" : domain);
@@ -1045,15 +1077,19 @@ class ScreenManager {
       html = `<div class="popup-hero popup-media">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}<div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-value">${Utils.text(st.attributes?.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(st.attributes?.media_artist || st.attributes?.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-controls"></div></div></div>`;
     } else if (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan") {
       const isOn = Utils.isTruthyState(st.state);
-      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOn ? "🟢" : "🔴"}</div><div class="popup-big-value">${isOn ? "Ein" : "Aus"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+      const bri = Number(st.attributes?.brightness ?? 0);
+      const briPct = bri ? Math.round((bri / 255) * 100) : 0;
+      html = `<div class="popup-hero popup-control popup-light"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOn ? "🟢" : "🔴"}</div><div class="popup-big-value">${isOn ? "Ein" : "Aus"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div>${domain === "light" ? `<div class="popup-meter"><span style="width:${briPct}%"></span></div><div class="popup-mini-row"><span>Helligkeit</span><strong>${briPct}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
     } else if (domain === "cover") {
       const pos = st.attributes?.current_position;
-      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🪟</div><div class="popup-big-value">${pos == null ? Utils.text(st.state || "—") : `${Math.round(Number(pos))}<span>%</span>`}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+      const pct = pos == null ? 0 : Math.max(0, Math.min(100, Math.round(Number(pos))));
+      html = `<div class="popup-hero popup-control popup-cover"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🪟</div><div class="popup-big-value">${pos == null ? Utils.text(st.state || "—") : `${pct}<span>%</span>`}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-meter"><span style="width:${pct}%"></span></div><div class="popup-controls"></div></div>`;
     } else if (domain === "valve") {
       const isOpen = Utils.isTruthyState(st.state) || String(st.state || '').toLowerCase() === 'open';
       html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOpen ? "💧" : "🚫"}</div><div class="popup-big-value">${isOpen ? "Offen" : "Zu"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
     } else if (domain === "climate") {
-      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(st.attributes?.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(st.attributes?.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+      const hvacModes = Utils.safeArray(st.attributes?.hvac_modes);
+      html = `<div class="popup-hero popup-control popup-climate"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(st.attributes?.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(st.attributes?.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-mini-row"><span>Modus</span><strong>${Utils.text(st.state || "—")}</strong></div>${hvacModes.length ? `<div class="popup-mode-row">${hvacModes.map((m) => `<span class="popup-mode-chip ${String(st.state) === String(m) ? 'active' : ''}">${Utils.text(m)}</span>`).join("")}</div>` : ``}<div class="popup-controls"></div></div>`;
     } else {
       html = `<div class="popup-hero"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId || this._widgetName(config, "Widget"))}</div><div class="popup-big-value">${Utils.formatStateWithUnit(st.state ?? "—", st.attributes?.unit_of_measurement || "", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</div><div class="popup-subtitle">${Utils.text(st.state ?? "—")}</div></div>`;
     }
@@ -1065,15 +1101,23 @@ class ScreenManager {
       this._renderPopupControlButton(controls, "⏭", false, () => this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }));
       this._renderPopupControlButton(controls, "−", false, async () => { const level = Math.max(0, Number(st.attributes?.volume_level ?? 0) - 0.1); await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: level }); });
       this._renderPopupControlButton(controls, "+", false, async () => { const level = Math.min(1, Number(st.attributes?.volume_level ?? 0) + 0.1); await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: level }); });
-    } else if (controls && (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
+    } else if (controls && (domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
       this._renderPopupControlButton(controls, "Ein/Aus", false, async () => { await this._invokeToggleAction(entityId, 'toggle'); close(); });
+    } else if (controls && domain === "light") {
+      this._renderPopupControlButton(controls, "Ein", Utils.isTruthyState(st.state), async () => { await this._invokeToggleAction(entityId, 'on'); close(); });
+      this._renderPopupControlButton(controls, "Aus", !Utils.isTruthyState(st.state), async () => { await this._invokeToggleAction(entityId, 'off'); close(); });
+      this._renderPopupControlButton(controls, "− Helligkeit", false, async () => { const level = Math.max(1, Math.round((Number(st.attributes?.brightness ?? 128) / 255) * 100) - 15); await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: level }); close(); });
+      this._renderPopupControlButton(controls, "+ Helligkeit", false, async () => { const level = Math.min(100, Math.round((Number(st.attributes?.brightness ?? 128) / 255) * 100) + 15); await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: level }); close(); });
+      [25, 50, 100].forEach((pct) => this._renderPopupControlButton(controls, `${pct}%`, false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: pct }); close(); }));
     } else if (controls && domain === "cover") {
-      this._renderPopupControlButton(controls, "⬆", false, async () => { await this.app.callEntityService("cover", "open_cover", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "■", false, async () => { await this.app.callEntityService("cover", "stop_cover", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⬇", false, async () => { await this.app.callEntityService("cover", "close_cover", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "Öffnen", false, async () => { await this.app.callEntityService("cover", "open_cover", { entity_id: entityId }); close(); });
+      this._renderPopupControlButton(controls, "Stopp", false, async () => { await this.app.callEntityService("cover", "stop_cover", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "Schließen", false, async () => { await this.app.callEntityService("cover", "close_cover", { entity_id: entityId }); close(); });
+      [0, 25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(controls, `${pct}%`, false, async () => { await this.app.callEntityService('cover', 'set_cover_position', { entity_id: entityId, position: pct }); close(); }));
     } else if (controls && domain === "climate") {
       this._renderPopupControlButton(controls, "−1°", false, async () => { const t = Number(st.attributes?.temperature ?? 20) - 1; await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: t }); close(); });
       this._renderPopupControlButton(controls, "+1°", false, async () => { const t = Number(st.attributes?.temperature ?? 20) + 1; await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: t }); close(); });
+      Utils.safeArray(st.attributes?.hvac_modes).slice(0, 6).forEach((mode) => this._renderPopupControlButton(controls, String(mode), String(st.state) === String(mode), async () => { await this.app.callEntityService('climate', 'set_hvac_mode', { entity_id: entityId, hvac_mode: mode }); close(); }));
     }
     overlay.hidden = false;
     const secs = Number(config.tap_autoclose || 0);
@@ -1142,12 +1186,85 @@ class ScreenManager {
     return text.length > n ? `${text.slice(0, Math.max(1, n)).trim()}…` : text;
   }
 
+  _widgetPrimaryMeta(config) {
+    const primaryId = config?.entity_id || config?.config?.camera_entity || "";
+    if (!primaryId) return { alias: "", hide_name: false, color: "" };
+    const meta = config?.config?.entity_meta || config?.entity_meta || {};
+    const entry = meta?.[primaryId] || {};
+    return { alias: entry.alias || "", hide_name: !!entry.hide_name, color: entry.color || "" };
+  }
+
   _widgetName(config, fallback = "") {
     const show = config?.config?.show_name !== false && config?.show_name !== false;
-    if (!show) return "";
-    const raw = config?.name || fallback || "";
+    const primaryMeta = this._widgetPrimaryMeta(config);
+    if (!show || primaryMeta.hide_name) return "";
+    const raw = config?.name || primaryMeta.alias || fallback || "";
     const maxLen = config?.config?.name_max_length ?? config?.name_max_length ?? 0;
     return this._truncateLabel(raw, maxLen);
+  }
+
+  _widgetCameraTitle(config, fallback = "") {
+    const show = config?.config?.camera_show_title !== false && config?.camera_show_title !== false;
+    if (!show) return "";
+    return this._widgetName(config, fallback);
+  }
+
+  _chartEntityEntries(config) {
+    const ids = this._chartEntityIds(config);
+    return ids.map((entityId, idx) => {
+      const meta = this._extraEntityMeta(config, entityId);
+      const state = this.app.entityStates[entityId] || {};
+      return { entityId, state, meta, idx };
+    });
+  }
+
+  _chartSeriesLabel(config, entityId, fallback, idx = 0) {
+    const meta = this._extraEntityMeta(config, entityId);
+    if (meta.hide_name) return `Serie ${idx + 1}`;
+    return meta.alias || fallback || entityId || `Serie ${idx + 1}`;
+  }
+
+  _chartPaletteSet(name = "default") {
+    const palettes = {
+      default: [[33,150,243],[76,175,80],[255,152,0],[156,39,176],[244,67,54],[0,188,212],[255,235,59],[255,87,34]],
+      ocean: [[0,172,193],[33,150,243],[3,169,244],[0,121,107],[0,188,212],[38,198,218],[77,208,225],[129,212,250]],
+      sunset: [[255,112,67],[255,171,64],[255,202,40],[236,64,122],[171,71,188],[126,87,194],[255,138,101],[255,204,128]],
+      neon: [[0,230,255],[0,255,149],[255,61,113],[255,214,10],[188,19,254],[127,255,0],[255,0,110],[0,245,255]],
+      mono: [[224,224,224],[189,189,189],[158,158,158],[117,117,117],[97,97,97],[66,66,66],[245,245,245],[176,190,197]]
+    };
+    return palettes[name] || palettes.default;
+  }
+
+  _chartPalette(index = 0, alpha = 1, config = null, entityId = "") {
+    const metaColor = entityId ? this._extraEntityMeta(config, entityId)?.color : "";
+    if (metaColor) {
+      if (metaColor.startsWith("rgba") || metaColor.startsWith("rgb") || metaColor.startsWith("hsl")) return metaColor;
+      if (metaColor.startsWith("#")) {
+        const hex = metaColor.replace("#", "");
+        const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+        if (full.length === 6) {
+          const r = parseInt(full.slice(0, 2), 16);
+          const g = parseInt(full.slice(2, 4), 16);
+          const b = parseInt(full.slice(4, 6), 16);
+          return `rgba(${r},${g},${b},${alpha})`;
+        }
+      }
+      return metaColor;
+    }
+    const base = this._chartPaletteSet(config?.config?.chart_palette || config?.chart_palette || "default");
+    const [r,g,b] = base[index % base.length];
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  _chartSamplePoints(points, maxPoints = 36) {
+    const list = Utils.safeArray(points);
+    if (list.length <= maxPoints) return list;
+    const step = (list.length - 1) / Math.max(1, (maxPoints - 1));
+    const out = [];
+    for (let i = 0; i < maxPoints; i += 1) {
+      out.push(list[Math.round(i * step)]);
+    }
+    return out;
   }
 
   _widgetCameraTitle(config, fallback = "") {
@@ -1523,14 +1640,6 @@ class ScreenManager {
     this._scheduleChartBuild(widget, canvas, config, state);
   }
 
-  _chartPalette(index = 0, alpha = 1) {
-    const base = [
-      [33,150,243],[76,175,80],[255,152,0],[156,39,176],[244,67,54],[0,188,212],[255,235,59],[255,87,34]
-    ];
-    const [r,g,b] = base[index % base.length];
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-
   _normalizePoints(rawPoints, fallbackValue = 0) {
     const points = Utils.safeArray(rawPoints).filter((p) => p && p.x !== undefined && p.y !== undefined);
     if (points.length) return points.map((p) => ({ x: p.x, y: Utils.toNumber(p.y, 0) }));
@@ -1571,18 +1680,26 @@ class ScreenManager {
   async _buildChart(canvas, config, state, element = null) {
     try {
       const entityIds = this._chartEntityIds(config);
+      const useHistory = config.config?.chart_use_history !== false;
       const hours = config.config?.hours || config.config?.period || 24;
+      const maxPoints = config.config?.chart_mobile_compact ? 20 : (config.config?.chart_max_points || 36);
       const histories = await Promise.all(entityIds.map(async (entityId) => {
         const liveState = this.app.entityStates[entityId] || (entityId === config.entity_id ? state : null) || {};
-        const history = entityId ? await this.app.dataManager.fetchHistory(entityId, hours) : { data: [] };
+        let points = this._normalizePoints([], liveState?.state);
+        if (entityId && useHistory) {
+          const history = await this.app.dataManager.fetchHistory(entityId, hours);
+          points = this._normalizePoints(history?.data, liveState?.state);
+        }
+        points = this._chartSamplePoints(points, maxPoints);
         return {
           entityId,
           state: liveState,
-          points: this._normalizePoints(history?.data, liveState?.state)
+          points,
+          meta: this._extraEntityMeta(config, entityId)
         };
       }));
 
-      const primary = histories[0] || { state: state || {}, points: this._normalizePoints([], state?.state) };
+      const primary = histories[0] || { state: state || {}, points: this._normalizePoints([], state?.state), meta: this._extraEntityMeta(config, config.entity_id || "") };
       const maxLen = Math.max(...histories.map((entry) => entry.points.length), primary.points.length, 1);
       const labels = Array.from({ length: maxLen }, (_, idx) => {
         const point = primary.points[idx] || primary.points[primary.points.length - 1] || { x: new Date().toISOString() };
@@ -1601,58 +1718,104 @@ class ScreenManager {
   }
 
   _getChartConfig(type, histories, labels, config) {
+    const showLegend = config.config?.chart_show_legend !== false;
+    const showAxes = config.config?.chart_show_axes !== false;
+    const showGrid = config.config?.chart_show_grid !== false;
+    const showPoints = config.config?.chart_show_points !== false;
+    const lineWidth = Number(config.config?.chart_line_width || 2);
+    const tension = Number(config.config?.chart_tension ?? ((type === "line-chart" || type === "multi-line-chart" || type === "area-chart") ? 0.35 : 0.25));
+    const fillOpacity = Number(config.config?.chart_fill_opacity ?? (type === "area-chart" ? 0.22 : 0.14));
+    const stacked = config.config?.chart_stacked === true || type === "stacked-bar-chart";
+    const compact = config.config?.chart_mobile_compact === true;
+    const beginAtZero = config.config?.chart_begin_at_zero === true;
+    const legendPosition = config.config?.chart_legend_position || (compact ? "bottom" : "top");
+    const curveMode = config.config?.chart_curve_mode || "default";
+    const pointStyle = config.config?.chart_point_style || "circle";
+
+    const legendOptions = {
+      display: showLegend && (histories.length > 1 || ["donut-chart", "pie-chart", "radar-chart", "line-chart", "multi-line-chart"].includes(type)),
+      position: legendPosition,
+      labels: {
+        color: "rgba(255,255,255,0.72)",
+        boxWidth: compact ? 10 : 14,
+        usePointStyle: true,
+        padding: compact ? 10 : 14,
+        filter: (item, data) => {
+          const ds = data?.datasets?.[item.datasetIndex];
+          return !ds?.tdHideName;
+        }
+      }
+    };
+
     const baseOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 350 },
+      animation: { duration: compact ? 220 : 360 },
+      interaction: { mode: "nearest", intersect: false },
       plugins: {
-        legend: { display: histories.length > 1 || ["donut-chart","pie-chart","radar-chart"].includes(type), labels: { color: "rgba(255,255,255,0.7)" } },
+        legend: legendOptions,
         tooltip: { enabled: true, displayColors: true }
       },
       scales: {
-        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: "rgba(255,255,255,0.45)" } },
-        y: { beginAtZero: false, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: 5, color: "rgba(255,255,255,0.45)" } }
+        x: { display: showAxes, grid: { display: showGrid, color: "rgba(255,255,255,0.05)" }, ticks: { maxTicksLimit: compact ? 4 : 6, color: "rgba(255,255,255,0.5)" } },
+        y: { display: showAxes, beginAtZero: beginAtZero, grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: compact ? 4 : 5, color: "rgba(255,255,255,0.5)" } }
       }
     };
 
     const lineDatasets = histories.map((entry, idx) => ({
-      label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
+      label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
+      tdHideName: !!entry.meta?.hide_name,
       data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
-      borderColor: this._chartPalette(idx, 0.95),
-      backgroundColor: this._chartPalette(idx, type === "area-chart" ? 0.22 : 0.16),
+      borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
+      backgroundColor: this._chartPalette(idx, fillOpacity, config, entry.entityId),
       fill: type === "area-chart" || type === "forecast-chart" || type === "energy-flow-mini",
-      tension: 0.35,
-      pointRadius: type === "sparkline" ? 0 : 2,
-      pointHoverRadius: 3,
-      borderWidth: 2,
-      stack: type === "energy-flow-mini" ? "energy" : undefined
+      tension: curveMode === "stepped" ? 0 : tension,
+      stepped: curveMode === "stepped",
+      cubicInterpolationMode: curveMode === "monotone" ? "monotone" : "default",
+      pointStyle,
+      pointRadius: showPoints ? (compact ? 1.5 : 2.5) : 0,
+      pointHoverRadius: showPoints ? 4 : 0,
+      borderWidth: lineWidth,
+      spanGaps: true,
+      stack: stacked ? "stack" : undefined
     }));
 
-    if (type === "mini-graph" || type === "sparkline" || type === "area-chart" || type === "multi-line-chart" || type === "forecast-chart" || type === "comparison-chart" || type === "energy-flow-mini" || type === "timeline-chart") {
+    if (["mini-graph", "sparkline", "line-chart", "area-chart", "multi-line-chart", "forecast-chart", "comparison-chart", "energy-flow-mini", "timeline-chart"].includes(type)) {
       return {
         type: "line",
         data: { labels, datasets: lineDatasets },
         options: {
           ...baseOptions,
-          plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: histories.length > 1 || ["comparison-chart","multi-line-chart","forecast-chart"].includes(type) } },
+          plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || ["line-chart","multi-line-chart","comparison-chart","forecast-chart"].includes(type)) } },
           scales: {
             ...baseOptions.scales,
-            x: { ...baseOptions.scales.x, display: type !== "sparkline" },
-            y: { ...baseOptions.scales.y, display: type !== "sparkline" }
+            x: { ...baseOptions.scales.x, display: showAxes && type !== "sparkline" },
+            y: { ...baseOptions.scales.y, display: showAxes && type !== "sparkline", stacked }
           }
         }
       };
     }
 
-    if (type === "bar-chart" || type === "stacked-bar-chart" || type === "horizontal-bar-chart" || type === "heatmap-mini" || type === "bullet-chart") {
+    if (["bar-chart", "stacked-bar-chart", "horizontal-bar-chart", "heatmap-mini", "bullet-chart"].includes(type)) {
+      const heatmapMode = config.config?.heatmap_mode || "intensity";
       const datasets = histories.map((entry, idx) => ({
-        label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}`,
+        label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
+        tdHideName: !!entry.meta?.hide_name,
         data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
         borderWidth: 1,
-        borderColor: this._chartPalette(idx, 0.95),
-        backgroundColor: this._chartPalette(idx, type === "heatmap-mini" ? 0.55 : 0.35),
-        barPercentage: 0.8,
-        categoryPercentage: 0.9
+        borderRadius: compact ? 6 : 8,
+        borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
+        backgroundColor: type === "heatmap-mini"
+          ? labels.map((_, pidx) => {
+              const val = entry.points[pidx]?.y ?? 0;
+              const alpha = heatmapMode === "zones"
+                ? (Math.abs(val) >= 75 ? 0.78 : Math.abs(val) >= 50 ? 0.58 : Math.abs(val) >= 25 ? 0.38 : 0.22)
+                : Utils.clamp(Math.abs(val) / 100, 0.18, 0.82);
+              return this._chartPalette(idx, alpha, config, entry.entityId);
+            })
+          : this._chartPalette(idx, 0.42, config, entry.entityId),
+        barPercentage: type === "bullet-chart" ? 0.55 : 0.78,
+        categoryPercentage: type === "bullet-chart" ? 0.92 : 0.84
       }));
       return {
         type: "bar",
@@ -1661,32 +1824,33 @@ class ScreenManager {
           ...baseOptions,
           indexAxis: type === "horizontal-bar-chart" || type === "bullet-chart" ? "y" : "x",
           scales: {
-            x: { ...baseOptions.scales.x, stacked: type === "stacked-bar-chart" },
-            y: { ...baseOptions.scales.y, stacked: type === "stacked-bar-chart" }
+            x: { ...baseOptions.scales.x, stacked },
+            y: { ...baseOptions.scales.y, stacked }
           },
-          plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: histories.length > 1 || type === "stacked-bar-chart" } }
+          plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || stacked) } }
         }
       };
     }
 
-    if (type === "donut-chart" || type === "pie-chart" || type === "radial-gauge-advanced") {
+    if (["donut-chart", "pie-chart", "radial-gauge-advanced", "polar-area-chart"].includes(type)) {
       const latest = histories.map((entry) => entry.points[entry.points.length - 1]?.y ?? 0);
-      const doughnutLabels = histories.map((entry, idx) => entry.state?.attributes?.friendly_name || entry.entityId || `Wert ${idx + 1}`);
+      const doughnutLabels = histories.map((entry, idx) => this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx));
       const isGauge = type === "radial-gauge-advanced";
-      const gaugeMax = config.config?.max ?? 100;
-      const gaugeValue = latest[0] ?? 0;
+      const gaugeMax = Number(config.config?.max ?? 100);
+      const gaugeValue = Number(latest[0] ?? 0);
       return {
-        type: "doughnut",
+        type: type === "polar-area-chart" ? "polarArea" : "doughnut",
         data: {
           labels: isGauge ? [doughnutLabels[0] || "Wert", "Rest"] : doughnutLabels,
           datasets: [{
+            tdHideName: false,
             data: isGauge ? [gaugeValue, Math.max(gaugeMax - gaugeValue, 0)] : latest,
-            backgroundColor: isGauge ? [this._chartPalette(0, 0.95), "rgba(255,255,255,0.08)"] : latest.map((_, idx) => this._chartPalette(idx, 0.78)),
+            backgroundColor: isGauge ? [this._chartPalette(0, 0.95, config, histories[0]?.entityId), "rgba(255,255,255,0.08)"] : histories.map((entry, idx) => this._chartPalette(idx, 0.82, config, entry.entityId)),
             borderColor: "rgba(255,255,255,0.08)",
             borderWidth: 1
           }]
         },
-        options: { ...baseOptions, cutout: type === "pie-chart" ? "0%" : "70%", scales: {}, plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, display: true } } }
+        options: { ...baseOptions, cutout: type === "pie-chart" || type === "polar-area-chart" ? "0%" : "68%", scales: {}, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend } } }
       };
     }
 
@@ -1696,80 +1860,46 @@ class ScreenManager {
         data: {
           labels,
           datasets: histories.map((entry, idx) => ({
-            label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
+            label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
+            tdHideName: !!entry.meta?.hide_name,
             data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
-            borderColor: this._chartPalette(idx, 0.95),
-            backgroundColor: this._chartPalette(idx, 0.20),
-            pointBackgroundColor: this._chartPalette(idx, 0.95),
-            pointRadius: 2
+            borderColor: this._chartPalette(idx, 0.95, config, entry.entityId),
+            backgroundColor: this._chartPalette(idx, 0.2, config, entry.entityId),
+            pointBackgroundColor: this._chartPalette(idx, 0.95, config, entry.entityId),
+            pointRadius: showPoints ? 2 : 0,
+            borderWidth: lineWidth
           }))
         },
         options: { ...baseOptions, scales: { r: { angleLines: { color: "rgba(255,255,255,0.08)" }, grid: { color: "rgba(255,255,255,0.08)" }, pointLabels: { color: "rgba(255,255,255,0.6)" }, ticks: { backdropColor: "transparent", color: "rgba(255,255,255,0.45)" } } } }
       };
     }
 
-    if (type === "scatter-chart") {
+    if (type === "scatter-chart" || type === "bubble-chart") {
       return {
-        type: "scatter",
+        type: type === "bubble-chart" ? "bubble" : "scatter",
         data: {
           datasets: histories.map((entry, idx) => ({
-            label: entry.state?.attributes?.friendly_name || entry.entityId || `Serie ${idx + 1}` ,
-            data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y })),
-            borderColor: this._chartPalette(idx, 0.95),
-            backgroundColor: this._chartPalette(idx, 0.45),
-            pointRadius: 4
+            label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
+            tdHideName: !!entry.meta?.hide_name,
+            data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y, r: type === "bubble-chart" ? Utils.clamp(Math.abs(Number(p.y) || 0) / 8, 4, compact ? 11 : 16) : undefined })),
+            borderColor: this._chartPalette(idx, 0.95, config, entry.entityId),
+            backgroundColor: this._chartPalette(idx, 0.48, config, entry.entityId),
+            pointStyle,
+            pointRadius: showPoints ? 4 : 0,
+            pointHoverRadius: showPoints ? 5 : 0
           }))
         },
-        options: { ...baseOptions, scales: { x: { type: "linear", position: "bottom", grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "rgba(255,255,255,0.45)" } }, y: baseOptions.scales.y } }
+        options: {
+          ...baseOptions,
+          scales: {
+            x: { display: showAxes, type: "linear", position: "bottom", grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { color: "rgba(255,255,255,0.45)" } },
+            y: baseOptions.scales.y
+          }
+        }
       };
     }
 
     return { type: "line", data: { labels, datasets: lineDatasets }, options: baseOptions };
-  }
-
-  async _loadCameraInto(img, entityId, preferredMode = "auto") {
-    if (!img || !entityId) return;
-    const candidates = preferredMode === "auto"
-      ? ["snapshot", "entity_picture", "camera_proxy", "camera_proxy_stream"]
-      : [preferredMode, "snapshot", "entity_picture", "camera_proxy", "camera_proxy_stream"];
-
-    const seen = new Set();
-    for (const mode of candidates) {
-      if (!mode || seen.has(mode)) continue;
-      seen.add(mode);
-      try {
-        const resolved = await this.app.dataManager.resolveCameraUrl(entityId, mode);
-        if (resolved?.url) {
-          img.src = resolved.url;
-          img.dataset.cameraMode = resolved.mode || mode;
-          return;
-        }
-      } catch (e) {}
-    }
-    img.src = this.app.dataManager.getCameraUrl(entityId, preferredMode);
-  }
-
-  _applyCommonWidgetStyle(widget, config) {
-    if (config.font) widget.style.fontFamily = `"${config.font}", sans-serif`;
-    if (config.fontSize) {
-      const ve = widget.querySelector(".w-value") || widget.querySelector(".chart-value");
-      if (ve) ve.style.fontSize = `${config.fontSize}px`;
-    }
-    if (config.textColor) widget.style.color = config.textColor;
-    if (config.bgColor && !widget.classList.contains("widget-color-block")) {
-      widget.style.background = config.bgColor;
-    }
-    const opacity = config.bgOpacity ?? config.backgroundOpacity;
-    if (opacity !== undefined && opacity !== null && !widget.classList.contains("widget-color-block")) {
-      widget.style.backgroundColor = `rgba(30,30,30,${Utils.clamp(Utils.toNumber(opacity, 0.75), 0, 1)})`;
-    }
-    const blur = config.blur ?? config.backgroundBlur;
-    if (blur) widget.style.backdropFilter = `blur(${blur}px)`;
-    if (config.borderRadius !== undefined) widget.style.borderRadius = `${config.borderRadius}px`;
-
-    if (config.customCss) {
-      widget.style.cssText += `;${config.customCss}`;
-    }
   }
 
   _updateWidget(widgetInfo, entityId, newState) {
@@ -1831,6 +1961,7 @@ class ScreenManager {
 
       case "mini-graph":
       case "sparkline":
+      case "line-chart":
       case "bar-chart":
       case "area-chart":
       case "multi-line-chart":
@@ -1842,6 +1973,8 @@ class ScreenManager {
       case "heatmap-mini":
       case "timeline-chart":
       case "scatter-chart":
+      case "bubble-chart":
+      case "polar-area-chart":
       case "forecast-chart":
       case "energy-flow-mini":
       case "comparison-chart":
@@ -1870,6 +2003,12 @@ class ScreenManager {
 
   _doTransition(newScreen, type) {
     const oldScreen = this.container.querySelector(".screen");
+    const currentScreenCfg = this.screens[this.currentIndex] || this.temporaryScreen || {};
+    if (currentScreenCfg?.screen_motion_enabled) {
+      newScreen.classList.add("screen-motion");
+      newScreen.style.setProperty("--td-screen-motion-cycle", `${Number(currentScreenCfg.screen_motion_cycle || 18)}s`);
+      newScreen.dataset.motionStrength = currentScreenCfg.screen_motion_strength || "soft";
+    }
 
     if (oldScreen && type !== "none") {
       oldScreen.style.zIndex = "1";
@@ -1945,6 +2084,8 @@ class ScreenManager {
       "heatmap-mini": "🔥",
       "timeline-chart": "🕒",
       "scatter-chart": "✳️",
+      "bubble-chart": "🫧",
+      "polar-area-chart": "🧿",
       "forecast-chart": "🔮",
       "energy-flow-mini": "⚡",
       "comparison-chart": "⚖️",

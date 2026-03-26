@@ -77,6 +77,7 @@ function deepClone(obj) {
 const TD_CHART_WIDGETS = [
   ["mini-graph", "📉", "Mini Graph"],
   ["sparkline", "〰️", "Sparkline"],
+  ["line-chart", "📈", "Line Chart"],
   ["bar-chart", "📊", "Balken"],
   ["area-chart", "🌊", "Area Chart"],
   ["multi-line-chart", "📈", "Multi-Line"],
@@ -88,6 +89,8 @@ const TD_CHART_WIDGETS = [
   ["heatmap-mini", "🔥", "Heatmap Mini"],
   ["timeline-chart", "🕒", "Timeline"],
   ["scatter-chart", "✳️", "Scatter"],
+  ["bubble-chart", "🫧", "Bubble"],
+  ["polar-area-chart", "🧿", "Polar Area"],
   ["forecast-chart", "🔮", "Forecast"],
   ["energy-flow-mini", "⚡", "Energy Flow"],
   ["comparison-chart", "⚖️", "Comparison"],
@@ -139,11 +142,49 @@ function tdCreateWidget(type, col, row, settings = {}) {
     config: {
       camera_source: d.default_camera_source,
       hours: d.default_chart_hours,
+      chart_use_history: true,
+      chart_max_points: 48,
       value_decimals: 1,
       extra_value_decimals: 1,
       trim_trailing_zeros: false,
     },
   };
+}
+
+function tdFindEntitiesForPreset(hass, kind = "blank") {
+  const all = getAllEntities(hass);
+  const pick = (fn) => all.filter(fn);
+  return {
+    weather: pick((e) => e.domain === "weather"),
+    camera: pick((e) => e.domain === "camera"),
+    sensors: pick((e) => e.domain === "sensor"),
+    numeric: pick((e) => ["sensor","number","input_number"].includes(e.domain) && /^[-+]?\d+(?:[\.,]\d+)?$/.test(String(e.state || '').replace(',', '.'))),
+    power: pick((e) => /power|energy|leistung|verbrauch|solar|pv|battery|akku/i.test(`${e.entity_id} ${e.friendly_name} ${e.unit}`)),
+    temp: pick((e) => /temp|temperature|temperatur/i.test(`${e.entity_id} ${e.friendly_name}`)),
+  };
+}
+
+function tdHydrateScreenPresetEntities(screen, hass) {
+  const sc = deepClone(screen || {});
+  const found = tdFindEntitiesForPreset(hass, sc.type || 'dashboard');
+  (sc.widgets || []).forEach((w) => {
+    if (w.type === 'weather' && !w.entity_id) w.entity_id = found.weather[0]?.entity_id || '';
+    if (w.type === 'camera' && !w.entity_id) { const id = found.camera[0]?.entity_id || ''; w.entity_id = id; w.config = { ...(w.config || {}), camera_entity: id }; }
+    if (["simple-value","icon-value","trend-arrow","gauge","progress-bar","status-dot"].includes(w.type) && !w.entity_id) {
+      const list = w.name && /temp/i.test(w.name) ? found.temp : (found.numeric.length ? found.numeric : found.sensors);
+      w.entity_id = list[0]?.entity_id || found.sensors[0]?.entity_id || '';
+      if ((w.config?.entities || []).length) {
+        const extras = list.slice(1, 5).map((e) => e.entity_id);
+        w.config = { ...(w.config || {}), entities: extras };
+      }
+    }
+    if (TD_CHART_TYPES.has(w.type)) {
+      const list = found.power.length ? found.power : (found.numeric.length ? found.numeric : found.sensors);
+      if (!w.entity_id) w.entity_id = list[0]?.entity_id || '';
+      w.config = { ...(w.config || {}), chart_use_history: w.config?.chart_use_history !== false, hours: w.config?.hours || 24, chart_max_points: w.config?.chart_max_points || 48, entities: (w.config?.entities && w.config.entities.length ? w.config.entities : list.slice(1, 4).map((e) => e.entity_id)) };
+    }
+  });
+  return sc;
 }
 
 function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
@@ -1451,7 +1492,7 @@ class TdScreenEditor extends LitElement {
     if (!tpl?.screen_config) return;
     this._push();
     const currentId = this._cfg.id;
-    this._cfg = { ...deepClone(tpl.screen_config), id: currentId, name: tpl.name || this._cfg.name || "Screen" };
+    this._cfg = { ...tdHydrateScreenPresetEntities(deepClone(tpl.screen_config), this.hass), id: currentId, name: tpl.name || this._cfg.name || "Screen" };
     this._sel = -1;
     this._selMulti = [];
   }
@@ -1489,7 +1530,9 @@ class TdScreenEditor extends LitElement {
     const { c, r } = this._findNextFreeCell();
     this._push();
     const ws = [...(this._cfg.widgets || [])];
-    ws.push(tdCreateWidget(type, c, r, this.globalSettings || {}));
+    const nw = tdCreateWidget(type, c, r, this.globalSettings || {});
+    if (TD_CHART_TYPES.has(type)) nw.config = { ...(nw.config || {}), chart_use_history: true, hours: nw.config?.hours || 24, chart_max_points: nw.config?.chart_max_points || 48 };
+    ws.push(nw);
     this._cfg = { ...this._cfg, widgets: ws };
     this._sel = ws.length - 1;
     this._selMulti = [this._sel];
@@ -1503,14 +1546,24 @@ class TdScreenEditor extends LitElement {
       return html`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:100%;height:100%">${widgets.slice(0,4).map((w) => html`<div style="border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:13px">${this._widgetIcon(w.type)}</div>`)}${!widgets.length ? html`<div class="lc">📋</div>` : ""}</div>`;
     }
     if (String(t).startsWith("preset-") || String(t).startsWith("ha-card-") || String(t).startsWith("ha-template-")) return html`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;width:100%;height:100%"><div class="lc">${it.i}</div><div class="bars"><span style="height:8px"></span><span style="height:14px"></span><span style="height:18px"></span><span style="height:11px"></span></div><div class="ring"></div><div class="weather">☀️</div></div>`;
-    if (TD_CHART_TYPES.has(t)) return html`<div class="bars"><span style="height:8px"></span><span style="height:14px"></span><span style="height:18px"></span><span style="height:11px"></span></div>`;
+    if (TD_CHART_TYPES.has(t)) {
+      if (t === "line-chart" || t === "mini-graph" || t === "multi-line-chart" || t === "sparkline" || t === "area-chart" || t === "forecast-chart") {
+        return html`<svg viewBox="0 0 80 32" style="width:80px;height:32px">${t === 'area-chart' || t === 'forecast-chart' ? html`<path d="M4 24 L20 18 L34 20 L48 10 L62 14 L76 6 L76 30 L4 30 Z" fill="currentColor" opacity="0.18"></path>` : ''}<path d="M4 24 L20 18 L34 20 L48 10 L62 14 L76 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>${t === 'multi-line-chart' || t === 'forecast-chart' ? html`<path d="M4 20 L20 22 L34 16 L48 18 L62 11 L76 13" fill="none" stroke="currentColor" opacity="0.55" stroke-width="2" stroke-dasharray="4 3"></path>` : ''}</svg>`;
+      }
+      if (t === "donut-chart" || t === "pie-chart" || t === "radial-gauge-advanced" || t === "polar-area-chart") return html`<div class="donut-prev"></div>`;
+      if (t === "scatter-chart" || t === "bubble-chart") return html`<div class="scatter-prev"><span></span><span></span><span></span><span></span></div>`;
+      if (t === "heatmap-mini") return html`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;width:100%">${Array.from({length:8}).map((_,i)=>html`<span style="display:block;height:10px;border-radius:4px;background:rgba(255,255,255,${0.12 + ((i%4)+1)*0.12})"></span>`)}</div>`;
+      if (t === "bullet-chart") return html`<div style="display:flex;align-items:center;width:100%;height:20px;background:rgba(255,255,255,.08);border-radius:999px;padding:2px"><span style="display:block;height:100%;width:68%;border-radius:999px;background:currentColor;opacity:.72"></span></div>`;
+      if (t === "energy-flow-mini") return html`<div style="display:flex;align-items:center;gap:6px"><span>☀️</span><span style="opacity:.8">➜</span><span>🏠</span><span style="opacity:.8">➜</span><span>🔋</span></div>`;
+      return html`<div class="bars"><span style="height:8px"></span><span style="height:14px"></span><span style="height:18px"></span><span style="height:11px"></span></div>`;
+    }
     if (t === "gauge" || t === "radial-gauge-advanced") return html`<div class="ring"></div>`;
     if (t === "camera" || t === "image") return html`<div class="cam">${it.i}</div>`;
     if (t === "weather") return html`<div class="weather">${it.i}</div>`;
     return html`<div><div class="lc">${it.i}</div><div class="ln"></div></div>`;
   }
 
-  _widgetIcon(type) { return ({"simple-value":"🔢","icon-value":"ℹ️","trend-arrow":"📈","status-dot":"🟢","gauge":"🎯","progress-bar":"📊","camera":"📹","image":"🖼️","clock":"🕐","weather":"🌦️","countdown":"⏱️","button":"🔘"}[type] || (TD_CHART_TYPES.has(type) ? "📈" : "◼")); }
+  _widgetIcon(type) { return ({"simple-value":"🔢","icon-value":"ℹ️","trend-arrow":"📈","status-dot":"🟢","gauge":"🎯","progress-bar":"📊","camera":"📹","image":"🖼️","clock":"🕐","weather":"🌦️","countdown":"⏱️","button":"🔘","line-chart":"📈"}[type] || (TD_CHART_TYPES.has(type) ? "📈" : "◼")); }
 
   _duplicateSelected() {
     const idxs = this._getSelectedIndices();
@@ -1766,7 +1819,8 @@ class TdScreenEditor extends LitElement {
     } else {
       return;
     }
-    this._cfg = { ...this._cfg, widgets: [...(this._cfg.widgets || []), ...widgets] };
+    const hydrated = tdHydrateScreenPresetEntities({ ...this._cfg, widgets: [...(this._cfg.widgets || []), ...widgets] }, this.hass);
+    this._cfg = hydrated;
     this._sel = (this._cfg.widgets || []).length - widgets.length;
     this._selMulti = [this._sel];
   }
@@ -1801,7 +1855,7 @@ class TdScreenEditor extends LitElement {
     }
 
     const els = [];
-    const ti = { "simple-value": "🔢", gauge: "🎯", "progress-bar": "📊", "status-dot": "🔵", camera: "📹", clock: "🕐", weather: "🌤️", image: "🖼️", ...Object.fromEntries(TD_CHART_WIDGETS.map(([t,i]) => [t,i])) };
+    const ti = { "simple-value": "🔢", gauge: "🎯", "progress-bar": "📊", "status-dot": "🔵", camera: "📹", clock: "🕐", weather: "🌤️", image: "🖼️", "line-chart":"📈", ...Object.fromEntries(TD_CHART_WIDGETS.map(([t,i]) => [t,i])) };
 
     for (let i = 0; i < widgets.length; i++) {
       const w = widgets[i];
@@ -1869,11 +1923,15 @@ class TdScreenEditor extends LitElement {
           <option value="image">Bild</option>
         </select></div>
         <div class="pf2"><td-color-picker .value=${this._cfg.background_color || "#121212"} label="Hintergrundfarbe" @value-changed=${(e) => this._ss("background_color", e.detail.value)}></td-color-picker></div>
+        <div class="pf2"><label>Lokales Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">— Kein lokales Bild —</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>
+        <div class="pf2"><td-ha-media-picker .items=${this.haImages || []} .value=${this._cfg.background_image || ""} label="Home Assistant Medienbild" placeholder="Bild aus Medienbrowser wählen" @value-changed=${(e) => this._ss("background_image", e.detail.value)}></td-ha-media-picker></div>
         <div class="pf2"><label>Hintergrundbild URL</label><input .value=${this._cfg.background_image || ""} placeholder="/ticker-display/media/images/dein-bild.png" @input=${(e) => this._ss("background_image", e.target.value)}></div>
-        <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.background_image_size || "cover"} @change=${(e) => this._ss("background_image_size", e.target.value)}>
-          <option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option>
-        </select></div>
-        <div class="pf2"><label>Farb-Overlay über Bild: ${Math.round(Number(this._cfg.background_overlay_opacity ?? 1) * 100)}%</label><input type="range" min="0" max="1" step="0.05" .value=${this._cfg.background_overlay_opacity ?? 1} @input=${(e) => this._ss("background_overlay_opacity", +e.target.value)}></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="pf2"><label>Bildgröße</label><select .value=${this._cfg.background_image_size || "cover"} @change=${(e) => this._ss("background_image_size", e.target.value)}>
+            <option value="cover">cover</option><option value="contain">contain</option><option value="auto">auto</option>
+          </select></div>
+          <div class="pf2"><label>Farb-Overlay über Bild: ${Math.round(Number(this._cfg.background_overlay_opacity ?? 1) * 100)}%</label><input type="range" min="0" max="1" step="0.05" .value=${this._cfg.background_overlay_opacity ?? 1} @input=${(e) => this._ss("background_overlay_opacity", +e.target.value)}></div>
+        </div>
         <div class="pf2"><button class="ab" @click=${() => this._ss("background_image", "")}>Hintergrundbild entfernen</button></div>
         <div class="pg4">Screen-Wettereffekt</div>
         <div class="tog"><input type="checkbox" .checked=${this._cfg.screen_weather_fx === true} @change=${(e) => this._ss("screen_weather_fx", e.target.checked)}><span>Wettereffekt über ganzen Screen anzeigen</span></div>
@@ -1884,6 +1942,9 @@ class TdScreenEditor extends LitElement {
           </div>
           <div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Nutzt bei Wetter-Screens die Screen-Entity und bei Dashboard-Screens das erste Wetter-Widget.</label></div>
         ` : ""}
+        <div class="pg4">Lebendige Bewegung</div>
+        <div class="tog"><input type="checkbox" .checked=${this._cfg.screen_motion_enabled === true} @change=${(e) => this._ss("screen_motion_enabled", e.target.checked)}><span>Widgets leicht bewegen lassen</span></div>
+        ${this._cfg.screen_motion_enabled ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Stärke</label><select .value=${this._cfg.screen_motion_strength || "soft"} @change=${(e) => this._ss("screen_motion_strength", e.target.value)}><option value="soft">Sanft</option><option value="normal">Normal</option><option value="lively">Lebendig</option></select></div><div class="pf2"><label>Zyklus (s)</label><input type="number" min="8" max="60" .value=${this._cfg.screen_motion_cycle || 18} @change=${(e) => this._ss("screen_motion_cycle", +e.target.value)}></div></div>` : ""}
         <div class="pg4">Ticker-Leiste</div>
         <div class="pf2"><label>Stil-Vorlage</label><select .value=${this._cfg.ticker_style?.style_template || "classic"} @change=${(e) => this._applyTickerTemplate(e.target.value)}><option value="classic">Classic</option><option value="glass">Glass</option><option value="alert">Alert</option><option value="minimal">Minimal</option></select></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1902,8 +1963,6 @@ class TdScreenEditor extends LitElement {
         </div>
         <div class="pf2"><label>Feste Meldungen (eine pro Zeile)</label><textarea rows="4" .value=${(this._cfg.ticker_style?.fixed_messages || []).join("\n")} @change=${(e) => this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), fixed_messages: String(e.target.value || "").split(/\n+/).map((x) => x.trim()).filter(Boolean) })}></textarea></div>
         <div class="pf2"><label>Ticker-Regeln JSON</label><textarea rows="7" .value=${JSON.stringify(this._cfg.ticker_style?.rules || [], null, 2)} @change=${(e) => { const parsed = safeJsonParse(e.target.value, null); if (parsed) this._ss("ticker_style", { ...(this._cfg.ticker_style || {}), rules: parsed }); }} placeholder='[{"priority":10,"domain":"binary_sensor","condition":"state=on","template":"Alarm: {friendly_name}","icon":"⚠️","color":"#ff5252"}]'></textarea></div>
-        ${(this.images || []).length ? html`<div class="pf2"><label>Lokales Hintergrundbild wählen</label><select .value=${this._cfg.background_image || ""} @change=${(e) => this._ss("background_image", e.target.value)}><option value="">—</option>${(this.images || []).map((img) => html`<option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>${img.filename || img.name || img.id}</option>`)}</select></div>` : ""}
-        ${(this.haImages || []).length ? html`<div class="pf2"><td-ha-media-picker .items=${this.haImages || []} .value=${this._cfg.background_image || ""} label="Home Assistant Medienbild" placeholder="Bild aus Medienbrowser wählen" @value-changed=${(e) => this._ss("background_image", e.detail.value)}></td-ha-media-picker></div>` : ""}
         <div class="pe"><span style="font-size:32px;opacity:.3">👆</span><span>Widget auswählen<br>oder aus Palette ziehen</span></div>
       </div>`;
     }
@@ -1991,6 +2050,21 @@ class TdScreenEditor extends LitElement {
           </div>
           <div class="pg4">Gruppierung & Ebenen</div>
           <div class="pf2"><label>Gruppe</label><input .value=${w.group || ""} placeholder="z. B. header / energie / fenster" @input=${(e) => this._uw("group", e.target.value)}></div>
+          ${w.group ? html`
+            <div class="tog"><input type="checkbox" .checked=${w.group_touch_enabled === true} @change=${(e) => this._uw("group_touch_enabled", e.target.checked)}><span>Gemeinsame Touch-Aktion für diese Gruppe verwenden</span></div>
+            ${w.group_touch_enabled ? html`
+              <div class="pf2"><label>Gruppen-Touch-Aktion</label><select .value=${w.group_tap_action || "popup"} @change=${(e) => this._uw("group_tap_action", e.target.value)}><option value="popup">Vollbild-Popup</option><option value="toggle">Schalter ein/aus</option><option value="goto_screen">Zu Screen wechseln</option><option value="open_url">URL öffnen</option><option value="expand">Widget vergrößern / Details</option></select></div>
+              ${(w.group_tap_action || "popup") === "toggle" ? html`
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <div class="pf2"><td-entity-picker .hass=${this.hass} .value=${w.group_tap_target_entity || w.tap_target_entity || w.entity_id || ""} label="Gruppen-Schalt-Entity" placeholder="switch.*, light.*, cover.*" @value-changed=${(e) => this._uw("group_tap_target_entity", e.detail.value)}></td-entity-picker></div>
+                  <div class="pf2"><label>Gruppen-Schaltmodus</label><select .value=${w.group_toggle_mode || "toggle"} @change=${(e) => this._uw("group_toggle_mode", e.target.value)}><option value="toggle">Umschalten</option><option value="on">Nur Ein</option><option value="off">Nur Aus</option></select></div>
+                </div>` : ""}
+              ${(w.group_tap_action || "popup") === "goto_screen" ? html`<div class="pf2"><label>Gruppen-Ziel-Screen</label><select .value=${w.group_tap_screen_id || ""} @change=${(e) => this._uw("group_tap_screen_id", e.target.value)}><option value="">— wählen —</option>${(this.device?.screens || []).map((s) => html`<option value=${s.id || s.name}>${s.name || s.id}</option>`)}</select></div>` : ""}
+              ${(w.group_tap_action || "popup") === "open_url" ? html`<div class="pf2"><label>Gruppen-Ziel-URL</label><input .value=${w.group_tap_url || ""} placeholder="https://..." @input=${(e) => this._uw("group_tap_url", e.target.value)}></div>` : ""}
+              ${((w.group_tap_action || "popup") === "popup" || (w.group_tap_action || "popup") === "expand") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Gruppen-Auto schließen (s)</label><input type="number" min="0" max="120" .value=${w.group_tap_autoclose || w.tap_autoclose || 10} @change=${(e) => this._uw("group_tap_autoclose", +e.target.value)}></div><div class="pf2"><label>Gruppen-Skalierung</label><input type="number" min="1" max="2.4" step="0.1" .value=${w.group_tap_scale || w.tap_scale || 1.45} @change=${(e) => this._uw("group_tap_scale", +e.target.value)}></div></div>` : ""}
+              <div class="pf2"><label style="font-size:11px;color:var(--secondary-text-color)">Widgets mit demselben Gruppennamen können diese gemeinsame Touch-Aktion übernehmen, wenn sie selbst keine eigene Touch-Aktion gesetzt haben.</label></div>
+            ` : ""}
+          ` : ""}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="pf2"><label>Ebene (z-index)</label><input type="number" min="1" max="999" .value=${w.z_index || (this._sel + 1)} @change=${(e) => this._uw("z_index", +e.target.value)}></div>
             <div class="pf2"><label>Ebenen</label><div style="display:flex;gap:6px"><button class="ib" @click=${() => this._setSelectedLayer(1)}>Vor</button><button class="ib" @click=${() => this._setSelectedLayer(-1)}>Zurück</button></div></div>
@@ -2015,9 +2089,41 @@ class TdScreenEditor extends LitElement {
           ` : ""}
           ${TD_CHART_TYPES.has(w.type) ? html`
             <div class="pg4">Chart</div>
-            <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Zeitraum (Stunden)</label><input type="number" min="1" max="168" .value=${w.config?.hours || 24} @change=${(e) => this._uwc("hours", +e.target.value)}></div>
+              <div class="pf2"><label>Max. Punkte</label><input type="number" min="8" max="120" .value=${w.config?.chart_max_points || 36} @change=${(e) => this._uwc("chart_max_points", +e.target.value)}></div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px">${[[6,'6h'],[12,'12h'],[24,'24h'],[72,'3d'],[168,'7d']].map(([v,l]) => html`<button class="chip2 ${Number(w.config?.hours || 24) === v ? "a" : ""}" @click=${() => this._uwc("hours", v)}>${l}</button>`)}</div>
             <div class="pf2"><td-entity-multi-picker .hass=${this.hass} .value=${w.config?.entities || []} label="Zusätzliche Entities" placeholder="Weitere Chart-Entities hinzufügen" @value-changed=${(e) => this._uwc("entities", e.detail.value)}></td-entity-multi-picker></div>
+            <div class="tog"><input type="checkbox" .checked=${w.config?.chart_use_history !== false} @change=${(e) => this._uwc("chart_use_history", e.target.checked)}><span>Sensor-History verwenden (standardmäßig an)</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Farbpalette</label><select .value=${w.config?.chart_palette || 'default'} @change=${(e) => this._uwc('chart_palette', e.target.value)}><option value="default">Default</option><option value="ocean">Ocean</option><option value="sunset">Sunset</option><option value="neon">Neon</option><option value="mono">Monochrom</option></select></div>
+              <div class="pf2"><label>Linienstärke</label><input type="number" min="1" max="8" .value=${w.config?.chart_line_width || 2} @change=${(e) => this._uwc('chart_line_width', +e.target.value)}></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Glättung</label><input type="number" min="0" max="0.9" step="0.05" .value=${w.config?.chart_tension ?? 0.35} @change=${(e) => this._uwc('chart_tension', +e.target.value)}></div>
+              <div class="pf2"><label>Flächenfüllung</label><input type="number" min="0" max="0.8" step="0.05" .value=${w.config?.chart_fill_opacity ?? 0.22} @change=${(e) => this._uwc('chart_fill_opacity', +e.target.value)}></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Kurvenmodus</label><select .value=${w.config?.chart_curve_mode || 'default'} @change=${(e) => this._uwc('chart_curve_mode', e.target.value)}><option value="default">Standard</option><option value="stepped">Treppen</option><option value="monotone">Monoton</option></select></div>
+              <div class="pf2"><label>Punktstil</label><select .value=${w.config?.chart_point_style || 'circle'} @change=${(e) => this._uwc('chart_point_style', e.target.value)}><option value="circle">Kreis</option><option value="rectRounded">Rounded</option><option value="triangle">Dreieck</option><option value="cross">Kreuz</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="pf2"><label>Y beginnt bei 0</label><select .value=${w.config?.chart_begin_at_zero === true ? 'on' : 'off'} @change=${(e) => this._uwc('chart_begin_at_zero', e.target.value === 'on')}><option value="off">Auto</option><option value="on">Ja</option></select></div>
+              <div class="pf2"><label>Legenden-Position</label><select .value=${w.config?.chart_legend_position || 'top'} @change=${(e) => this._uwc('chart_legend_position', e.target.value)}><option value="top">Oben</option><option value="bottom">Unten</option><option value="left">Links</option><option value="right">Rechts</option></select></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label class="tog"><input type="checkbox" .checked=${w.config?.chart_show_legend !== false} @change=${(e) => this._uwc('chart_show_legend', e.target.checked)}><span>Legende</span></label>
+              <label class="tog"><input type="checkbox" .checked=${w.config?.chart_show_axes !== false} @change=${(e) => this._uwc('chart_show_axes', e.target.checked)}><span>Achsen</span></label>
+              <label class="tog"><input type="checkbox" .checked=${w.config?.chart_show_grid !== false} @change=${(e) => this._uwc('chart_show_grid', e.target.checked)}><span>Grid</span></label>
+              <label class="tog"><input type="checkbox" .checked=${w.config?.chart_show_points !== false} @change=${(e) => this._uwc('chart_show_points', e.target.checked)}><span>Punkte</span></label>
+              <label class="tog"><input type="checkbox" .checked=${w.config?.chart_stacked === true} @change=${(e) => this._uwc('chart_stacked', e.target.checked)}><span>Gestapelt</span></label>
+              <label class="tog"><input type="checkbox" .checked=${w.config?.chart_mobile_compact === true} @change=${(e) => this._uwc('chart_mobile_compact', e.target.checked)}><span>Smartphone kompakt</span></label>
+            </div>
             ${(w.type === "gauge" || w.type === "radial-gauge-advanced" || w.type === "bullet-chart") ? html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="pf2"><label>Min</label><input type="number" .value=${w.config?.min || 0} @change=${(e) => this._uwc("min", +e.target.value)}></div><div class="pf2"><label>Max</label><input type="number" .value=${w.config?.max || 100} @change=${(e) => this._uwc("max", +e.target.value)}></div></div>` : ""}
+            ${(w.type === "forecast-chart") ? html`<div class="pf2"><label>Forecast-Stil</label><select .value=${w.config?.forecast_style || 'band'} @change=${(e) => this._uwc('forecast_style', e.target.value)}><option value="band">Band</option><option value="line">Linie</option><option value="step">Step</option></select></div>` : ''}
+            ${(w.type === "heatmap-mini") ? html`<div class="pf2"><label>Heatmap-Farbmodus</label><select .value=${w.config?.heatmap_mode || 'intensity'} @change=${(e) => this._uwc('heatmap_mode', e.target.value)}><option value="intensity">Intensität</option><option value="zones">Zonen</option></select></div>` : ''}
+            ${(w.type === "energy-flow-mini") ? html`<div class="pf2"><label>Energiefluss-Stil</label><select .value=${w.config?.energy_flow_style || 'flow'} @change=${(e) => this._uwc('energy_flow_style', e.target.value)}><option value="flow">Flow</option><option value="stack">Stack</option><option value="compare">Vergleich</option></select></div>` : ''}
           ` : ""}
           ${w.type === "weather" ? html`
             <div class="pg4">Wetter-Karte</div>
@@ -2087,20 +2193,22 @@ class TdScreenEditor extends LitElement {
 
 
   _renderExtraEntityMetaEditor(w) {
-    const ids = Array.isArray(w?.config?.entities) ? w.config.entities.map((id) => typeof id === "string" ? id : id?.entity_id || id?.id || "").filter(Boolean) : [];
+    const ids = this._mergeEntityList(w?.entity_id || "", w?.config?.entities || []).map((id) => typeof id === "string" ? id : id?.entity_id || id?.id || "").filter(Boolean);
     if (!ids.length) return html``;
     const meta = w?.config?.entity_meta || {};
     return html`
-      <div class="pg4">Zusatzsensoren Anzeige</div>
+      <div class="pg4">Sensoren & Anzeigenamen</div>
       <div class="tog"><input type="checkbox" .checked=${w.config?.show_extra_entity_names !== false} @change=${(e) => this._uwc("show_extra_entity_names", e.target.checked)}><span>Namen standardmäßig anzeigen</span></div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${ids.map((id) => {
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${ids.map((id, idx) => {
         const m = meta[id] || {};
+        const isPrimary = idx === 0 && id === (w?.entity_id || "");
         return html`<div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(255,255,255,.03)">
-          <div style="font-size:11px;opacity:.8;margin-bottom:6px;word-break:break-all">${id}</div>
-          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
-            <input .value=${m.alias || ""} placeholder="Kurzer Name, z.B. ober-max" @input=${(e) => this._setExtraEntityMeta(id, { alias: e.target.value })}>
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px"><div style="font-size:11px;opacity:.8;word-break:break-all">${id}</div><span style="font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(64,196,255,.12);color:#9edfff">${isPrimary ? 'Hauptsensor' : 'Zusatzsensor'}</span></div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+            <input .value=${m.alias || ""} placeholder=${isPrimary ? 'Eigener Anzeigename für Hauptsensor' : 'Kurzer Name, z. B. ober-max'} @input=${(e) => this._setExtraEntityMeta(id, { alias: e.target.value })}>
             <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" .checked=${m.hide_name || false} @change=${(e) => this._setExtraEntityMeta(id, { hide_name: e.target.checked })}>Name ausblenden</label>
           </div>
+          ${TD_CHART_TYPES.has(w?.type) ? html`<div class="pf2" style="margin:0"><td-color-picker .value=${m.color || ''} label="Serienfarbe (optional)" @value-changed=${(e) => this._setExtraEntityMeta(id, { color: e.detail.value })}></td-color-picker></div>` : ''}
         </div>`;
       })}</div>`;
   }
@@ -3461,7 +3569,8 @@ class TickerDisplayPanel extends LitElement {
           }}
           @add-screen-preset=${async (e) => {
             if (!d) return;
-            const ns = tdCreateScreenPreset(e.detail.preset || "blank", d.screens?.length || 0, this._globalSettings);
+            let ns = tdCreateScreenPreset(e.detail.preset || "blank", d.screens?.length || 0, this._globalSettings);
+            ns = tdHydrateScreenPresetEntities(ns, this.hass);
             await this._post(`/api/config/device/${this._devId}`, { ...d, screens:[...(d.screens || []), ns] });
             await this._load();
             this._scrIdx = d.screens?.length || 0;
@@ -3483,7 +3592,7 @@ class TickerDisplayPanel extends LitElement {
           @import-screen-template=${async (e) => {
             const tpl = this._templates?.[e.detail.templateId];
             if (!tpl?.screen_config || !d) return;
-            const sc = deepClone(tpl.screen_config);
+            const sc = tdHydrateScreenPresetEntities(deepClone(tpl.screen_config), this.hass);
             sc.id = `screen_${Date.now()}`;
             sc.name = sc.name || tpl.name || `Screen ${(d.screens?.length || 0) + 1}`;
             await this._post(`/api/config/device/${this._devId}`, { ...d, screens:[...(d.screens || []), sc] });

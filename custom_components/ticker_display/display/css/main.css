@@ -287,6 +287,8 @@ body {
 
 
 .td-extra-entities {
+  max-height: 42%;
+  overflow: auto;
   width: 100%;
   margin-top: 8px;
   display: flex;
@@ -805,9 +807,16 @@ body {
 .popup-controls { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
 .popup-control-btn { border:none; border-radius:16px; padding:14px 18px; background:rgba(255,255,255,.12); color:#fff; font-size:18px; font-weight:700; cursor:pointer; }
 .popup-control-btn.active, .popup-control-btn:hover { background:rgba(64,196,255,.22); }
+.popup-meter { width:min(420px,85%); height:12px; border-radius:999px; background:rgba(255,255,255,.10); overflow:hidden; margin:12px 0 8px; }
+.popup-meter > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, rgba(64,196,255,.85), rgba(126,87,194,.95)); }
+.popup-mini-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:min(420px,85%); color:rgba(255,255,255,.82); font-size:16px; margin-bottom:6px; }
+.popup-mode-row { display:flex; flex-wrap:wrap; gap:8px; width:min(640px,90%); margin-top:4px; }
+.popup-mode-chip { border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:8px 12px; font-size:14px; color:rgba(255,255,255,.78); background:rgba(255,255,255,.06); }
+.popup-mode-chip.active { background:rgba(64,196,255,.18); color:#fff; border-color:rgba(64,196,255,.45); }
 .popup-camera, .popup-image { padding-top:70px; }
 .popup-camera-image { width:100%; height:calc(70vh - 110px); border-radius:24px; object-fit:contain; background:#000; }
 .popup-control { align-items:flex-start; }
+.popup-light .popup-big-icon, .popup-cover .popup-big-icon, .popup-climate .popup-big-icon { font-size:72px; }
 @media (max-width: 820px) { .popup-media { grid-template-columns:1fr; } .popup-grid-info { grid-template-columns:1fr; } .popup-hero { padding:26px; } }
 
 .widget-media-modern .media-widget-state-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -818,3 +827,37 @@ body {
 .widget-media-modern .media-widget-controls span { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:28px; border-radius:999px; background:rgba(255,255,255,.08); font-size:13px; }
 .popup-media-progress { position:relative; width:min(420px,100%); height:8px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.12); }
 .popup-media-progress span { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg, #40c4ff, rgba(255,255,255,.95)); box-shadow:0 0 16px rgba(64,196,255,.4); }
+
+
+.chart-body { min-height: 110px; }
+.widget-chart .chart-header { flex-wrap: wrap; }
+.widget-chart .chart-title { max-width: 100%; }
+@media (max-width: 640px) {
+  .widget-chart { padding: 10px; }
+  .chart-body { min-height: 82px; }
+  .chart-title { font-size: 11px; }
+  .chart-value { font-size: 17px; }
+}
+
+.screen-motion .widget {
+  animation: tdScreenDrift var(--td-screen-motion-cycle, 18s) ease-in-out infinite;
+  will-change: transform;
+}
+.screen-motion[data-motion-strength="soft"] .widget { animation-duration: var(--td-screen-motion-cycle, 18s); }
+.screen-motion[data-motion-strength="normal"] .widget { animation-duration: calc(var(--td-screen-motion-cycle, 18s) * 0.82); }
+.screen-motion[data-motion-strength="lively"] .widget { animation-duration: calc(var(--td-screen-motion-cycle, 18s) * 0.68); }
+.screen-motion .widget:nth-child(2n) { animation-delay: -2.4s; }
+.screen-motion .widget:nth-child(3n) { animation-delay: -4.8s; }
+.screen-motion .widget:nth-child(4n) { animation-delay: -1.2s; }
+@keyframes tdScreenDrift {
+  0%,100% { transform: translate3d(0,0,0) scale(1); }
+  25% { transform: translate3d(0.4%, -0.5%, 0) scale(1.004); }
+  50% { transform: translate3d(-0.45%, 0.35%, 0) scale(0.998); }
+  75% { transform: translate3d(0.3%, 0.45%, 0) scale(1.003); }
+}
+.widget-chart.compact .chart-body { min-height: 76px; }
+.widget-chart.chart-tall .chart-body { min-height: 150px; }
+@media (max-width: 820px) {
+  .screen-motion .widget { animation-duration: calc(var(--td-screen-motion-cycle, 18s) * 1.15); }
+  .widget-chart .chart-body { min-height: 90px; }
+}
