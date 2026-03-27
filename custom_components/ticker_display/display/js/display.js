@@ -438,7 +438,7 @@ class WebSocketClient {
 class ScreenManager {
   constructor(app) {
     this.app = app;
-    this.screens = Utils.safeArray(app.config.screens);
+    this.screens = Utils.safeArray(app.config.screens).map((s) => ({ ...s, widgets: Utils.safeArray(s.widgets).map((w) => this._normalizeWidgetConfig(w)) }));
     this.currentIndex = 0;
     this.rotationTimer = null;
     this.isPaused = false;
@@ -449,6 +449,59 @@ class ScreenManager {
     this._cameraIntervals = [];
     this._countdownIntervals = [];
     this._chartInstances = [];
+  }
+
+  _normalizeWidgetConfig(config = {}) {
+    const next = JSON.parse(JSON.stringify(config || {}));
+    const type = next.type || "";
+    const entityId = String(next.entity_id || "");
+    const domain = entityId.includes(".") ? entityId.split(".", 1)[0] : "";
+    next.config = { ...(next.config || {}) };
+    if (next.config.mini_chart_fill === undefined) next.config.mini_chart_fill = false;
+    if (next.config.show_progress_bar === undefined) next.config.show_progress_bar = false;
+    if (["simple-value", "icon-value", "trend-arrow", "status-dot"].includes(type)) {
+      next.type = domain === "media_player" ? "media-card" : (domain ? "entity-control" : "mini-graph");
+    } else if (["gauge", "progress-bar"].includes(type)) {
+      next.type = domain && !["sensor", "number", "input_number"].includes(domain) ? "entity-control" : "bullet-chart";
+    }
+    if (next.type === "shutter-card") {
+      next.config.compact = next.config.compact !== false;
+      next.config.show_position_bar = next.config.show_position_bar === true;
+      next.config.show_presets = next.config.show_presets !== false;
+      next.config.show_name = next.config.show_name !== false;
+      next.config.preset_positions = Array.isArray(next.config.preset_positions) && next.config.preset_positions.length ? next.config.preset_positions : [0, 25, 50, 75, 100];
+    }
+    if (next.type === "entity-control") {
+      next.config.compact = next.config.compact !== false;
+      next.config.show_state_icon = next.config.show_state_icon !== false;
+      next.config.control_style = next.config.control_style || "auto";
+    }
+    if (next.type === "media-card") {
+      next.config.show_cover = next.config.show_cover !== false;
+      next.config.show_volume = next.config.show_volume !== false;
+      next.config.media_layout = next.config.media_layout || "card";
+    }
+    if (next.type === "light-card") {
+      next.config.compact = next.config.compact !== false;
+      next.config.show_name = next.config.show_name !== false;
+      next.config.show_progress_bar = next.config.show_progress_bar === true;
+      next.config.show_brightness_buttons = next.config.show_brightness_buttons !== false;
+      next.config.show_color_presets = next.config.show_color_presets !== false;
+      next.config.show_color_temp = next.config.show_color_temp !== false;
+    }
+    return next;
+  }
+
+  _resolveControlMode(config = {}, state = null) {
+    const forced = config.config?.control_style;
+    if (forced && forced !== "auto") return forced;
+    const entityId = String(config.entity_id || state?.entity_id || "");
+    const domain = entityId.includes(".") ? entityId.split(".", 1)[0] : "";
+    if (domain === "cover") return "cover";
+    if (domain === "light") return "light";
+    if (domain === "climate") return "climate";
+    if (["switch", "input_boolean", "fan", "valve"].includes(domain)) return "switch";
+    return "status";
   }
 
   /* ────── FEHLENDE METHODE: _applyCommonWidgetStyle ────── */
@@ -546,7 +599,7 @@ class ScreenManager {
   }
 
   rebuild() {
-    this.screens = Utils.safeArray(this.app.config.screens);
+    this.screens = Utils.safeArray(this.app.config.screens).map((s) => ({ ...s, widgets: Utils.safeArray(s.widgets).map((w) => this._normalizeWidgetConfig(w)) }));
     this.currentIndex = 0;
     this.temporaryScreen = null;
     this._stopRotation();
@@ -616,7 +669,6 @@ class ScreenManager {
     this._applyScreenStyle(screen, config);
 
     switch (config.type) {
-      case "clock": this._buildClockScreen(screen, config); break;
       case "weather": this._buildWeatherScreen(screen, config); break;
       case "camera": this._buildCameraScreen(screen, config); break;
       case "image": this._buildImageScreen(screen, config); break;
@@ -628,104 +680,24 @@ class ScreenManager {
     this._doTransition(screen, transition);
   }
 
-  _applyScreenStyle(screen, config) {
-    screen.style.backgroundColor = config.background_color || "var(--td-bg, #121212)";
-    if (config.background_image) {
-      const overlay = Number(config.background_overlay_opacity ?? 1);
-      const shade = Math.max(0, Math.min(1, 1 - overlay));
-      screen.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url(${config.background_image})`;
-      screen.style.backgroundRepeat = "no-repeat, no-repeat";
-      screen.style.backgroundPosition = "center center, center center";
-      screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
-    }
-  }
-
-  _getScreenWeatherEffectConfig(config) {
-    const enabled = config.screen_weather_fx === true || config.weather_fullscreen_fx === true;
-    if (!enabled) return null;
-    let entityId = config.entity_id || null;
-    if (!entityId) { const ww = Utils.safeArray(config.widgets).find(w => w.type === "weather" && w.entity_id); entityId = ww?.entity_id || null; }
-    if (!entityId) return null;
-    const state = this.app.entityStates[entityId] || {};
-    const visual = this._weatherVisual(state?.state, config.config || config);
-    return { entityId, visual, intensity: config.screen_weather_fx_intensity || "normal", layers: Number(config.screen_weather_fx_layers || 1) };
-  }
-
-  _applyScreenWeatherOverlay(screen, config) {
-    const fx = this._getScreenWeatherEffectConfig(config);
-    if (!fx) return;
-    const overlay = document.createElement("div");
-    overlay.className = `screen-weather-overlay ${fx.visual.theme} ${fx.visual.animClass} ${fx.visual.animate ? "animate" : ""} intensity-${fx.intensity} layers-${fx.layers}`;
-    overlay.innerHTML = this._weatherFxMarkup(fx.visual.animClass, fx.layers);
-    screen.appendChild(overlay);
-  }
-
-  /* ────── Screen Builders ────── */
-  _buildDashboardScreen(screen, config) {
-    const grid = document.createElement("div");
-    grid.className = "dashboard-grid";
-    const cols = config.grid?.columns || 3;
-    const rows = config.grid?.rows || 2;
-    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-    const widgets = Utils.safeArray(config.widgets);
-    widgets.forEach((wc, index) => {
-      const widget = this._createWidget(wc);
-      widget.style.setProperty("--widget-enter-delay", `${index * 60}ms`);
-      widget.classList.add("widget-enter");
-      widget.style.gridColumn = `${(wc.col || 0) + 1}/span ${wc.colspan || 1}`;
-      widget.style.gridRow = `${(wc.row || 0) + 1}/span ${wc.rowspan || 1}`;
-      grid.appendChild(widget);
-    });
-    screen.appendChild(grid);
-  }
-
-  _buildClockScreen(screen) {
-    screen.innerHTML = `<div class="full-screen-center"><div id="clock-time" class="clock-time-large clock-animated">--:--</div><div id="clock-date" class="clock-date-large"></div></div>`;
-    const update = () => {
-      const now = new Date();
-      const t = screen.querySelector("#clock-time");
-      const d = screen.querySelector("#clock-date");
-      if (t) t.textContent = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-      if (d) d.textContent = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-    };
-    update();
-    this._clockIntervals.push(setInterval(update, 1000));
-  }
-
-  _buildWeatherScreen(screen, config) {
-    const state = config.entity_id ? (this.app.entityStates[config.entity_id] || {}) : {};
-    const visual = this._weatherVisual(state?.state, config.config || config);
-    const temp = state?.attributes?.temperature ?? "--";
-    const feels = state?.attributes?.temperature ?? temp;
-    screen.innerHTML = `<div class="weather-screen ${visual.theme}"><div class="weather-animated-bg ${visual.animClass} ${visual.animate ? "animate" : ""}">${this._weatherFxMarkup(visual.animClass)}</div><div class="weather-screen-card"><div class="weather-hero-icon">${visual.icon}</div><div id="weather-temp" class="weather-temp-large">${temp}°C</div><div id="weather-condition" class="weather-cond-large">${visual.label}</div><div class="weather-meta-row"><span>Gefühlt</span><strong>${feels}°C</strong></div></div></div>`;
-  }
-
-  _buildCameraScreen(screen, config) {
-    const eid = config.entity_id || config.config?.camera_entity || config.camera_entity || "";
-    const preferredSource = config.config?.camera_source || config.camera_source || "auto";
-    const liveMode = (config.config?.camera_view || config.camera_view || "still") === "live";
-    const source = liveMode && preferredSource === "auto" ? "camera_proxy_stream" : preferredSource;
-    const fit = config.config?.camera_fit || config.camera_fit || "contain";
-    const title = this._widgetCameraTitle(config, config.title || config.name || eid || "Kamera");
-    screen.innerHTML = `<img id="camera-img" class="screen-image-contain" style="object-fit:${fit}" alt="Camera">${title ? `<div class="screen-caption">${title}</div>` : ""}`;
-    const img = screen.querySelector("#camera-img");
-    if (img && eid) this._loadCameraInto(img, eid, source);
-    if (!liveMode) {
-      const ms = (config.refresh_interval || config.config?.refresh_interval || 5) * 1000;
-      this._cameraIntervals.push(setInterval(() => { const ni = screen.querySelector("#camera-img"); if (ni && eid) this._loadCameraInto(ni, eid, source); }, ms));
-    }
-  }
-
-  _buildImageScreen(screen, config) {
-    const src = config.image_url || config.imageUrl || config.url || "";
-    screen.innerHTML = `<div class="image-screen-wrap">${src ? `<img src="${src}" class="screen-image-contain" style="object-fit:${config.image_fit || config.background_image_size || "contain"}" alt="Image">` : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild gesetzt</div></div>`}</div>`;
+  _applyDynamicWidgetStateClasses(widget, config, state = null) {
+    const st = state || {};
+    const attrs = st.attributes || {};
+    const entityId = String(config?.entity_id || st.entity_id || '');
+    const stateText = String(st.state || '').toLowerCase();
+    const hay = `${entityId} ${attrs.device_class || ''} ${attrs.icon || ''} ${attrs.friendly_name || ''}`.toLowerCase();
+    const charging = !!attrs.battery_charging || !!attrs.charging || /(charg|laden)/.test(stateText);
+    widget.classList.toggle('widget-state-active', Utils.isTruthyState(st.state));
+    widget.classList.toggle('widget-state-playing', stateText === 'playing');
+    widget.classList.toggle('widget-battery-card', /battery|akku/.test(hay) || attrs.device_class === 'battery');
+    widget.classList.toggle('widget-battery-charging', charging);
   }
 
   /* ────── Widget Factory ────── */
   _createWidget(config) {
+    config = this._normalizeWidgetConfig(config);
     const widget = document.createElement("div");
-    widget.className = `widget widget-${config.type || "simple-value"}`;
+    widget.className = `widget widget-${config.type || "entity-control"}`;
 
     const trackedIds = [config.entity_id, config.config?.camera_entity, config.camera_entity, ...Utils.safeArray(config.config?.entities || config.entities)].filter(Boolean);
     for (const tid of [...new Set(trackedIds)]) {
@@ -741,12 +713,18 @@ class ScreenManager {
     const icon = config.icon || this._defaultIconForType(config.type);
 
     switch (config.type) {
-      case "simple-value": this._renderDefaultWidget(widget, config, value, unit, name, icon); break;
-      case "gauge": this._renderGaugeWidget(widget, config, value, unit, name); break;
-      case "progress-bar": this._renderProgressBarWidget(widget, config, value, unit, name); break;
-      case "status-dot": this._renderStatusDotWidget(widget, config, value, name); break;
-      case "trend-arrow": this._renderTrendArrowWidget(widget, config, state, name, icon); break;
-      case "camera": this._renderCameraWidget(widget, config, name); break;
+      case "entity-control":
+        this._renderEntityControlWidget(widget, config, state, name, icon);
+        break;
+      case "shutter-card":
+        this._renderShutterCardWidget(widget, config, state, name, icon);
+        break;
+      case "media-card":
+        this._renderModernMediaCard(widget, config, state, name, icon);
+        break;
+      case "light-card":
+        this._renderLightCardWidget(widget, config, state, name, icon);
+        break;
       case "weather": this._renderWeatherWidget(widget, config, state); break;
       case "clock": this._renderClockWidget(widget, config); break;
       case "countdown": this._renderCountdownWidget(widget, config); break;
@@ -762,10 +740,6 @@ class ScreenManager {
       case "forecast-chart": case "energy-flow-mini": case "comparison-chart":
       case "radial-gauge-advanced": case "bullet-chart":
         this._renderChartWidget(widget, config, state, name); break;
-      case "icon-value":
-        if (String(config.entity_id || "").startsWith("media_player.")) this._renderMediaPlayerWidget(widget, config, state, name, icon);
-        else this._renderIconValueWidget(widget, config, value, unit, name, icon);
-        break;
       default: this._renderDefaultWidget(widget, config, value, unit, name, icon); break;
     }
 
@@ -778,13 +752,14 @@ class ScreenManager {
     const interactionConfig = this._effectiveWidgetInteractionConfig(config);
     this._syncWidgetToggleBadge(widget, interactionConfig);
     this._bindWidgetInteraction(widget, interactionConfig);
+    this._applyDynamicWidgetStateClasses(widget, config, state);
     return widget;
   }
 
   /* ────── Widget Renderers ────── */
 
 _supportsWidgetMiniHistory(config) {
-  return ["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"].includes(config?.type || "simple-value") && !!config?.entity_id;
+  return ["entity-control"].includes(config?.type || "entity-control") && !!config?.entity_id;
 }
 
 _refreshWidgetMiniHistory(widget, config, state = null) {
@@ -804,7 +779,7 @@ async _buildWidgetMiniHistory(holder, config, state = null) {
   const hours = Number(config.config?.hours || config.config?.period || 24);
   const maxPoints = Number(config.config?.mini_chart_max_points || config.config?.chart_max_points || 28);
   const lineWidth = Math.max(1, Math.min(6, Number(config.config?.mini_chart_stroke || 2)));
-  const showFill = config.config?.mini_chart_fill !== false;
+  const showFill = config.config?.mini_chart_fill === true;
   const showLastDot = config.config?.mini_chart_show_last_dot !== false;
   const useHistory = config.config?.chart_use_history !== false;
   let points = [];
@@ -853,6 +828,145 @@ async _buildWidgetMiniHistory(holder, config, state = null) {
     this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
 
+  _renderEntityControlWidget(widget, config, state, name, icon) {
+    const st = state || this.app.entityStates[config.entity_id] || {};
+    const entityId = config.entity_id || st.entity_id || "";
+    const domain = entityId.includes(".") ? entityId.split(".", 1)[0] : "";
+    const attrs = st.attributes || {};
+    const mode = this._resolveControlMode(config, st);
+    const compact = config.config?.compact !== false;
+    const showProgress = config.config?.show_progress_bar === true;
+    const stateLabel = Utils.text(st.state || "—");
+    let valueLabel = stateLabel;
+    let progress = null;
+    let chip = "";
+    let actionButtons = [];
+
+    if (mode === "cover") {
+      const pos = Utils.toNumber(attrs.current_position, stateLabel === "open" ? 100 : 0);
+      progress = Utils.clamp(pos, 0, 100);
+      valueLabel = `${Math.round(progress)}%`;
+      chip = progress > 10 ? "Offen" : "Zu";
+      actionButtons = [
+        ['Öffnen', 'open'], ['Stop', 'stop'], ['Schließen', 'close']
+      ];
+    } else if (mode === "light") {
+      const isOn = Utils.isTruthyState(st.state);
+      const bri = Utils.toNumber(attrs.brightness, isOn ? 255 : 0);
+      progress = Math.round((bri / 255) * 100);
+      valueLabel = isOn ? 'Ein' : 'Aus';
+      chip = attrs.color_mode ? Utils.text(attrs.color_mode) : (progress ? `${progress}%` : '');
+      actionButtons = [[isOn ? 'Aus' : 'Ein', 'toggle']];
+    } else if (mode === "climate") {
+      valueLabel = `${Utils.text(attrs.current_temperature ?? '—')}°`;
+      chip = `Soll ${Utils.text(attrs.temperature ?? '—')}°`;
+      progress = null;
+      actionButtons = [['−1°', 'temp_down'], ['+1°', 'temp_up']];
+    } else {
+      const isOn = Utils.isTruthyState(st.state) || ['open','home','playing','armed_away','armed_home'].includes(String(st.state || '').toLowerCase());
+      valueLabel = isOn ? 'Aktiv' : 'Inaktiv';
+      chip = stateLabel;
+      if (domain === 'person') valueLabel = stateLabel === 'home' ? 'Zuhause' : 'Unterwegs';
+      if (domain === 'binary_sensor') valueLabel = stateLabel;
+      if (domain === 'switch' || domain === 'fan' || domain === 'input_boolean' || domain === 'valve') actionButtons = [[isOn ? 'Aus' : 'Ein', 'toggle']];
+    }
+
+    const iconHtml = config.config?.show_state_icon === false ? '' : `<div class="control-widget-icon">${Utils.text(icon || this._defaultIconForType(config.type))}</div>`;
+    widget.classList.add('widget-entity-control', `control-mode-${mode}`);
+    widget.innerHTML = `<div class="control-widget-shell ${compact ? 'compact' : ''}">${iconHtml}<div class="control-widget-main">${name && config.config?.show_name !== false ? `<div class="w-name">${name}</div>` : ''}<div class="control-widget-value">${valueLabel}</div>${chip ? `<div class="control-widget-chip">${chip}</div>` : ''}${showProgress && progress != null ? `<div class="progress-container"><div class="progress-fill progress-animated" style="width:${progress}%;background:var(--td-accent)"></div></div>` : ''}${actionButtons.length ? `<div class="control-widget-actions">${actionButtons.map(([label,action]) => `<button type="button" data-entity-action="${action}">${label}</button>`).join('')}</div>` : ''}</div></div>`;
+    widget.querySelectorAll('[data-entity-action]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const action = btn.dataset.entityAction;
+      if (action === 'temp_down') await this.app.callEntityService('climate', 'set_temperature', { entity_id: entityId, temperature: Number(attrs.temperature ?? 20) - 1 });
+      else if (action === 'temp_up') await this.app.callEntityService('climate', 'set_temperature', { entity_id: entityId, temperature: Number(attrs.temperature ?? 20) + 1 });
+      else await this.app.callEntityAction(entityId, action);
+    }));
+    this._refreshWidgetMiniHistory(widget, config, st);
+  }
+
+  _renderLightCardWidget(widget, config, state, name, icon) {
+    const st = state || this.app.entityStates[config.entity_id] || {};
+    const attrs = st.attributes || {};
+    const isOn = Utils.isTruthyState(st.state);
+    const briPct = Math.max(0, Math.min(100, Math.round((Number(attrs.brightness || 0) / 255) * 100)));
+    const rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color.slice(0,3).map((v) => Math.max(0, Math.min(255, Number(v) || 0))) : null;
+    const colorStyle = rgb ? `rgb(${rgb.join(',')})` : 'var(--td-accent)';
+    const compact = config.config?.compact !== false;
+    const presets = Array.isArray(config.config?.color_presets) && config.config.color_presets.length ? config.config.color_presets : [[255,183,77],[255,214,10],[255,255,255],[64,196,255],[186,104,200]];
+    const temps = Array.isArray(config.config?.temp_presets) && config.config.temp_presets.length ? config.config.temp_presets : [2200, 3000, 4000, 5500];
+    const swatches = presets.map((preset) => {
+      const arr = Array.isArray(preset) ? preset : String(preset).split(',').map((v) => Number(String(v).trim())).slice(0,3);
+      const rgbv = arr.length >= 3 ? arr.map((v) => Math.max(0, Math.min(255, Number(v) || 0))) : [255,255,255];
+      return `<button type="button" class="light-swatch" data-light-rgb="${rgbv.join(',')}" style="--swatch:${'rgb(' + rgbv.join(',') + ')'}" aria-label="Farbe ${rgbv.join(',')}"></button>`;
+    }).join('');
+    const tempButtons = temps.map((kelvin) => `<button type="button" data-light-kelvin="${Number(kelvin) || 0}">${Number(kelvin) || 0}K</button>`).join('');
+    widget.classList.add('widget-light-card');
+    widget.classList.toggle('is-on', isOn);
+    widget.classList.toggle('is-off', !isOn);
+    widget.style.setProperty('--light-accent', colorStyle);
+    widget.innerHTML = `<div class="light-widget-shell ${compact ? 'compact' : ''}">${config.config?.show_name !== false ? `<div class="w-name">${name || attrs.friendly_name || config.entity_id || 'Licht'}</div>` : ''}<div class="light-widget-head"><button type="button" class="light-power ${isOn ? 'on' : 'off'}" data-light-action="toggle">${isOn ? '💡' : '◯'}</button><div class="light-widget-main"><div class="light-widget-state">${isOn ? 'Ein' : 'Aus'}</div><div class="light-widget-meta">${attrs.color_mode ? Utils.text(attrs.color_mode) : Utils.text(st.state || '—')}</div></div><div class="light-widget-badge">${briPct}%</div></div>${config.config?.show_progress_bar === true ? `<div class="progress-container"><div class="progress-fill progress-animated" style="width:${briPct}%;background:${colorStyle}"></div></div>` : ''}${config.config?.show_brightness_buttons !== false ? `<div class="light-widget-brightness"><button type="button" data-light-brightness="10">10%</button><button type="button" data-light-brightness="25">25%</button><button type="button" data-light-brightness="50">50%</button><button type="button" data-light-brightness="75">75%</button><button type="button" data-light-brightness="100">100%</button></div>` : ''}${config.config?.show_color_presets !== false ? `<div class="light-widget-colors">${swatches}</div>` : ''}${config.config?.show_color_temp !== false ? `<div class="light-widget-temp">${tempButtons}</div>` : ''}</div>`;
+    widget.querySelectorAll('[data-light-action]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      await this.app.callEntityAction(config.entity_id, btn.dataset.lightAction);
+    }));
+    widget.querySelectorAll('[data-light-brightness]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      await this.app.callEntityAction(config.entity_id, 'set_brightness_pct', { brightness_pct: Number(btn.dataset.lightBrightness || 0) });
+    }));
+    widget.querySelectorAll('[data-light-rgb]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const rgbVal = String(btn.dataset.lightRgb || '').split(',').map((v) => Number(String(v).trim())).slice(0,3);
+      await this.app.callEntityAction(config.entity_id, 'set_rgb_color', { rgb_color: rgbVal });
+    }));
+    widget.querySelectorAll('[data-light-kelvin]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      await this.app.callEntityAction(config.entity_id, 'set_color_temp', { color_temp_kelvin: Number(btn.dataset.lightKelvin || 0) });
+    }));
+    this._refreshWidgetMiniHistory(widget, config, st);
+  }
+
+  _renderShutterCardWidget(widget, config, state, name, icon) {
+    const st = state || this.app.entityStates[config.entity_id] || {};
+    const attrs = st.attributes || {};
+    const compact = config.config?.compact !== false;
+    const posRaw = attrs.current_position ?? (String(st.state || '').toLowerCase() === 'open' ? 100 : 0);
+    const pos = Utils.clamp(Utils.toNumber(posRaw, 0), 0, 100);
+    const open = pos > 10 || ['opening','open'].includes(String(st.state || '').toLowerCase());
+    const label = open ? 'Offen' : 'Geschlossen';
+    const presets = (Array.isArray(config.config?.preset_positions) && config.config.preset_positions.length ? config.config.preset_positions : [0, 25, 50, 75, 100])
+      .map((v) => Utils.clamp(Utils.toNumber(v, 0), 0, 100));
+    const uniqPresets = [...new Set(presets)].sort((a, b) => a - b);
+    widget.classList.add('widget-shutter-card');
+    widget.innerHTML = `<div class="shutter-widget-shell ${compact ? 'compact' : ''}">${config.config?.show_name !== false ? `<div class="w-name">${name || attrs.friendly_name || config.entity_id || 'Rollladen'}</div>` : ''}<div class="shutter-widget-head"><div class="shutter-widget-icon">${Utils.text(icon || '🪟')}</div><div class="shutter-widget-reading"><div class="shutter-widget-position">${Math.round(pos)}<span>%</span></div><div class="shutter-widget-state">${label} · ${Utils.text(st.state || '—')}</div></div></div>${config.config?.show_position_bar === true ? `<div class="shutter-widget-track"><span style="width:${pos}%"></span></div>` : ''}<div class="shutter-widget-actions"><button type="button" data-shutter-action="open">Öffnen</button><button type="button" data-shutter-action="stop">Stop</button><button type="button" data-shutter-action="close">Schließen</button></div>${config.config?.show_presets !== false ? `<div class="shutter-widget-presets">${uniqPresets.map((pct) => `<button type="button" data-shutter-pos="${pct}">${pct}%</button>`).join('')}</div>` : ''}</div>`;
+    widget.querySelectorAll('[data-shutter-action]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      await this.app.callEntityAction(config.entity_id, btn.dataset.shutterAction);
+    }));
+    widget.querySelectorAll('[data-shutter-pos]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      await this.app.callEntityAction(config.entity_id, 'set_position', { position: Number(btn.dataset.shutterPos || 0) });
+    }));
+    this._refreshWidgetMiniHistory(widget, config, st);
+  }
+
+  _renderModernMediaCard(widget, config, state, name, icon) {
+    const st = state || this.app.entityStates[config.entity_id] || {};
+    const attrs = st.attributes || {};
+    const title = Utils.text(attrs.media_title || st.state || '—');
+    const subtitle = Utils.text(attrs.media_artist || attrs.source || attrs.app_name || '');
+    const vol = Math.round((Number(attrs.volume_level || 0)) * 100);
+    const cover = config.config?.show_cover === false ? '' : (attrs.entity_picture || '');
+    const showVolume = config.config?.show_volume !== false;
+    const showProgress = config.config?.show_progress_bar === true;
+    const compact = config.config?.media_layout === 'compact';
+    widget.classList.add('widget-media-modern', 'widget-media-card');
+    widget.innerHTML = `<div class="media-widget-shell ${compact ? 'compact' : ''}">${cover ? `<img class="media-widget-cover" src="${cover}" alt="Cover">` : `<div class="media-widget-cover placeholder">${icon || '🎵'}</div>`}<div class="media-widget-meta">${name && config.config?.show_name !== false ? `<div class="w-name">${name}</div>` : ''}<div class="media-widget-title">${title}</div><div class="media-widget-subtitle">${subtitle}</div><div class="media-widget-state-row"><div class="media-widget-state">${Utils.text(st.state || '—')}</div>${showVolume ? `<div class="media-widget-vol">🔊 ${vol}%</div>` : ''}</div>${showProgress ? `<div class="media-widget-progress"><span style="width:${Math.max(8, vol)}%"></span></div>` : ''}<div class="media-widget-controls"><button type="button" data-media-action="previous">⏮</button><button type="button" data-media-action="toggle">${String(st.state || '').toLowerCase() === 'playing' ? '⏸' : '▶'}</button><button type="button" data-media-action="next">⏭</button><button type="button" data-media-action="volume_down">－</button><button type="button" data-media-action="volume_up">＋</button></div></div></div>`;
+    widget.querySelectorAll('[data-media-action]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      await this.app.callMediaPlayerCommand(config.entity_id, btn.dataset.mediaAction);
+    }));
+  }
+
   _renderMediaPlayerWidget(widget, config, state, name, icon) {
     const attrs = state?.attributes || {};
     const cover = attrs.entity_picture || "";
@@ -889,7 +1003,8 @@ async _buildWidgetMiniHistory(holder, config, state = null) {
     const nv = Utils.toNumber(value, 0);
     const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
     const color = config.config?.color || "var(--td-accent)";
-    widget.innerHTML = `${name ? `<div class="w-name" style="margin-bottom:4px">${name}</div>` : ""}<div><span class="w-value">${Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div><div class="progress-container"><div class="progress-fill progress-animated" style="width:${pct}%;background:${color}"></div></div>`;
+    const showProgress = config.config?.show_progress_bar === true;
+    widget.innerHTML = `${name ? `<div class="w-name" style="margin-bottom:4px">${name}</div>` : ""}<div><span class="w-value">${Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>${showProgress ? `<div class="progress-container"><div class="progress-fill progress-animated" style="width:${pct}%;background:${color}"></div></div>` : ""}`;
     this._renderExtraEntityList(widget, config);
     this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
@@ -1221,43 +1336,18 @@ async _buildWidgetMiniHistory(holder, config, state = null) {
     const unit = newState?.attributes?.unit_of_measurement || config.unit || "";
 
     switch (config.type) {
-      case "simple-value":
-        this._renderDefaultWidget(element, config, value, unit, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
+      case "entity-control":
+        this._renderEntityControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
         break;
-      case "icon-value":
-        if (String(config.entity_id || "").startsWith("media_player.")) this._renderMediaPlayerWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
-        else this._renderIconValueWidget(element, config, value, unit, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
+      case "shutter-card":
+        this._renderShutterCardWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
         break;
-      case "gauge": {
-        const min = config.config?.min ?? 0; const max = config.config?.max ?? 100;
-        const nv = Utils.toNumber(value, 0);
-        const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
-        const arc = element.querySelector(".gauge-arc-value");
-        const txt = element.querySelector(".gauge-text-value");
-        if (arc) { arc.setAttribute("stroke-dasharray", `${pct * 2.51} 251`); arc.setAttribute("stroke", this._getZoneColor(nv, config.config?.zones)); }
-        if (txt) txt.textContent = Utils.formatStateWithUnit(nv, unit, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
-        this._refreshWidgetMiniHistory(element, config, newState);
+      case "media-card":
+        this._renderModernMediaCard(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
         break;
-      }
-      case "progress-bar": {
-        const min = config.config?.min ?? 0; const max = config.config?.max ?? 100;
-        const nv = Utils.toNumber(value, 0);
-        const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
-        const fill = element.querySelector(".progress-fill"); const ve = element.querySelector(".w-value");
-        if (fill) fill.style.width = `${pct}%`;
-        if (ve) ve.textContent = Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
-        this._refreshWidgetMiniHistory(element, config, newState);
+      case "light-card":
+        this._renderLightCardWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
         break;
-      }
-      case "status-dot": {
-        const isOn = Utils.isTruthyState(value);
-        const dot = element.querySelector(".status-dot-indicator"); const sub = element.querySelector(".widget-subvalue");
-        const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
-        if (dot) { dot.style.background = color; dot.style.color = color; dot.classList.toggle("on", isOn); }
-        if (sub) sub.textContent = Utils.text(value);
-        this._refreshWidgetMiniHistory(element, config, newState);
-        break;
-      }
       case "weather": this._renderWeatherWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}); break;
       case "trend-arrow": this._renderTrendArrowWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, config.name || "", config.icon || this._defaultIconForType(config.type)); this._refreshWidgetMiniHistory(element, config, newState); break;
       case "mini-graph": case "sparkline": case "line-chart": case "bar-chart":
@@ -1276,6 +1366,7 @@ async _buildWidgetMiniHistory(holder, config, state = null) {
       default: { const wv = element.querySelector(".w-value"); if (wv) wv.textContent = Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false }); }
     }
     this._updateExtraEntityList(element, config);
+    this._applyDynamicWidgetStateClasses(element, config, newState || this.app.entityStates[config.entity_id] || {});
     element.classList.remove("value-changed"); void element.offsetWidth; element.classList.add("value-changed");
   }
 
@@ -1709,7 +1800,7 @@ async _buildWidgetMiniHistory(holder, config, state = null) {
   }
 
   _defaultIconForType(type) {
-    const map = { "simple-value": "🔢", "icon-value": "ℹ️", "mini-graph": "📉", "line-chart": "📈", "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈", "stacked-bar-chart": "🧱", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "🕒", "scatter-chart": "✳️", "bubble-chart": "🫧", "polar-area-chart": "🧿", "forecast-chart": "🔮", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", "sparkline": "〰️", "trend-arrow": "📈", "weather": "🌤️", "clock": "🕐", "image": "🖼️", "camera": "📹", "qr-code": "🔳", "countdown": "⏱️", "button": "🔘" };
+    const map = { "entity-control": "🎛️", "shutter-card": "🪟", "media-card": "🎵", "light-card": "💡", "mini-graph": "📉", "line-chart": "📈", "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈", "stacked-bar-chart": "🧱", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "🕒", "scatter-chart": "✳️", "bubble-chart": "🫧", "polar-area-chart": "🧿", "forecast-chart": "🔮", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", "sparkline": "〰️", "weather": "🌤️", "clock": "🕐", "image": "🖼️", "camera": "📹", "qr-code": "🔳", "countdown": "⏱️", "button": "🔘" };
     return map[type] || "📊";
   }
 }
@@ -2018,6 +2109,12 @@ class TickerDisplayApp {
   async callMediaPlayerCommand(entityId, action, extra = {}) {
     if (!entityId) return false;
     const result = await this.dataManager.postJson(`/api/media-player/${entityId}/command`, { action, ...extra });
+    return !!result?.status;
+  }
+
+  async callEntityAction(entityId, action, data = {}) {
+    if (!entityId || !action) return false;
+    const result = await this.dataManager.postJson(`/api/entity/action`, { entity_id: entityId, action, data });
     return !!result?.status;
   }
 

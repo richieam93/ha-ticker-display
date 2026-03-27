@@ -73,8 +73,10 @@ class TickerDisplayAPI:
         app.router.add_get(f"{API_BASE}/api/weather/{{entity_id}}", self._weather)
         app.router.add_get(f"{API_BASE}/api/states/{{entity_id}}", self._states)
         app.router.add_get(f"{API_BASE}/api/entity/{{entity_id}}", self._states)
+        app.router.add_get(f"{API_BASE}/api/entity/{{entity_id}}/capabilities", self._entity_capabilities)
         app.router.add_post(f"{API_BASE}/api/entity/toggle", self._entity_toggle)
         app.router.add_post(f"{API_BASE}/api/entity/service", self._entity_service)
+        app.router.add_post(f"{API_BASE}/api/entity/action", self._entity_action)
         app.router.add_get(f"{API_BASE}/api/media-player/{{entity_id}}", self._media_player_state)
         app.router.add_post(f"{API_BASE}/api/media-player/{{entity_id}}/command", self._media_player_command)
         app.router.add_get(f"{API_BASE}/api/persons", self._persons)
@@ -651,6 +653,93 @@ class TickerDisplayAPI:
         return web.json_response(self._serialize_state(state))
 
 
+
+    def _light_color_payload(self, data: dict, state_attrs: dict) -> dict:
+        payload = {}
+        if data.get("brightness_pct") is not None:
+            payload["brightness_pct"] = max(0, min(100, int(float(data.get("brightness_pct", 0)))))
+        if data.get("rgb_color") is not None:
+            rgb = data.get("rgb_color")
+            if isinstance(rgb, str):
+                rgb = [int(float(x.strip())) for x in rgb.split(',')[:3]]
+            if isinstance(rgb, (list, tuple)) and len(rgb) >= 3:
+                payload["rgb_color"] = [max(0, min(255, int(float(rgb[0])))), max(0, min(255, int(float(rgb[1])))), max(0, min(255, int(float(rgb[2]))))]
+        elif data.get("hs_color") is not None:
+            hs = data.get("hs_color")
+            if isinstance(hs, str):
+                hs = [float(x.strip()) for x in hs.split(',')[:2]]
+            if isinstance(hs, (list, tuple)) and len(hs) >= 2:
+                payload["hs_color"] = [float(hs[0]), float(hs[1])]
+        if data.get("color_temp_kelvin") is not None:
+            payload["color_temp_kelvin"] = int(float(data.get("color_temp_kelvin", 0)))
+        elif data.get("color_temp") is not None:
+            payload["color_temp"] = int(float(data.get("color_temp", 0)))
+        if data.get("effect"):
+            payload["effect"] = str(data.get("effect"))
+        if not payload and state_attrs.get("rgb_color"):
+            payload["rgb_color"] = state_attrs.get("rgb_color")
+        return payload
+
+    async def _entity_capabilities(self, request):
+        entity_id = request.match_info["entity_id"]
+        state = self.hass.states.get(entity_id)
+        if not state:
+            return web.json_response({"error": "not found"}, status=404)
+
+        domain = self._state_domain(state)
+        attrs = dict(getattr(state, "attributes", {}) or {})
+        actions = []
+        features = []
+
+        if domain in {"switch", "fan", "input_boolean", "valve"}:
+            actions = ["toggle", "on", "off"]
+        elif domain == "light":
+            actions = ["toggle", "on", "off", "set_brightness_pct", "set_rgb_color", "set_color_temp"]
+            if attrs.get("effect_list"):
+                actions.append("set_effect")
+            features = [
+                "brightness", "supported_color_modes", "rgb_color",
+                "hs_color", "color_temp_kelvin", "effect_list"
+            ]
+        elif domain == "cover":
+            actions = ["open", "stop", "close", "set_position"]
+            features = ["current_position"]
+        elif domain == "media_player":
+            actions = ["toggle", "play", "pause", "next", "previous", "stop", "volume_up", "volume_down", "volume_set"]
+            features = ["media_title", "media_artist", "entity_picture", "volume_level"]
+        elif domain == "climate":
+            actions = ["set_temperature", "set_hvac_mode"]
+            if attrs.get("preset_modes"):
+                actions.append("set_preset_mode")
+            if attrs.get("fan_modes"):
+                actions.append("set_fan_mode")
+            features = [
+                "current_temperature", "temperature", "target_temp_high", "target_temp_low",
+                "hvac_action", "hvac_mode", "hvac_modes", "preset_mode", "preset_modes",
+                "fan_mode", "fan_modes", "current_humidity", "humidity"
+            ]
+        elif domain == "alarm_control_panel":
+            actions = ["arm_away", "arm_home", "disarm"]
+            if attrs.get("supported_features"):
+                actions.extend(["arm_night", "arm_vacation"])
+            features = ["code_arm_required", "changed_by", "friendly_name"]
+        elif domain == "vacuum":
+            actions = ["start", "pause", "return_to_base", "stop"]
+            features = ["battery_level", "fan_speed", "status"]
+        elif domain == "person":
+            features = ["friendly_name", "entity_picture", "latitude", "longitude", "source", "user_id"]
+        elif domain in {"binary_sensor"}:
+            features = ["friendly_name", "device_class"]
+
+        return web.json_response({
+            "entity_id": entity_id,
+            "domain": domain,
+            "state": self._serialize_state(state),
+            "actions": actions,
+            "features": features,
+            "attributes": self._json_safe(attrs),
+        })
+
     async def _entity_toggle(self, request):
         data = await request.json()
         entity_id = data.get("entity_id", "")
@@ -702,6 +791,123 @@ class TickerDisplayAPI:
             blocking=True,
         )
         return web.json_response({"status": "ok", "domain": domain, "service": service, "data": service_data})
+
+    async def _entity_action(self, request):
+        data = await request.json()
+        entity_id = data.get("entity_id", "")
+        action = str(data.get("action", "")).strip().lower()
+        extra = data.get("data", {}) or {}
+        if not entity_id or "." not in entity_id:
+            return web.json_response({"error": "entity_id required"}, status=400)
+        if not action:
+            return web.json_response({"error": "action required"}, status=400)
+
+        domain = entity_id.split(".", 1)[0]
+        state = self.hass.states.get(entity_id)
+        attrs = dict(getattr(state, "attributes", {}) or {})
+        state_text = str(getattr(state, "state", "") or "").lower()
+        payload = {"entity_id": entity_id, **extra}
+
+        service_domain = domain
+        service = None
+
+        if action in {"toggle", "play_pause"}:
+            if domain == "media_player":
+                service_domain, service = "media_player", "media_play_pause"
+            elif domain == "cover":
+                pos = attrs.get("current_position", 0)
+                try:
+                    pos = int(pos)
+                except Exception:
+                    pos = 0
+                service_domain, service = "cover", ("close_cover" if pos > 10 else "open_cover")
+            elif domain == "valve":
+                service_domain, service = "valve", ("close_valve" if state_text == "open" else "open_valve")
+            else:
+                service_domain, service = (domain if domain in {"switch", "light", "input_boolean", "fan"} else "homeassistant"), "toggle"
+        elif action in {"on", "turn_on", "open"}:
+            if domain == "cover":
+                service_domain, service = "cover", "open_cover"
+            elif domain == "valve":
+                service_domain, service = "valve", "open_valve"
+            else:
+                service_domain, service = domain, "turn_on"
+        elif action in {"off", "turn_off", "close"}:
+            if domain == "cover":
+                service_domain, service = "cover", "close_cover"
+            elif domain == "valve":
+                service_domain, service = "valve", "close_valve"
+            else:
+                service_domain, service = domain, "turn_off"
+        elif action == "stop":
+            if domain == "cover":
+                service_domain, service = "cover", "stop_cover"
+            else:
+                service_domain, service = domain, "stop"
+        elif action == "set_position":
+            if domain != "cover":
+                return web.json_response({"error": "set_position only supported for cover"}, status=400)
+            service_domain, service = "cover", "set_cover_position"
+            payload["position"] = int(extra.get("position", data.get("position", 0)))
+        elif action in {"set_brightness", "set_brightness_pct"}:
+            if domain != "light":
+                return web.json_response({"error": "set_brightness_pct only supported for light"}, status=400)
+            service_domain, service = "light", "turn_on"
+            payload.update(self._light_color_payload({"brightness_pct": extra.get("brightness_pct", data.get("brightness_pct"))}, attrs))
+        elif action == "set_rgb_color":
+            if domain != "light":
+                return web.json_response({"error": "set_rgb_color only supported for light"}, status=400)
+            service_domain, service = "light", "turn_on"
+            payload.update(self._light_color_payload({"rgb_color": extra.get("rgb_color", data.get("rgb_color")), "hs_color": extra.get("hs_color", data.get("hs_color"))}, attrs))
+        elif action == "set_color_temp":
+            if domain != "light":
+                return web.json_response({"error": "set_color_temp only supported for light"}, status=400)
+            service_domain, service = "light", "turn_on"
+            payload.update(self._light_color_payload({"color_temp_kelvin": extra.get("color_temp_kelvin", data.get("color_temp_kelvin")), "color_temp": extra.get("color_temp", data.get("color_temp"))}, attrs))
+        elif action == "set_effect":
+            if domain != "light":
+                return web.json_response({"error": "set_effect only supported for light"}, status=400)
+            service_domain, service = "light", "turn_on"
+            payload.update(self._light_color_payload({"effect": extra.get("effect", data.get("effect"))}, attrs))
+        elif action == "set_hvac_mode":
+            if domain != "climate":
+                return web.json_response({"error": "set_hvac_mode only supported for climate"}, status=400)
+            service_domain, service = "climate", "set_hvac_mode"
+            payload["hvac_mode"] = str(extra.get("hvac_mode", data.get("hvac_mode", attrs.get("hvac_mode", "heat"))))
+        elif action == "set_preset_mode":
+            if domain != "climate":
+                return web.json_response({"error": "set_preset_mode only supported for climate"}, status=400)
+            service_domain, service = "climate", "set_preset_mode"
+            payload["preset_mode"] = str(extra.get("preset_mode", data.get("preset_mode", attrs.get("preset_mode", "none"))))
+        elif action == "set_fan_mode":
+            if domain != "climate":
+                return web.json_response({"error": "set_fan_mode only supported for climate"}, status=400)
+            service_domain, service = "climate", "set_fan_mode"
+            payload["fan_mode"] = str(extra.get("fan_mode", data.get("fan_mode", attrs.get("fan_mode", "auto"))))
+        elif action in {"arm_home", "arm_away", "disarm", "arm_night", "arm_vacation"}:
+            if domain != "alarm_control_panel":
+                return web.json_response({"error": f"{action} only supported for alarm_control_panel"}, status=400)
+            service_domain = "alarm_control_panel"
+            service = {
+                "arm_home": "alarm_arm_home",
+                "arm_away": "alarm_arm_away",
+                "arm_night": "alarm_arm_night",
+                "arm_vacation": "alarm_arm_vacation",
+                "disarm": "alarm_disarm",
+            }[action]
+            code = extra.get("code", data.get("code"))
+            if code is not None:
+                payload["code"] = code
+        elif action in {"start", "pause", "return_to_base"}:
+            if domain != "vacuum":
+                return web.json_response({"error": f"{action} only supported for vacuum"}, status=400)
+            service_domain = "vacuum"
+            service = {"start": "start", "pause": "pause", "return_to_base": "return_to_base"}[action]
+        else:
+            return web.json_response({"error": f"unsupported action: {action}"}, status=400)
+
+        await self.hass.services.async_call(service_domain, service, payload, blocking=True)
+        return web.json_response({"status": "ok", "entity_id": entity_id, "domain": service_domain, "service": service, "action": action, "data": payload})
 
     async def _media_player_state(self, request):
         entity_id = request.match_info["entity_id"]
@@ -785,6 +991,10 @@ class TickerDisplayAPI:
                     "longitude": a.get("longitude"),
                     "entity_picture": a.get("entity_picture"),
                     "source": a.get("source"),
+                    "user_id": a.get("user_id"),
+                    "latitude": a.get("latitude"),
+                    "longitude": a.get("longitude"),
+                    "editable": a.get("editable"),
                 }
             )
         return web.json_response(persons)

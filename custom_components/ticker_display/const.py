@@ -16,9 +16,13 @@ DEFAULT_HEARTBEAT_TIMEOUT = 120
 DEFAULT_THEME = "dark"
 
 WIDGET_TYPES = [
-    "simple-value", "gauge", "radial-progress", "progress-bar",
-    "status-dot", "icon-value", "trend-arrow", "mini-graph",
-    "bar-chart", "sparkline", "donut", "clock", "weather",
+    "entity-control", "media-card", "mini-graph", "sparkline",
+    "line-chart", "bar-chart", "area-chart", "multi-line-chart",
+    "stacked-bar-chart", "horizontal-bar-chart", "donut-chart",
+    "pie-chart", "radar-chart", "heatmap-mini", "timeline-chart",
+    "scatter-chart", "bubble-chart", "polar-area-chart",
+    "forecast-chart", "energy-flow-mini", "comparison-chart",
+    "radial-gauge-advanced", "bullet-chart", "clock", "weather",
     "camera", "color-block", "image", "countdown", "button",
 ]
 

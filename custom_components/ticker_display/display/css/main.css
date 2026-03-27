@@ -1744,3 +1744,397 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* v5 controls + media card */
+.widget-entity-control .control-widget-shell,
+.widget-media-card .media-widget-shell {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.widget-entity-control .control-widget-shell.compact {
+  gap: 10px;
+}
+
+.control-widget-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.06));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  font-size: 26px;
+}
+
+.control-widget-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.control-widget-value {
+  font-size: clamp(18px, 2.4vw, 28px);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.control-widget-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  color: var(--td-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.control-widget-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.control-widget-actions button,
+.widget-media-card .media-widget-controls button {
+  appearance: none;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 10px;
+  min-width: 38px;
+  background: rgba(255,255,255,.10);
+  color: var(--td-text-primary,#fff);
+  cursor: pointer;
+  transition: transform .14s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.control-widget-actions button:hover,
+.control-widget-actions button:focus-visible,
+.widget-media-card .media-widget-controls button:hover,
+.widget-media-card .media-widget-controls button:focus-visible {
+  background: rgba(255,255,255,.16);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset;
+}
+
+.control-widget-actions button:active,
+.widget-media-card .media-widget-controls button:active {
+  transform: scale(.96);
+}
+
+.widget-entity-control.control-mode-cover .control-widget-icon {
+  background: linear-gradient(180deg, rgba(121,134,203,.22), rgba(121,134,203,.06));
+}
+
+.widget-entity-control.control-mode-light .control-widget-icon {
+  background: linear-gradient(180deg, rgba(255,214,10,.18), rgba(255,214,10,.05));
+}
+
+.widget-media-card .media-widget-shell.compact {
+  grid-template-columns: 56px 1fr;
+}
+
+.widget-media-card .media-widget-cover {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+}
+
+.widget-media-card .media-widget-meta {
+  gap: 5px;
+}
+
+.widget-media-card .media-widget-title {
+  font-size: clamp(18px, 2.2vw, 28px);
+  line-height: 1.08;
+}
+
+.widget-media-card .media-widget-subtitle,
+.widget-media-card .media-widget-state,
+.widget-media-card .media-widget-vol {
+  font-size: 12px;
+}
+
+.widget-media-card .media-widget-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.widget-media-card .media-widget-progress {
+  margin-top: 4px;
+}
+
+.widget-mini-history-fill {
+  opacity: .6;
+}
+
+@media (max-width: 900px) {
+  .widget-entity-control .control-widget-shell,
+  .widget-media-card .media-widget-shell {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .control-widget-icon,
+  .widget-media-card .media-widget-cover {
+    width: 58px;
+    height: 58px;
+  }
+}
+
+
+.widget-shutter-card .shutter-widget-shell {
+  display:flex; flex-direction:column; gap:10px; width:100%; min-width:0;
+  padding:12px 14px; border-radius:20px;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 12px 28px rgba(0,0,0,.18);
+}
+.widget-shutter-card .shutter-widget-head { display:flex; align-items:center; gap:12px; }
+.widget-shutter-card .shutter-widget-icon {
+  width:54px; height:54px; border-radius:18px; display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.08); font-size:28px; box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+}
+.widget-shutter-card .shutter-widget-reading { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.widget-shutter-card .shutter-widget-position { font-size:30px; font-weight:800; line-height:1; letter-spacing:-.04em; }
+.widget-shutter-card .shutter-widget-position span { font-size:18px; opacity:.75; margin-left:2px; }
+.widget-shutter-card .shutter-widget-state { color:var(--td-text-secondary); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.widget-shutter-card .shutter-widget-track { position:relative; width:100%; height:8px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.10); }
+.widget-shutter-card .shutter-widget-track span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, var(--td-accent), rgba(255,255,255,.95)); box-shadow:0 0 12px rgba(64,196,255,.35); }
+.widget-shutter-card .shutter-widget-actions,
+.widget-shutter-card .shutter-widget-presets { display:flex; flex-wrap:wrap; gap:8px; }
+.widget-shutter-card .shutter-widget-actions button,
+.widget-shutter-card .shutter-widget-presets button {
+  border:none; border-radius:999px; padding:8px 12px; min-height:34px;
+  background:rgba(255,255,255,.08); color:var(--td-text); font:inherit; cursor:pointer;
+  transition:transform .14s ease, background .14s ease, box-shadow .14s ease;
+}
+.widget-shutter-card .shutter-widget-actions button:hover,
+.widget-shutter-card .shutter-widget-actions button:focus-visible,
+.widget-shutter-card .shutter-widget-presets button:hover,
+.widget-shutter-card .shutter-widget-presets button:focus-visible {
+  background:rgba(255,255,255,.16); transform:translateY(-1px); box-shadow:0 10px 20px rgba(0,0,0,.18);
+}
+.widget-shutter-card .shutter-widget-actions button:active,
+.widget-shutter-card .shutter-widget-presets button:active { transform:translateY(0); }
+.widget-shutter-card .shutter-widget-shell.compact .shutter-widget-position { font-size:26px; }
+@media (max-width: 640px) {
+  .widget-shutter-card .shutter-widget-actions button,
+  .widget-shutter-card .shutter-widget-presets button { padding:7px 10px; min-height:32px; }
+}
+
+/* v7 light card + richer state animations */
+.widget-light-card .light-widget-shell {
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  width:100%;
+  min-width:0;
+  padding:12px 14px;
+  border-radius:20px;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 12px 28px rgba(0,0,0,.18);
+}
+.widget-light-card .light-widget-head { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; }
+.widget-light-card .light-power {
+  width:58px; height:58px; border-radius:18px; border:none; cursor:pointer;
+  background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.22), rgba(255,255,255,.06));
+  color:var(--td-text-primary,#fff); font-size:28px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 22px rgba(0,0,0,.22);
+  transition:transform .14s ease, box-shadow .2s ease, filter .2s ease, background .2s ease;
+}
+.widget-light-card.is-on .light-power { background:radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--light-accent, var(--td-accent)) 45%, white), color-mix(in srgb, var(--light-accent, var(--td-accent)) 75%, transparent)); box-shadow:0 0 24px color-mix(in srgb, var(--light-accent, var(--td-accent)) 35%, transparent), inset 0 1px 0 rgba(255,255,255,.22); }
+.widget-light-card .light-power:hover,
+.widget-light-card .light-power:focus-visible { transform:translateY(-1px) scale(1.02); }
+.widget-light-card .light-widget-main { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.widget-light-card .light-widget-state { font-size:clamp(18px, 2.3vw, 28px); font-weight:800; line-height:1.05; }
+.widget-light-card .light-widget-meta,
+.widget-light-card .light-widget-badge { color:var(--td-text-secondary); font-size:12px; }
+.widget-light-card .light-widget-badge {
+  min-width:52px; text-align:right; padding:6px 10px; border-radius:999px;
+  background:rgba(255,255,255,.08);
+}
+.widget-light-card .light-widget-brightness,
+.widget-light-card .light-widget-temp,
+.widget-light-card .light-widget-colors { display:flex; flex-wrap:wrap; gap:8px; }
+.widget-light-card .light-widget-brightness button,
+.widget-light-card .light-widget-temp button {
+  border:none; border-radius:999px; padding:8px 12px; min-height:34px;
+  background:rgba(255,255,255,.08); color:var(--td-text-primary,#fff); font:inherit; cursor:pointer;
+  transition:transform .14s ease, background .14s ease, box-shadow .14s ease;
+}
+.widget-light-card .light-widget-brightness button:hover,
+.widget-light-card .light-widget-temp button:hover,
+.widget-light-card .light-widget-brightness button:focus-visible,
+.widget-light-card .light-widget-temp button:focus-visible {
+  background:rgba(255,255,255,.16); transform:translateY(-1px); box-shadow:0 10px 20px rgba(0,0,0,.18);
+}
+.widget-light-card .light-swatch {
+  width:28px; height:28px; border-radius:999px; border:2px solid rgba(255,255,255,.24); cursor:pointer;
+  background:var(--swatch, var(--td-accent)); box-shadow:0 6px 16px rgba(0,0,0,.18), inset 0 1px 2px rgba(255,255,255,.18);
+  transition:transform .14s ease, box-shadow .14s ease;
+}
+.widget-light-card .light-swatch:hover,
+.widget-light-card .light-swatch:focus-visible { transform:scale(1.08); box-shadow:0 0 0 3px rgba(255,255,255,.10), 0 10px 22px rgba(0,0,0,.2); }
+.widget-light-card.is-on .light-widget-shell {
+  border-color: color-mix(in srgb, var(--light-accent, var(--td-accent)) 32%, rgba(255,255,255,.08));
+  box-shadow:0 12px 28px rgba(0,0,0,.18), 0 0 34px color-mix(in srgb, var(--light-accent, var(--td-accent)) 12%, transparent);
+}
+.widget.widget-state-playing .media-widget-cover,
+.widget.widget-state-playing .media-widget-cover.placeholder {
+  animation: mediaPulse 2.6s ease-in-out infinite;
+}
+.widget.widget-state-playing .media-widget-progress span {
+  animation: mediaProgressGlow 1.6s ease-in-out infinite;
+}
+.widget.widget-battery-card .chart-value,
+.widget.widget-battery-card .control-widget-value { position:relative; }
+.widget.widget-battery-charging .chart-value::after,
+.widget.widget-battery-charging .control-widget-value::after {
+  content:'⚡'; margin-left:8px; color:#ffd54f; display:inline-block; animation:batteryFlash 1s ease-in-out infinite;
+}
+.widget.widget-battery-card.widget-battery-charging {
+  box-shadow:0 8px 24px rgba(0,0,0,.08), 0 0 26px rgba(255,213,79,.12);
+}
+.widget-state-active.control-mode-light .control-widget-icon,
+.widget-state-active.widget-light-card .light-power { filter:saturate(1.1); }
+
+@keyframes mediaPulse {
+  0%,100% { transform:scale(1); box-shadow:0 12px 24px rgba(0,0,0,.18); }
+  50% { transform:scale(1.03); box-shadow:0 16px 28px rgba(0,0,0,.26), 0 0 24px rgba(64,196,255,.18); }
+}
+@keyframes mediaProgressGlow {
+  0%,100% { filter:brightness(1); }
+  50% { filter:brightness(1.2); }
+}
+@keyframes batteryFlash {
+  0%,100% { opacity:.35; transform:translateY(0); }
+  50% { opacity:1; transform:translateY(-1px); }
+}
+@media (max-width: 640px) {
+  .widget-light-card .light-widget-head { grid-template-columns: auto 1fr; }
+  .widget-light-card .light-widget-badge { grid-column: 1 / -1; text-align:left; width:fit-content; }
+}
+
+
+/* v8 climate/alarm/person cards + richer motion */
+.widget-climate-card .climate-widget-shell,
+.widget-alarm-card .alarm-widget-shell,
+.widget-person-card .person-widget-shell {
+  display:flex; flex-direction:column; gap:10px; width:100%; min-width:0; padding:12px 14px;
+  border-radius:20px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+  border:1px solid rgba(255,255,255,.08); box-shadow:0 12px 28px rgba(0,0,0,.18);
+}
+.widget-climate-card .climate-widget-head,
+.widget-alarm-card .alarm-widget-head,
+.widget-person-card .person-widget-shell { display:flex; gap:12px; align-items:center; }
+.widget-climate-card .climate-widget-icon,
+.widget-alarm-card .alarm-widget-icon,
+.widget-person-card .person-widget-avatar {
+  width:58px; height:58px; border-radius:18px; display:grid; place-items:center; flex:0 0 auto;
+  background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.22), rgba(255,255,255,.06));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 22px rgba(0,0,0,.22); font-size:28px;
+}
+.widget-person-card .person-widget-avatar { object-fit:cover; overflow:hidden; }
+.widget-person-card .person-widget-avatar.placeholder { color:var(--td-text-primary,#fff); }
+.widget-climate-card .climate-widget-main,
+.widget-alarm-card .alarm-widget-main,
+.widget-person-card .person-widget-main { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.widget-climate-card .climate-widget-temp,
+.widget-alarm-card .alarm-widget-state,
+.widget-person-card .person-widget-state { font-size:clamp(18px, 2.3vw, 28px); font-weight:800; line-height:1.05; }
+.widget-climate-card .climate-widget-meta,
+.widget-alarm-card .alarm-widget-meta,
+.widget-person-card .person-widget-meta,
+.widget-climate-card .climate-widget-badge,
+.widget-person-card .person-widget-pill { color:var(--td-text-secondary); font-size:12px; }
+.widget-climate-card .climate-widget-badge,
+.widget-person-card .person-widget-pill {
+  margin-left:auto; min-width:56px; text-align:center; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.08);
+}
+.widget-person-card .person-widget-pill.home { background:rgba(76,175,80,.18); color:#c8facc; }
+.widget-person-card .person-widget-pill.away { background:rgba(255,193,7,.16); color:#fff0bf; }
+.widget-climate-card .climate-widget-actions,
+.widget-climate-card .climate-widget-modes,
+.widget-climate-card .climate-widget-presets,
+.widget-alarm-card .alarm-widget-actions {
+  display:flex; flex-wrap:wrap; gap:8px;
+}
+.widget-climate-card .climate-widget-actions button,
+.widget-climate-card .climate-widget-modes button,
+.widget-climate-card .climate-widget-presets button,
+.widget-alarm-card .alarm-widget-actions button {
+  border:none; border-radius:999px; padding:8px 12px; min-height:34px; background:rgba(255,255,255,.08); color:var(--td-text-primary,#fff); font:inherit; cursor:pointer;
+  transition:transform .14s ease, background .14s ease, box-shadow .14s ease, filter .18s ease;
+}
+.widget-climate-card .climate-widget-actions button:hover,
+.widget-climate-card .climate-widget-modes button:hover,
+.widget-climate-card .climate-widget-presets button:hover,
+.widget-alarm-card .alarm-widget-actions button:hover,
+.widget-climate-card .climate-widget-actions button:focus-visible,
+.widget-climate-card .climate-widget-modes button:focus-visible,
+.widget-climate-card .climate-widget-presets button:focus-visible,
+.widget-alarm-card .alarm-widget-actions button:focus-visible { background:rgba(255,255,255,.16); transform:translateY(-1px); box-shadow:0 10px 20px rgba(0,0,0,.18); }
+.widget-climate-card .climate-widget-modes button.active,
+.widget-climate-card .climate-widget-presets button.active,
+.widget-alarm-card.alarm-state-armed_away .alarm-widget-shell,
+.widget-alarm-card.alarm-state-armed_home .alarm-widget-shell {
+  border-color:rgba(255,213,79,.28); box-shadow:0 12px 28px rgba(0,0,0,.18), 0 0 24px rgba(255,213,79,.12);
+}
+.widget-climate-card .climate-widget-shell { position:relative; overflow:hidden; }
+.widget-climate-card .climate-widget-shell::after {
+  content:''; position:absolute; inset:auto -15% -45% auto; width:160px; height:160px; border-radius:999px;
+  background:radial-gradient(circle, rgba(64,196,255,.22), rgba(64,196,255,0)); pointer-events:none; animation:climateAura 7s linear infinite;
+}
+.widget-alarm-card .alarm-widget-icon { animation:alarmShieldIdle 2.8s ease-in-out infinite; }
+.widget-person-card.is-home .person-widget-avatar,
+.widget-person-card.is-home .person-widget-avatar.placeholder { box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 22px rgba(0,0,0,.22), 0 0 22px rgba(76,175,80,.18); }
+.widget-person-card.is-away .person-widget-avatar,
+.widget-person-card.is-away .person-widget-avatar.placeholder { box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 10px 22px rgba(0,0,0,.22), 0 0 22px rgba(255,193,7,.14); }
+.widget.widget-battery-card.widget-battery-charging .bar-fill,
+.widget.widget-battery-card.widget-battery-charging .progress-fill,
+.widget.widget-battery-charging .progress-fill {
+  background-image:linear-gradient(90deg, rgba(255,213,79,.2), rgba(255,255,255,.15), rgba(255,213,79,.2));
+  background-size:200% 100%; animation:chargingSweep 1.1s linear infinite;
+}
+.widget-light-card.is-on .light-widget-shell::after,
+.widget-climate-card .climate-widget-shell::before {
+  content:''; position:absolute; inset:0; pointer-events:none; border-radius:inherit;
+}
+.widget-light-card.is-on .light-widget-shell::after {
+  background:linear-gradient(135deg, color-mix(in srgb, var(--light-accent, var(--td-accent)) 16%, transparent), transparent 55%);
+  animation:softGlowShift 6s ease-in-out infinite;
+}
+.widget-climate-card .climate-widget-shell::before {
+  background:linear-gradient(135deg, rgba(125,211,252,.12), transparent 58%);
+}
+@keyframes climateAura { 0%{ transform:translateX(0) rotate(0deg);} 50%{ transform:translateX(-8px) rotate(180deg);} 100%{ transform:translateX(0) rotate(360deg);} }
+@keyframes alarmShieldIdle { 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-2px) scale(1.02); } }
+@keyframes chargingSweep { 0%{ background-position:200% 0; } 100%{ background-position:-200% 0; } }
+@keyframes softGlowShift { 0%,100%{ opacity:.45; } 50%{ opacity:.85; } }
+@media (prefers-reduced-motion: reduce) {
+  .widget-alarm-card .alarm-widget-icon,
+  .widget-climate-card .climate-widget-shell::after,
+  .widget.widget-battery-card.widget-battery-charging .bar-fill,
+  .widget.widget-battery-card.widget-battery-charging .progress-fill,
+  .widget.widget-battery-charging .progress-fill,
+  .widget.widget-state-playing .media-widget-cover,
+  .widget.widget-state-playing .media-widget-cover.placeholder,
+  .widget.widget-state-playing .media-widget-progress span,
+  .widget-light-card.is-on .light-widget-shell::after { animation:none !important; }
+}
