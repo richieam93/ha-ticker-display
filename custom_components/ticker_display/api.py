@@ -71,6 +71,11 @@ class TickerDisplayAPI:
         app.router.add_get(f"{API_BASE}/api/history/{{entity_id}}", self._history)
         app.router.add_get(f"{API_BASE}/api/weather/{{entity_id}}", self._weather)
         app.router.add_get(f"{API_BASE}/api/states/{{entity_id}}", self._states)
+        app.router.add_get(f"{API_BASE}/api/entity/{{entity_id}}", self._states)
+        app.router.add_post(f"{API_BASE}/api/entity/toggle", self._entity_toggle)
+        app.router.add_post(f"{API_BASE}/api/entity/service", self._entity_service)
+        app.router.add_get(f"{API_BASE}/api/media-player/{{entity_id}}", self._media_player_state)
+        app.router.add_post(f"{API_BASE}/api/media-player/{{entity_id}}/command", self._media_player_command)
         app.router.add_get(f"{API_BASE}/api/persons", self._persons)
         app.router.add_get(f"{API_BASE}/api/entities", self._entities_list)
         app.router.add_get(f"{API_BASE}/api/ha-media/items", self._ha_media_items)
@@ -591,6 +596,126 @@ class TickerDisplayAPI:
                 "last_changed": state.last_changed.isoformat(),
             }
         )
+
+
+    async def _entity_toggle(self, request):
+        data = await request.json()
+        entity_id = data.get("entity_id", "")
+        if not entity_id or "." not in entity_id:
+            return web.json_response({"error": "entity_id required"}, status=400)
+
+        domain = entity_id.split(".", 1)[0]
+        state = self.hass.states.get(entity_id)
+        state_text = str(state.state).lower() if state else ""
+
+        if domain == "media_player":
+            service_domain = "media_player"
+            service = "media_play_pause"
+        elif domain == "cover":
+            service_domain = "cover"
+            pos = 100 if state_text == "open" else 0
+            try:
+                pos = int(state.attributes.get("current_position", pos)) if state else pos
+            except Exception:
+                pass
+            service = "close_cover" if pos > 10 else "open_cover"
+        elif domain == "valve":
+            service_domain = "valve"
+            service = "close_valve" if state_text == "open" else "open_valve"
+        else:
+            service_domain = domain if domain in {"switch", "light", "input_boolean", "fan"} else "homeassistant"
+            service = "toggle"
+
+        await self.hass.services.async_call(
+            service_domain,
+            service,
+            {"entity_id": entity_id},
+            blocking=True,
+        )
+        return web.json_response({"status": "ok", "domain": service_domain, "service": service, "entity_id": entity_id})
+
+    async def _entity_service(self, request):
+        data = await request.json()
+        domain = data.get("domain", "")
+        service = data.get("service", "")
+        service_data = data.get("data", {}) or {}
+        if not domain or not service:
+            return web.json_response({"error": "domain and service required"}, status=400)
+
+        await self.hass.services.async_call(
+            domain,
+            service,
+            service_data,
+            blocking=True,
+        )
+        return web.json_response({"status": "ok", "domain": domain, "service": service, "data": service_data})
+
+    async def _media_player_state(self, request):
+        entity_id = request.match_info["entity_id"]
+        state = self.hass.states.get(entity_id)
+        if not state or state.domain != "media_player":
+            return web.json_response({"error": "not found"}, status=404)
+        attrs = dict(state.attributes)
+        return web.json_response(
+            {
+                "entity_id": entity_id,
+                "state": state.state,
+                "attributes": attrs,
+                "title": attrs.get("media_title"),
+                "artist": attrs.get("media_artist"),
+                "album": attrs.get("media_album_name"),
+                "source": attrs.get("source"),
+                "volume_level": attrs.get("volume_level"),
+                "entity_picture": attrs.get("entity_picture"),
+                "last_changed": state.last_changed.isoformat(),
+            }
+        )
+
+    async def _media_player_command(self, request):
+        entity_id = request.match_info["entity_id"]
+        state = self.hass.states.get(entity_id)
+        if not state or state.domain != "media_player":
+            return web.json_response({"error": "not found"}, status=404)
+
+        data = await request.json()
+        action = str(data.get("action", "")).strip().lower()
+        if not action:
+            return web.json_response({"error": "action required"}, status=400)
+
+        mapping = {
+            "toggle": ("media_player", "media_play_pause", {"entity_id": entity_id}),
+            "play_pause": ("media_player", "media_play_pause", {"entity_id": entity_id}),
+            "play": ("media_player", "media_play", {"entity_id": entity_id}),
+            "pause": ("media_player", "media_pause", {"entity_id": entity_id}),
+            "next": ("media_player", "media_next_track", {"entity_id": entity_id}),
+            "previous": ("media_player", "media_previous_track", {"entity_id": entity_id}),
+            "stop": ("media_player", "media_stop", {"entity_id": entity_id}),
+        }
+
+        if action == "volume_set":
+            volume = data.get("volume_level")
+            if volume is None:
+                return web.json_response({"error": "volume_level required"}, status=400)
+            payload = {"entity_id": entity_id, "volume_level": max(0, min(1, float(volume)))}
+            domain, service = "media_player", "volume_set"
+        elif action == "volume_up":
+            current = float(state.attributes.get("volume_level") or 0)
+            step = float(data.get("step", 0.1) or 0.1)
+            payload = {"entity_id": entity_id, "volume_level": max(0, min(1, current + step))}
+            domain, service = "media_player", "volume_set"
+        elif action == "volume_down":
+            current = float(state.attributes.get("volume_level") or 0)
+            step = float(data.get("step", 0.1) or 0.1)
+            payload = {"entity_id": entity_id, "volume_level": max(0, min(1, current - step))}
+            domain, service = "media_player", "volume_set"
+        else:
+            mapped = mapping.get(action)
+            if not mapped:
+                return web.json_response({"error": f"unsupported action: {action}"}, status=400)
+            domain, service, payload = mapped
+
+        await self.hass.services.async_call(domain, service, payload, blocking=True)
+        return web.json_response({"status": "ok", "entity_id": entity_id, "action": action, "domain": domain, "service": service, "data": payload})
 
     # ══════════════════════════════════════════════════════
     # Persons

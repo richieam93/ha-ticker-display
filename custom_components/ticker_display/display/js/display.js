@@ -181,6 +181,22 @@ class DataManager {
     } catch (e) { return null; }
   }
 
+  async postJson(path, payload = {}) {
+    try {
+      const resp = await fetch(`${this.apiBase}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload || {}),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json().catch(() => ({}));
+    } catch (e) {
+      console.warn("postJson failed", path, e);
+      return null;
+    }
+  }
+
   getCameraUrl(entityId, mode = "auto") {
     return `${this.apiBase}/api/image/camera/${entityId}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
   }
@@ -389,7 +405,7 @@ class WebSocketClient {
       case "navigate": this.app.onNavigate(msg); break;
       case "config_changed": this.app.onConfigChanged(msg.config); break;
       case "theme_changed": this.app.onThemeChanged(msg.theme || msg); break;
-      case "reload": location.reload(); break;
+      case "reload": this.app.safeReload(); break;
     }
   }
 
@@ -449,32 +465,40 @@ class ScreenManager {
   }
 
   /* ────── FEHLENDE METHODE: _loadCameraInto ────── */
-  _loadCameraInto(imgElement, entityId, source = "auto") {
+  async _loadCameraInto(imgElement, entityId, source = "auto") {
     if (!imgElement || !entityId) return;
-    const url = this._cameraUrlForEntity(entityId, source);
-    if (!url) return;
-    const tempImg = new Image();
-    tempImg.onload = () => {
-      imgElement.src = url;
-      imgElement.classList.remove("camera-loading");
-      imgElement.classList.add("camera-loaded");
-    };
-    tempImg.onerror = () => {
-      imgElement.classList.add("camera-error");
-      if (!imgElement.src) imgElement.alt = "⚠️ Kamera nicht verfügbar";
-    };
+    const fallbackUrl = this._cameraUrlForEntity(entityId, source);
+    if (!fallbackUrl) return;
     imgElement.classList.add("camera-loading");
-    tempImg.src = url;
+    imgElement.classList.remove("camera-error");
+    try {
+      const resolved = await this.app.dataManager.resolveCameraUrl(entityId, source);
+      const finalUrl = resolved?.url || fallbackUrl;
+      const tempImg = new Image();
+      tempImg.onload = () => {
+        imgElement.src = finalUrl;
+        imgElement.classList.remove("camera-loading");
+        imgElement.classList.add("camera-loaded");
+      };
+      tempImg.onerror = () => {
+        imgElement.classList.remove("camera-loading");
+        imgElement.classList.add("camera-error");
+        imgElement.alt = "⚠️ Kamera nicht verfügbar";
+      };
+      tempImg.src = finalUrl;
+    } catch (e) {
+      imgElement.classList.remove("camera-loading");
+      imgElement.classList.add("camera-error");
+      imgElement.alt = "⚠️ Kamera nicht verfügbar";
+    }
   }
 
   /* ────── FEHLENDE METHODE: _cameraUrlForEntity ────── */
   _cameraUrlForEntity(entityId, source = "auto") {
     if (!entityId) return "";
     const base = this.app.apiBase || "/ticker-display";
-    if (source === "camera_proxy_stream" || source === "mjpeg" || source === "stream") {
-      return `${base}/api/camera_proxy_stream/${entityId}?t=${Date.now()}`;
-    }
-    return `${base}/api/image/camera/${entityId}?mode=${encodeURIComponent(source)}&t=${Date.now()}`;
+    const mode = source === "mjpeg" || source === "stream" ? "camera_proxy_stream" : source;
+    return `${base}/api/image/camera/${entityId}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
   }
 
   /* ────── FIX: _normalizePoints ────── */
@@ -766,7 +790,14 @@ class ScreenManager {
     const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
     const vol = Math.round(Number(attrs.volume_level || 0) * 100);
     widget.classList.add("widget-media-modern");
-    widget.innerHTML = `<div class="media-widget-shell">${cover ? `<img class="media-widget-cover" src="${cover}" alt="Cover">` : `<div class="media-widget-cover placeholder">${icon || "🎵"}</div>`}<div class="media-widget-meta">${name ? `<div class="w-name">${name}</div>` : ""}<div class="media-widget-title">${title}</div><div class="media-widget-subtitle">${subtitle}</div><div class="media-widget-state-row"><div class="media-widget-state">${Utils.text(state?.state || "—")}</div><div class="media-widget-vol">🔊 ${vol}%</div></div><div class="media-widget-progress"><span style="width:${progress}%"></span></div><div class="media-widget-controls"><span>⏮</span><span>⏯</span><span>⏭</span></div></div></div>`;
+    widget.innerHTML = `<div class="media-widget-shell">${cover ? `<img class="media-widget-cover" src="${cover}" alt="Cover">` : `<div class="media-widget-cover placeholder">${icon || "🎵"}</div>`}<div class="media-widget-meta">${name ? `<div class="w-name">${name}</div>` : ""}<div class="media-widget-title">${title}</div><div class="media-widget-subtitle">${subtitle}</div><div class="media-widget-state-row"><div class="media-widget-state">${Utils.text(state?.state || "—")}</div><div class="media-widget-vol">🔊 ${vol}%</div></div><div class="media-widget-progress"><span style="width:${progress}%"></span></div><div class="media-widget-controls"><button type="button" data-media-action="previous" aria-label="Vorheriger Titel">⏮</button><button type="button" data-media-action="toggle" aria-label="Play/Pause">⏯</button><button type="button" data-media-action="next" aria-label="Nächster Titel">⏭</button></div></div></div>`;
+    widget.querySelectorAll("[data-media-action]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        await this.app.callMediaPlayerCommand(config.entity_id, btn.dataset.mediaAction);
+      });
+    });
     this._renderExtraEntityList(widget, config);
   }
 
@@ -1270,7 +1301,7 @@ class ScreenManager {
     const fit = config.config?.camera_fit || config.camera_fit || "contain";
     const src = this._cameraUrlForEntity(eid, source) || "";
     if (!src) return `<div class="popup-empty">Keine Kamera verfügbar</div>`;
-    return `<div class="popup-hero popup-camera"><div class="popup-eyebrow">${Utils.text(this._widgetCameraTitle(config, eid) || eid)}</div><img class="popup-camera-image" style="object-fit:${fit}" src="${src}" alt="${eid}"></div>`;
+    return `<div class="popup-hero popup-camera"><div class="popup-eyebrow">${Utils.text(this._widgetCameraTitle(config, eid) || eid)}</div><img class="popup-camera-image" data-camera-entity="${eid}" data-camera-source="${source}" style="object-fit:${fit}" src="${src}" alt="${eid}"></div>`;
   }
 
   _popupImageMarkup(config) {
@@ -1318,6 +1349,8 @@ class ScreenManager {
     }
 
     body.innerHTML = html;
+    const popupCamera = body.querySelector(".popup-camera-image[data-camera-entity]");
+    if (popupCamera) this._loadCameraInto(popupCamera, popupCamera.dataset.cameraEntity, popupCamera.dataset.cameraSource || "auto");
     const controls = body.querySelector(".popup-controls");
 
     if (controls && domain === "media_player") {
@@ -1886,23 +1919,35 @@ class TickerDisplayApp {
   }
 
   async callEntityToggle(entityId) {
-    const domain = String(entityId || "").split(".")[0];
-    if (!domain) return false;
-    const serviceDomain = ["switch","light","input_boolean","fan","media_player","valve"].includes(domain) ? domain : "homeassistant";
-    const service = serviceDomain === "media_player" ? "media_play_pause" : serviceDomain === 'valve' ? 'open_valve' : "toggle";
-    try {
-      const resp = await fetch(`/api/services/${serviceDomain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ entity_id: entityId }) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return true;
-    } catch (e) { console.warn("toggle failed", entityId, e); return false; }
+    if (!entityId) return false;
+    const result = await this.dataManager.postJson(`/api/entity/toggle`, { entity_id: entityId });
+    return !!result?.status;
   }
 
   async callEntityService(domain, service, data = {}) {
+    if (!domain || !service) return false;
+    const result = await this.dataManager.postJson(`/api/entity/service`, { domain, service, data });
+    return !!result?.status;
+  }
+
+  async callMediaPlayerCommand(entityId, action, extra = {}) {
+    if (!entityId) return false;
+    const result = await this.dataManager.postJson(`/api/media-player/${entityId}/command`, { action, ...extra });
+    return !!result?.status;
+  }
+
+  safeReload() {
+    try { this.wsClient?.disconnect(); } catch (e) {}
+    const doReload = () => window.location.replace(window.location.href);
     try {
-      const resp = await fetch(`/api/services/${domain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify(data) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return true;
-    } catch (e) { console.warn("service call failed", domain, service, data, e); return false; }
+      if (document.startViewTransition) {
+        document.startViewTransition(() => {}).finished.catch(() => {}).finally(doReload);
+        return;
+      }
+    } catch (e) {
+      console.warn("safeReload transition fallback", e);
+    }
+    setTimeout(doReload, 40);
   }
 
   onNavigate(data) {

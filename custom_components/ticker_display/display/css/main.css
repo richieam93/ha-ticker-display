@@ -1531,3 +1531,111 @@ body {
     min-height: 140px;
   }
 }
+
+
+/* ─── Stabilität / Fullscreen Weather / Media Controls ─── */
+.screen,
+.weather-screen,
+.image-screen-wrap,
+.dashboard-grid {
+  min-width: 0;
+  min-height: 0;
+}
+
+.screen-weather-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.screen-weather-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
+  pointer-events: none;
+}
+
+.screen-motion {
+  overflow: hidden;
+}
+
+.screen-motion .dashboard-grid,
+.screen-motion .weather-screen,
+.screen-motion .image-screen-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+.widget-camera,
+.widget-image,
+.widget-camera img,
+.widget-image img {
+  width: 100%;
+  height: 100%;
+}
+
+.widget-camera-image,
+.widget-image-tag,
+.popup-camera-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(255,255,255,.03);
+}
+
+.widget-media-modern .media-widget-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.widget-media-modern .media-widget-controls button {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.10);
+  color: var(--td-text-primary, #fff);
+  font-size: 13px;
+  transition: transform .16s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.widget-media-modern .media-widget-controls button:hover,
+.widget-media-modern .media-widget-controls button:focus-visible {
+  background: rgba(255,255,255,.16);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset;
+}
+
+.widget-media-modern .media-widget-controls button:active {
+  transform: scale(.94);
+}
+
+.weather-card,
+.weather-screen-card,
+.popup-weather {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.camera-error::after {
+  content: "Kamera nicht verfügbar";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255,255,255,.82);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.35);
+}

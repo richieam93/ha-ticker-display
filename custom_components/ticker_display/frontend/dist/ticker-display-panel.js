@@ -4259,8 +4259,81 @@ TdScreenEditor.prototype._renderGroupConfig = function (w) {
 TdScreenEditor.prototype._renderTypeSpecific = function (w) {
   const parts = [];
 
+  // Werte & Status
+  if (["simple-value", "icon-value", "trend-arrow", "status-dot", "progress-bar"].includes(w.type)) {
+    parts.push(html`
+      <div class="pg4">Werte & Status</div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Min</label>
+          <input type="number" .value=${w.config?.min ?? 0}
+                 @change=${(e) => this._setWidgetConfig("min", Number(e.target.value))}>
+        </div>
+        <div class="pf2">
+          <label>Max</label>
+          <input type="number" .value=${w.config?.max ?? 100}
+                 @change=${(e) => this._setWidgetConfig("max", Number(e.target.value))}>
+        </div>
+      </div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Ein-Schwelle</label>
+          <input type="text" .value=${w.config?.on_state ?? "on"}
+                 placeholder="on, home, playing"
+                 @input=${(e) => this._setWidgetConfig("on_state", e.target.value)}>
+        </div>
+        <div class="pf2">
+          <label>Vergleich</label>
+          <select .value=${w.config?.comparison || "auto"}
+                  @change=${(e) => this._setWidgetConfig("comparison", e.target.value)}>
+            <option value="auto">Automatisch</option>
+            <option value="gt">&gt;</option>
+            <option value="gte">&gt;=</option>
+            <option value="lt">&lt;</option>
+            <option value="lte">&lt;=</option>
+            <option value="eq">=</option>
+          </select>
+        </div>
+      </div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Farbschema</label>
+          <select .value=${w.config?.status_palette || "default"}
+                  @change=${(e) => this._setWidgetConfig("status_palette", e.target.value)}>
+            <option value="default">Standard</option>
+            <option value="success-warning-danger">Ampel</option>
+            <option value="blue-accent">Blau</option>
+            <option value="mono">Monochrom</option>
+          </select>
+        </div>
+        <div class="pf2">
+          <label>Trend-Delta</label>
+          <input type="number" min="0" max="1000" step="0.1"
+                 .value=${w.config?.trend_threshold ?? 0.1}
+                 @change=${(e) => this._setWidgetConfig("trend_threshold", Number(e.target.value))}>
+        </div>
+      </div>
+      <div class="tog-grid">
+        ${[
+          ["show_icon", "Icon", true],
+          ["show_unit", "Einheit", true],
+          ["show_subvalue", "Unterzeile", true],
+          ["animate_state", "Status animieren", true],
+        ].map(([key, label, defaultVal]) => html`
+          <label class="tog">
+            <input type="checkbox"
+                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
+                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
+            <span>${label}</span>
+          </label>
+        `)}
+      </div>
+    `);
+  }
+
   // Gauge
   if (w.type === "gauge") {
+
     parts.push(html`
       <div class="pg4">Gauge</div>
       <div class="pf2-row">
