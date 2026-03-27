@@ -653,3 +653,63 @@
 .popup-control-btn:active {
   transform: scale(.97);
 }
+
+
+/* Additional overlay ergonomics */
+.widget-popup-panel::before,
+.widget-detail-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at top right, rgba(100,181,246,.12), transparent 34%),
+              linear-gradient(180deg, rgba(255,255,255,.04), transparent 26%);
+}
+
+.popup-control-btn,
+.widget-popup-close,
+.widget-detail-close {
+  min-height: 42px;
+}
+
+.popup-control-btn:focus-visible,
+.widget-popup-close:focus-visible,
+.widget-detail-close:focus-visible {
+  outline: 2px solid rgba(100,181,246,.85);
+  outline-offset: 2px;
+}
+
+.popup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.popup-scroll,
+.widget-popup-body,
+.widget-detail-body {
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 900px) {
+  .widget-popup-panel,
+  .widget-detail-panel {
+    width: min(100vw - 18px, 1120px);
+    height: min(100vh - 24px, 900px);
+    border-radius: 22px;
+  }
+}
+
+@media (max-width: 640px) {
+  .widget-popup-panel,
+  .widget-detail-panel {
+    width: calc(100vw - 10px);
+    height: calc(100vh - 12px);
+    border-radius: 18px;
+  }
+
+  .popup-control-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

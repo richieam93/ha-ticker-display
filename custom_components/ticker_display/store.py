@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
+from datetime import datetime, timezone
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -82,12 +83,30 @@ class TickerDisplayStore:
             _LOGGER.info("Device metadata updated: %s", device_id)
             return
 
-        devices[device_id] = {
+        devices[device_id] = self._default_device_payload(device_id, device_info)
+        await self.async_save()
+        _LOGGER.info("Device registered: %s", device_id)
+
+    async def async_update_device(self, device_id: str, config: dict):
+        if device_id in self._data.get("devices", {}):
+            self._data["devices"][device_id].update(config)
+            await self.async_save()
+
+    async def async_remove_device(self, device_id: str):
+        self._data.get("devices", {}).pop(device_id, None)
+        await self.async_save()
+
+
+
+
+    def _default_device_payload(self, device_id: str, device_info: dict | None = None) -> dict:
+        info = device_info or {}
+        return {
             "id": device_id,
-            "name": device_info.get("name", device_id),
-            "model": device_info.get("model", "Unknown"),
-            "android_version": device_info.get("android_version", ""),
-            "screen_resolution": device_info.get("screen_resolution", ""),
+            "name": info.get("name", device_id),
+            "model": info.get("model", "Unknown"),
+            "android_version": info.get("android_version", ""),
+            "screen_resolution": info.get("screen_resolution", ""),
             "screens": [],
             "rotation": {"enabled": True, "transition": "fade"},
             "ticker": {
@@ -101,18 +120,51 @@ class TickerDisplayStore:
             "font": "roboto",
             "created_at": None,
         }
+
+    def _next_virtual_device_id(self) -> str:
+        devices = self._data.setdefault("devices", {})
+        idx = 1
+        while True:
+            candidate = f"virtual_browser_{idx:03d}"
+            if candidate not in devices:
+                return candidate
+            idx += 1
+
+    async def async_create_virtual_device(
+        self,
+        *,
+        name: str | None = None,
+        source_device_id: str | None = None,
+    ) -> dict:
+        device_id = self._next_virtual_device_id()
+        source = self.get_device(source_device_id) if source_device_id else None
+
+        if source:
+            payload = deepcopy(source)
+            payload.update({
+                "id": device_id,
+                "name": name or f"{source.get('name', source_device_id)} (Virtuell)",
+                "model": "Virtual Browser",
+                "android_version": "Web",
+                "screen_resolution": source.get("screen_resolution", ""),
+            })
+        else:
+            payload = self._default_device_payload(
+                device_id,
+                {
+                    "name": name or f"Virtuelles Gerät {len(self.get_devices()) + 1}",
+                    "model": "Virtual Browser",
+                    "android_version": "Web",
+                    "screen_resolution": "Browser",
+                },
+            )
+
+        payload["virtual"] = True
+        payload["template_source_device_id"] = source_device_id
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        self._data.setdefault("devices", {})[device_id] = payload
         await self.async_save()
-        _LOGGER.info("Device registered: %s", device_id)
-
-    async def async_update_device(self, device_id: str, config: dict):
-        if device_id in self._data.get("devices", {}):
-            self._data["devices"][device_id].update(config)
-            await self.async_save()
-
-    async def async_remove_device(self, device_id: str):
-        self._data.get("devices", {}).pop(device_id, None)
-        await self.async_save()
-
+        return deepcopy(payload)
     # ── TEMPLATES ──
     def get_templates(self) -> dict:
         return self._data.get("templates", {})
@@ -167,48 +219,3 @@ class TickerDisplayStore:
     async def async_restore_backup(self, data: dict):
         self._data = data
         await self.async_save()
-
-    async def async_create_virtual_device(self, name: str | None = None, template_device_id: str | None = None) -> dict:
-        """Create a virtual browser device that can be opened via URL."""
-        from datetime import datetime
-        import re
-
-        base_name = (name or "Virtuelles Gerät").strip() or "Virtuelles Gerät"
-        slug = re.sub(r"[^a-z0-9]+", "-", base_name.lower()).strip("-") or "browser"
-        device_id = f"virtual_{slug}"
-        idx = 2
-        devices = self._data.setdefault("devices", {})
-        while device_id in devices:
-            device_id = f"virtual_{slug}_{idx}"
-            idx += 1
-
-        template = deepcopy(devices.get(template_device_id, {})) if template_device_id and template_device_id in devices else {}
-        template.pop("id", None)
-        template.pop("name", None)
-        template.pop("created_at", None)
-
-        device = {
-            "id": device_id,
-            "name": base_name,
-            "model": "Virtual Browser",
-            "android_version": "Web",
-            "screen_resolution": template.get("screen_resolution", "Browser / flexibel"),
-            "screens": deepcopy(template.get("screens", [])),
-            "rotation": deepcopy(template.get("rotation", {"enabled": True, "transition": "fade"})),
-            "ticker": deepcopy(template.get("ticker", {
-                "enabled": True,
-                "position": "bottom",
-                "speed": "normal",
-                "entities": [],
-                "messages": [],
-            })),
-            "theme": template.get("theme", DEFAULT_THEME),
-            "font": template.get("font", "roboto"),
-            "created_at": datetime.utcnow().isoformat(),
-            "is_virtual": True,
-            "virtual_device": True,
-        }
-        devices[device_id] = device
-        await self.async_save()
-        return deepcopy(device)
-

@@ -47,7 +47,6 @@ const TD_CHART_WIDGETS = [
 ];
 
 const TD_CHART_TYPES = new Set(TD_CHART_WIDGETS.map((x) => x[0]));
-const TD_VALUE_STATUS_TYPES = new Set(["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"]);
 
 const TD_CAMERA_SOURCES = [
   ["auto",                 "Auto (Snapshot → entity_picture → camera_proxy → stream)"],
@@ -1250,6 +1249,7 @@ customElements.define("td-sound-picker", TdSoundPicker);
    DEVICE LIST
    ══════════════════════════════════════════════════════════ */
 
+
 class TdDeviceList extends LitElement {
   static get properties() {
     return {
@@ -1257,6 +1257,9 @@ class TdDeviceList extends LitElement {
       devices: { type: Array },
       _filter: { type: String },
       _sortBy: { type: String },
+      _showVirtualForm: { type: Boolean },
+      _virtualName: { type: String },
+      _virtualSourceId: { type: String },
     };
   }
 
@@ -1264,6 +1267,9 @@ class TdDeviceList extends LitElement {
     super();
     this._filter = "";
     this._sortBy = "name";
+    this._showVirtualForm = false;
+    this._virtualName = "";
+    this._virtualSourceId = "";
   }
 
   static get styles() {
@@ -1279,9 +1285,10 @@ class TdDeviceList extends LitElement {
 
       .filter-bar {
         display: flex; gap: 8px; margin-bottom: 16px; align-items: center;
+        flex-wrap: wrap;
       }
       .filter-bar input {
-        flex: 1; max-width: 320px; padding: 8px 12px;
+        flex: 1; max-width: 320px; min-width: 180px; padding: 8px 12px;
         border: 1px solid var(--divider-color); border-radius: 8px;
         background: var(--primary-background-color);
         color: var(--primary-text-color); font-size: 13px;
@@ -1313,6 +1320,39 @@ class TdDeviceList extends LitElement {
         border-color: rgba(255,255,255,.08);
       }
 
+      .virtual-card {
+        margin-bottom: 16px;
+        border: 1px solid rgba(33,150,243,.18);
+        background: linear-gradient(180deg, rgba(33,150,243,.08), rgba(255,255,255,.02));
+      }
+      .virtual-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .virtual-hint {
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1.5;
+        margin-top: 10px;
+      }
+      .f {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .f label { font-size: 12px; color: var(--secondary-text-color); }
+      .f input, .f select {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--divider-color);
+        background: var(--primary-background-color);
+        color: var(--primary-text-color);
+        font-size: 13px;
+      }
+      .virtual-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top: 14px; }
+
       .ch {
         display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
       }
@@ -1327,6 +1367,12 @@ class TdDeviceList extends LitElement {
         font-size: 11px; color: var(--secondary-text-color);
         font-family: monospace; display: block; margin-top: 2px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .meta-row { display:flex; flex-wrap:wrap; gap:6px; margin-top: 6px; }
+      .meta-chip {
+        display:inline-flex; align-items:center; gap:4px; padding:3px 8px;
+        border-radius: 999px; font-size: 11px; color: var(--secondary-text-color);
+        background: rgba(255,255,255,.06);
       }
 
       .sb {
@@ -1399,10 +1445,42 @@ class TdDeviceList extends LitElement {
       <div class="hdr">
         <h2>📱 Meine Geräte</h2>
         <div class="hdr-actions">
-          <button class="ab p" @click=${() => this._emit("create-virtual-device", {})}>➕ Virtuelles Gerät</button>
+          <button class="ab" @click=${() => this._toggleVirtualForm()}>
+            ${this._showVirtualForm ? "✖️ Abbrechen" : "➕ Virtuelles Gerät"}
+          </button>
           <button class="ab" @click=${() => this._emit("refresh", {})}>🔄 Aktualisieren</button>
         </div>
       </div>
+
+      ${this._showVirtualForm ? html`
+        <div class="card virtual-card">
+          <div class="rc-title" style="font-size:18px;font-weight:600">🌐 Virtuelles Gerät anlegen</div>
+          <div class="virtual-hint">Erstellt ein Browser-Gerät ohne APK. Den erzeugten Display-Link kannst du auf Windows, Mac, Tablet oder Handy direkt im Browser öffnen.</div>
+          <div class="virtual-grid">
+            <div class="f">
+              <label>Name</label>
+              <input
+                .value=${this._virtualName}
+                placeholder="z. B. Wohnzimmer Browser"
+                @input=${(e) => this._virtualName = e.target.value}>
+            </div>
+            <div class="f">
+              <label>Vorlage</label>
+              <select .value=${this._virtualSourceId} @change=${(e) => this._virtualSourceId = e.target.value}>
+                <option value="">Leeres virtuelles Gerät</option>
+                ${(this.devices || []).map((d) => html`
+                  <option value=${d.id}>${d.name || d.id}${d.virtual ? " · virtuell" : " · physisch"}</option>
+                `)}
+              </select>
+            </div>
+          </div>
+          <div class="virtual-hint">Wenn du eine Vorlage auswählst, werden Screens, Widgets, Rotation, Ticker, Theme und Schrift direkt übernommen.</div>
+          <div class="virtual-actions">
+            <button class="ab p" @click=${() => this._submitVirtualDevice()}>✅ Erstellen & Link kopieren</button>
+            <button class="ab" @click=${() => this._toggleVirtualForm(false)}>Schließen</button>
+          </div>
+        </div>
+      ` : ""}
 
       ${this.devices.length > 0 ? html`
         <div class="filter-bar">
@@ -1427,7 +1505,7 @@ class TdDeviceList extends LitElement {
           <div class="ei">📱</div>
           <p class="title">Noch keine Geräte registriert</p>
           <p>Installiere die Ticker Display App auf einem Tablet oder Smartphone<br>
-             und öffne die Display-URL, um das Gerät automatisch zu registrieren.</p>
+             oder erstelle hier direkt ein virtuelles Browser-Gerät.</p>
         </div>
       ` : ""}
 
@@ -1445,10 +1523,24 @@ class TdDeviceList extends LitElement {
     `;
   }
 
+  _toggleVirtualForm(force = null) {
+    this._showVirtualForm = force === null ? !this._showVirtualForm : Boolean(force);
+    if (this._showVirtualForm && !this._virtualName) {
+      this._virtualName = `Virtuelles Gerät ${(this.devices?.length || 0) + 1}`;
+    }
+  }
+
+  _submitVirtualDevice() {
+    this._emit("create-virtual-device", {
+      name: (this._virtualName || "").trim(),
+      sourceDeviceId: this._virtualSourceId || "",
+    });
+    this._toggleVirtualForm(false);
+    this._virtualSourceId = "";
+  }
+
   _getFilteredDevices() {
     let list = [...(this.devices || [])];
-
-    // Filter
     const q = (this._filter || "").toLowerCase().trim();
     if (q) {
       list = list.filter((d) =>
@@ -1457,8 +1549,6 @@ class TdDeviceList extends LitElement {
         (d.model || "").toLowerCase().includes(q)
       );
     }
-
-    // Sort
     list.sort((a, b) => {
       switch (this._sortBy) {
         case "status":
@@ -1469,7 +1559,6 @@ class TdDeviceList extends LitElement {
           return (a.name || a.id || "").localeCompare(b.name || b.id || "", "de");
       }
     });
-
     return list;
   }
 
@@ -1481,10 +1570,14 @@ class TdDeviceList extends LitElement {
     return html`
       <div class="card">
         <div class="ch">
-          <div class="ci">${on ? "📱" : "📴"}</div>
+          <div class="ci">${d.virtual ? "🌐" : (on ? "📱" : "📴")}</div>
           <div class="cn">
-            ${d.name || d.id}${d.is_virtual || d.virtual_device ? html` <span class="screen-chip">Virtuell</span>` : ""}
+            ${d.name || d.id}
             <span class="did">${d.id}</span>
+            <div class="meta-row">
+              ${d.virtual ? html`<span class="meta-chip">Virtuell</span>` : ""}
+              ${d.template_source_device_id ? html`<span class="meta-chip">Vorlage: ${d.template_source_device_id}</span>` : ""}
+            </div>
           </div>
           <span class="sb ${on ? "on" : "off"}">
             <span class="sd"></span>${on ? "Online" : "Offline"}
@@ -1493,7 +1586,7 @@ class TdDeviceList extends LitElement {
 
         <div class="di">
           <span>Modell:</span><span class="v">${d.model || "—"}</span>
-          <span>Android:</span><span class="v">${d.android_version || "—"}</span>
+          <span>System:</span><span class="v">${d.android_version || "—"}</span>
           <span>Auflösung:</span><span class="v">${d.screen_resolution || "—"}</span>
           <span>Screens:</span><span class="v">${screenCount} (${widgetCount} Widgets)</span>
           <span>Theme:</span><span class="v">${d.theme || "dark"}</span>
@@ -1510,29 +1603,12 @@ class TdDeviceList extends LitElement {
         ` : ""}
 
         <div class="da" style="margin-top:12px">
-          <button class="ab p" @click=${() => this._emit("edit-device", { deviceId: d.id })}>
-            🧱 Editor
-          </button>
-          <button class="ab" @click=${() => this._emit("preview-device", { deviceId: d.id })}
-                  title="Vorschau öffnen">
-            👁️
-          </button>
-          <button class="ab" @click=${() => this._emit("copy-device-link", { deviceId: d.id, url: d.display_url || `${API}/${d.id}` })}
-                  title="Bildschirm-Link kopieren">
-            🔗
-          </button>
-          <button class="ab" @click=${() => this._emit("reload-device", { deviceId: d.id })}
-                  title="Seite neu laden">
-            🔄
-          </button>
-          <button class="ab" @click=${() => this._emit("identify-device", { deviceId: d.id })}
-                  title="Gerät identifizieren">
-            💡
-          </button>
-          <button class="ab danger" @click=${() => this._emit("delete-device", { deviceId: d.id })}
-                  title="Gerät löschen">
-            🗑️
-          </button>
+          <button class="ab p" @click=${() => this._emit("edit-device", { deviceId: d.id })}>🧱 Editor</button>
+          <button class="ab" @click=${() => this._emit("copy-device-link", { deviceId: d.id })} title="Display-Link kopieren">🔗</button>
+          <button class="ab" @click=${() => this._emit("preview-device", { deviceId: d.id })} title="Vorschau öffnen">👁️</button>
+          <button class="ab" @click=${() => this._emit("reload-device", { deviceId: d.id })} title="Seite neu laden">🔄</button>
+          <button class="ab" @click=${() => this._emit("identify-device", { deviceId: d.id })} title="Gerät identifizieren">💡</button>
+          <button class="ab danger" @click=${() => this._emit("delete-device", { deviceId: d.id })} title="Gerät löschen">🗑️</button>
         </div>
       </div>
     `;
@@ -1543,6 +1619,7 @@ class TdDeviceList extends LitElement {
   }
 }
 customElements.define("td-device-list", TdDeviceList);
+
 
 /* ══════════════════════════════════════════════════════════
    DEVICE EDITOR
@@ -4266,7 +4343,7 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
   const parts = [];
 
   // Werte & Status
-  if (TD_VALUE_STATUS_TYPES.has(w.type)) {
+  if (["simple-value", "icon-value", "trend-arrow", "status-dot", "progress-bar", "gauge"].includes(w.type)) {
     parts.push(html`
       <div class="pg4">Werte & Status</div>
       <div class="pf2-row">
@@ -4325,7 +4402,6 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
           ["show_unit", "Einheit", true],
           ["show_subvalue", "Unterzeile", true],
           ["animate_state", "Status animieren", true],
-          ["show_mini_chart", "Mini-Verlauf", true],
         ].map(([key, label, defaultVal]) => html`
           <label class="tog">
             <input type="checkbox"
@@ -4335,7 +4411,8 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
           </label>
         `)}
       </div>
-      <div class="pg4">Mini-Verlauf</div>
+
+      <div class="pg4">Mini-Grafik</div>
       <div class="pf2-row">
         <div class="pf2">
           <label>Zeitraum (h)</label>
@@ -4346,18 +4423,39 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
         <div class="pf2">
           <label>Max. Punkte</label>
           <input type="number" min="8" max="120"
-                 .value=${w.config?.chart_max_points || 48}
-                 @change=${(e) => this._setWidgetConfig("chart_max_points", +e.target.value)}>
+                 .value=${w.config?.mini_chart_max_points || 28}
+                 @change=${(e) => this._setWidgetConfig("mini_chart_max_points", +e.target.value)}>
         </div>
       </div>
-      <div class="pf2">
-        <label>Farbpalette</label>
-        <select .value=${w.config?.chart_palette || "default"}
-                @change=${(e) => this._setWidgetConfig("chart_palette", e.target.value)}>
-          ${["default","ocean","sunset","neon","mono"].map((p) => html`
-            <option value=${p}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>
-          `)}
-        </select>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Palette</label>
+          <select .value=${w.config?.chart_palette || "default"}
+                  @change=${(e) => this._setWidgetConfig("chart_palette", e.target.value)}>
+            ${["default","ocean","sunset","neon","mono"].map((p) => html`<option value=${p}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>`)}
+          </select>
+        </div>
+        <div class="pf2">
+          <label>Stärke</label>
+          <input type="number" min="1" max="6"
+                 .value=${w.config?.mini_chart_stroke || 2}
+                 @change=${(e) => this._setWidgetConfig("mini_chart_stroke", +e.target.value)}>
+        </div>
+      </div>
+      <div class="tog-grid">
+        ${[
+          ["mini_chart", "Mini-Grafik anzeigen", true],
+          ["chart_use_history", "History verwenden", true],
+          ["mini_chart_fill", "Fläche füllen", true],
+          ["mini_chart_show_last_dot", "Endpunkt markieren", true],
+        ].map(([key, label, defaultVal]) => html`
+          <label class="tog">
+            <input type="checkbox"
+                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
+                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
+            <span>${label}</span>
+          </label>
+        `)}
       </div>
     `);
   }
@@ -8216,11 +8314,11 @@ class TickerDisplayPanel extends LitElement {
       <td-device-list .hass=${this.hass} .devices=${this._devices}
         @edit-device=${(e) => this._openDevice(e.detail.deviceId)}
         @preview-device=${(e) => window.open(`${API}/preview/${e.detail.deviceId}`, "_blank")}
-        @copy-device-link=${(e) => this._copyDeviceLink(e.detail)}
         @reload-device=${(e) => this.hass.callService("ticker_display", "reload_page", { device: e.detail.deviceId })}
         @identify-device=${(e) => this.hass.callService("ticker_display", "identify_device", { device: e.detail.deviceId })}
+        @copy-device-link=${(e) => this._copyDeviceLink(e.detail.deviceId)}
+        @create-virtual-device=${(e) => this._createVirtualDevice(e.detail)}
         @delete-device=${(e) => this._deleteDevice(e.detail.deviceId)}
-        @create-virtual-device=${() => this._createVirtualDevice()}
         @refresh=${() => this._loadAll()}>
       </td-device-list>
     `;
@@ -8474,6 +8572,43 @@ TickerDisplayPanel.prototype._deleteDevice = async function (deviceId) {
   } catch (e) {
     console.error("Delete device failed:", e);
     this._toast("❌ Löschen fehlgeschlagen", "error");
+  }
+};
+
+
+TickerDisplayPanel.prototype._absoluteDisplayUrl = function (deviceId) {
+  return new URL(`${API}/${deviceId}`, window.location.origin).toString();
+};
+
+TickerDisplayPanel.prototype._copyDeviceLink = async function (deviceId) {
+  try {
+    await copyToClipboard(this._absoluteDisplayUrl(deviceId));
+    this._toast("🔗 Display-Link kopiert", "success");
+  } catch (e) {
+    console.error("Copy device link failed:", e);
+    this._toast("❌ Link kopieren fehlgeschlagen", "error");
+  }
+};
+
+TickerDisplayPanel.prototype._createVirtualDevice = async function (detail = {}) {
+  try {
+    const resp = await this._post("/api/config/device/virtual", {
+      name: detail.name || "",
+      source_device_id: detail.sourceDeviceId || "",
+    });
+    await this._loadAll();
+    const deviceId = resp?.device_id;
+    if (deviceId) {
+      await copyToClipboard(this._absoluteDisplayUrl(deviceId));
+      this._toast("🌐 Virtuelles Gerät erstellt · Link kopiert", "success");
+      this._devId = deviceId;
+      this._page = "device-editor";
+    } else {
+      this._toast("🌐 Virtuelles Gerät erstellt", "success");
+    }
+  } catch (e) {
+    console.error("Create virtual device failed:", e);
+    this._toast("❌ Virtuelles Gerät erstellen fehlgeschlagen", "error");
   }
 };
 

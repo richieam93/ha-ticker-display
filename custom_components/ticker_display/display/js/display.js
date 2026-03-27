@@ -67,6 +67,15 @@ const Utils = {
     return ["on", "true", "home", "open", "detected", "playing"].includes(String(v).toLowerCase());
   },
 
+  historyNumber(v, fallback = null) {
+    const num = Utils.toNumber(v, null);
+    if (num !== null) return num;
+    const raw = String(v ?? "").trim().toLowerCase();
+    if (["on", "true", "home", "open", "detected", "playing", "active"].includes(raw)) return 1;
+    if (["off", "false", "not_home", "closed", "idle", "paused", "inactive"].includes(raw)) return 0;
+    return fallback;
+  },
+
   shortDateTime(iso) {
     try {
       const d = new Date(iso);
@@ -87,8 +96,6 @@ const CHART_WIDGET_TYPES = new Set([
   "forecast-chart", "energy-flow-mini", "comparison-chart",
   "radial-gauge-advanced", "bullet-chart"
 ]);
-
-const VALUE_STATUS_WIDGET_TYPES = new Set(["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"]);
 
 const CHART_TYPE_ICONS = {
   "mini-graph": "📉", "sparkline": "〰️", "line-chart": "📈",
@@ -160,7 +167,7 @@ class DataManager {
         const val  = p.y ?? p.value ?? p.state ?? p.v ?? p.val ?? null;
 
         if (val === null || val === undefined) return null;
-        const y = Utils.toNumber(val, null);
+        const y = Utils.historyNumber(val, null);
         if (y === null) return null;
 
         return { x: time || new Date().toISOString(), y };
@@ -508,19 +515,19 @@ class ScreenManager {
     const raw = Utils.safeArray(rawPoints);
     const points = raw.map(p => {
       if (!p || typeof p !== "object") return null;
-      if (p.x !== undefined && p.y !== undefined) { const y = Utils.toNumber(p.y, null); return y !== null ? { x: p.x, y } : null; }
-      if (p.timestamp !== undefined && p.value !== undefined) { const y = Utils.toNumber(p.value, null); return y !== null ? { x: p.timestamp, y } : null; }
-      if (p.last_changed !== undefined && p.state !== undefined) { const y = Utils.toNumber(p.state, null); return y !== null ? { x: p.last_changed, y } : null; }
-      if (p.last_updated !== undefined && p.state !== undefined) { const y = Utils.toNumber(p.state, null); return y !== null ? { x: p.last_updated, y } : null; }
-      if (p.t !== undefined && p.v !== undefined) { const y = Utils.toNumber(p.v, null); return y !== null ? { x: p.t, y } : null; }
-      if (p.date !== undefined && p.value !== undefined) { const y = Utils.toNumber(p.value, null); return y !== null ? { x: p.date, y } : null; }
-      if (p.time !== undefined && (p.val !== undefined || p.value !== undefined)) { const y = Utils.toNumber(p.val ?? p.value, null); return y !== null ? { x: p.time, y } : null; }
+      if (p.x !== undefined && p.y !== undefined) { const y = Utils.historyNumber(p.y, null); return y !== null ? { x: p.x, y } : null; }
+      if (p.timestamp !== undefined && p.value !== undefined) { const y = Utils.historyNumber(p.value, null); return y !== null ? { x: p.timestamp, y } : null; }
+      if (p.last_changed !== undefined && p.state !== undefined) { const y = Utils.historyNumber(p.state, null); return y !== null ? { x: p.last_changed, y } : null; }
+      if (p.last_updated !== undefined && p.state !== undefined) { const y = Utils.historyNumber(p.state, null); return y !== null ? { x: p.last_updated, y } : null; }
+      if (p.t !== undefined && p.v !== undefined) { const y = Utils.historyNumber(p.v, null); return y !== null ? { x: p.t, y } : null; }
+      if (p.date !== undefined && p.value !== undefined) { const y = Utils.historyNumber(p.value, null); return y !== null ? { x: p.date, y } : null; }
+      if (p.time !== undefined && (p.val !== undefined || p.value !== undefined)) { const y = Utils.historyNumber(p.val ?? p.value, null); return y !== null ? { x: p.time, y } : null; }
       return null;
     }).filter(Boolean);
 
     if (points.length > 0) return points;
     const now = new Date();
-    const val = Utils.toNumber(fallbackValue, 0);
+    const val = Utils.historyNumber(fallbackValue, 0);
     return [
       { x: new Date(now.getTime() - 3600000).toISOString(), y: val * 0.95 },
       { x: now.toISOString(), y: val }
@@ -734,6 +741,7 @@ class ScreenManager {
     const icon = config.icon || this._defaultIconForType(config.type);
 
     switch (config.type) {
+      case "simple-value": this._renderDefaultWidget(widget, config, value, unit, name, icon); break;
       case "gauge": this._renderGaugeWidget(widget, config, value, unit, name); break;
       case "progress-bar": this._renderProgressBarWidget(widget, config, value, unit, name); break;
       case "status-dot": this._renderStatusDotWidget(widget, config, value, name); break;
@@ -774,16 +782,75 @@ class ScreenManager {
   }
 
   /* ────── Widget Renderers ────── */
+
+_supportsWidgetMiniHistory(config) {
+  return ["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"].includes(config?.type || "simple-value") && !!config?.entity_id;
+}
+
+_refreshWidgetMiniHistory(widget, config, state = null) {
+  if (!this._supportsWidgetMiniHistory(config) || config.config?.mini_chart === false) return;
+  let holder = widget.querySelector(".widget-mini-history");
+  if (!holder) {
+    holder = document.createElement("div");
+    holder.className = "widget-mini-history";
+    widget.appendChild(holder);
+  }
+  clearTimeout(holder._miniHistoryTimer);
+  holder._miniHistoryTimer = setTimeout(() => this._buildWidgetMiniHistory(holder, config, state || this.app.entityStates[config.entity_id] || {}), 40);
+}
+
+async _buildWidgetMiniHistory(holder, config, state = null) {
+  if (!holder || !document.body.contains(holder) || !config?.entity_id) return;
+  const hours = Number(config.config?.hours || config.config?.period || 24);
+  const maxPoints = Number(config.config?.mini_chart_max_points || config.config?.chart_max_points || 28);
+  const lineWidth = Math.max(1, Math.min(6, Number(config.config?.mini_chart_stroke || 2)));
+  const showFill = config.config?.mini_chart_fill !== false;
+  const showLastDot = config.config?.mini_chart_show_last_dot !== false;
+  const useHistory = config.config?.chart_use_history !== false;
+  let points = [];
+  if (useHistory) {
+    const history = await this.app.dataManager.fetchHistory(config.entity_id, hours);
+    points = this._normalizePoints(history?.data, state?.state);
+  } else {
+    points = this._normalizePoints([], state?.state);
+  }
+  points = this._chartSamplePoints(points, maxPoints);
+  if (!points.length) { holder.innerHTML = ""; return; }
+  const ys = points.map((p) => Number(p.y)).filter((n) => Number.isFinite(n));
+  if (!ys.length) { holder.innerHTML = ""; return; }
+  let min = Math.min(...ys);
+  let max = Math.max(...ys);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const width = 240;
+  const height = 62;
+  const padX = 3;
+  const padY = 5;
+  const color = this._chartPalette(0, 0.96, config, config.entity_id || "");
+  const fillColor = this._chartPalette(0, 0.18, config, config.entity_id || "");
+  const linePoints = points.map((p, idx) => {
+    const x = padX + (idx / Math.max(points.length - 1, 1)) * (width - padX * 2);
+    const y = height - padY - (((Number(p.y) - min) / (max - min)) * (height - padY * 2));
+    return { x, y };
+  });
+  const polyline = linePoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const area = `${padX},${height - padY} ${polyline} ${width - padX},${height - padY}`;
+  const last = linePoints[linePoints.length - 1];
+  holder.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${showFill ? `<polygon points="${area}" class="widget-mini-history-fill" fill="${fillColor}"></polygon>` : ""}<polyline points="${polyline}" class="widget-mini-history-line" fill="none" stroke="${color}" stroke-width="${lineWidth}" stroke-linecap="round" stroke-linejoin="round"></polyline>${showLastDot && last ? `<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.4" fill="${color}" class="widget-mini-history-dot"></circle>` : ""}</svg>`;
+}
+
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `<div class="w-icon"><span style="font-size:24px">${icon}</span></div><div class="w-value-wrap"><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>${name ? `<div class="w-name">${name}</div>` : ""}`;
-    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
+    this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
 
   _renderIconValueWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `<div class="w-icon"><span style="font-size:28px">${icon}</span></div><div class="w-value-wrap"><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>${name ? `<div class="w-name">${name}</div>` : ""}`;
-    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
+    this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
 
   _renderMediaPlayerWidget(widget, config, state, name, icon) {
@@ -812,8 +879,8 @@ class ScreenManager {
     const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
     const color = this._getZoneColor(nv, config.config?.zones);
     widget.innerHTML = `<svg viewBox="0 0 200 130" class="gauge-svg"><defs><linearGradient id="gauge-grad-${Math.round(pct)}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="${color}" stop-opacity="0.6"/><stop offset="100%" stop-color="${color}" stop-opacity="1"/></linearGradient></defs><path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-bg"></path><path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-value gauge-arc-animated" stroke="url(#gauge-grad-${Math.round(pct)})" stroke-dasharray="${pct * 2.51} 251"></path><text x="100" y="95" class="gauge-text-value">${Utils.formatStateWithUnit(nv, unit, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</text><text x="100" y="118" class="gauge-text-label">${name}</text></svg>`;
-    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
+    this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
 
   _renderProgressBarWidget(widget, config, value, unit, name) {
@@ -823,16 +890,16 @@ class ScreenManager {
     const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
     const color = config.config?.color || "var(--td-accent)";
     widget.innerHTML = `${name ? `<div class="w-name" style="margin-bottom:4px">${name}</div>` : ""}<div><span class="w-value">${Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div><div class="progress-container"><div class="progress-fill progress-animated" style="width:${pct}%;background:${color}"></div></div>`;
-    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
+    this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
 
   _renderStatusDotWidget(widget, config, value, name) {
     const isOn = Utils.isTruthyState(value);
     const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
     widget.innerHTML = `<div class="status-dot-indicator ${isOn ? "on" : ""} status-dot-animated" style="background:${color};color:${color}"></div>${name ? `<div class="w-name">${name}</div>` : ""}<div class="widget-subvalue">${Utils.text(value)}</div>`;
-    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
+    this._refreshWidgetMiniHistory(widget, config, this.app.entityStates[config.entity_id] || { state: value });
   }
 
   _renderTrendArrowWidget(widget, config, state, name, icon) {
@@ -845,34 +912,8 @@ class ScreenManager {
     const unit = state?.attributes?.unit_of_measurement || config.unit || "";
     widget.classList.add("widget-trend-arrow");
     widget.innerHTML = `<div class="w-icon trend-arrow-icon"><span style="font-size:24px">${icon}</span></div><div class="trend-main"><div><span class="w-value">${Utils.formatValue(state?.state ?? "—", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div><div class="trend-arrow-chip ${direction} trend-chip-animated" style="color:${trendColor}">${arrow} <span class="trend-delta">${Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '0.0'}${unit}</span></div></div><div class="w-name">${name || state?.attributes?.friendly_name || config.entity_id || 'Trend'}</div>`;
-    this._renderMiniHistoryWidget(widget, config, state || {});
     this._renderExtraEntityList(widget, config);
-  }
-
-  _renderMiniHistoryWidget(widget, config, state) {
-    if (!VALUE_STATUS_WIDGET_TYPES.has(config?.type)) return;
-    if (config?.config?.show_mini_chart === false) { const existing = widget.querySelector('.widget-mini-history'); if (existing) existing.remove(); return; }
-    let wrap = widget.querySelector('.widget-mini-history');
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'widget-mini-history';
-      wrap.innerHTML = '<canvas class="widget-mini-history-canvas"></canvas>';
-      widget.appendChild(wrap);
-    }
-    const canvas = wrap.querySelector('.widget-mini-history-canvas');
-    if (!canvas || !window.Chart) return;
-    const chartCfg = {
-      ...config,
-      type: 'sparkline',
-      config: {
-        ...(config.config || {}),
-        chart_use_history: config.config?.chart_use_history !== false,
-        chart_max_points: config.config?.chart_max_points || 48,
-        hours: config.config?.hours || 24,
-        chart_palette: config.config?.chart_palette || 'default',
-      },
-    };
-    this._scheduleChartBuild(widget, canvas, chartCfg, state || {});
+    this._refreshWidgetMiniHistory(widget, config, state);
   }
 
   _renderCameraWidget(widget, config, name) {
@@ -1180,6 +1221,13 @@ class ScreenManager {
     const unit = newState?.attributes?.unit_of_measurement || config.unit || "";
 
     switch (config.type) {
+      case "simple-value":
+        this._renderDefaultWidget(element, config, value, unit, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
+        break;
+      case "icon-value":
+        if (String(config.entity_id || "").startsWith("media_player.")) this._renderMediaPlayerWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
+        else this._renderIconValueWidget(element, config, value, unit, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type));
+        break;
       case "gauge": {
         const min = config.config?.min ?? 0; const max = config.config?.max ?? 100;
         const nv = Utils.toNumber(value, 0);
@@ -1188,6 +1236,7 @@ class ScreenManager {
         const txt = element.querySelector(".gauge-text-value");
         if (arc) { arc.setAttribute("stroke-dasharray", `${pct * 2.51} 251`); arc.setAttribute("stroke", this._getZoneColor(nv, config.config?.zones)); }
         if (txt) txt.textContent = Utils.formatStateWithUnit(nv, unit, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
+        this._refreshWidgetMiniHistory(element, config, newState);
         break;
       }
       case "progress-bar": {
@@ -1197,6 +1246,7 @@ class ScreenManager {
         const fill = element.querySelector(".progress-fill"); const ve = element.querySelector(".w-value");
         if (fill) fill.style.width = `${pct}%`;
         if (ve) ve.textContent = Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false });
+        this._refreshWidgetMiniHistory(element, config, newState);
         break;
       }
       case "status-dot": {
@@ -1205,10 +1255,11 @@ class ScreenManager {
         const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
         if (dot) { dot.style.background = color; dot.style.color = color; dot.classList.toggle("on", isOn); }
         if (sub) sub.textContent = Utils.text(value);
+        this._refreshWidgetMiniHistory(element, config, newState);
         break;
       }
       case "weather": this._renderWeatherWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}); break;
-      case "trend-arrow": this._renderTrendArrowWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, config.name || "", config.icon || this._defaultIconForType(config.type)); break;
+      case "trend-arrow": this._renderTrendArrowWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, config.name || "", config.icon || this._defaultIconForType(config.type)); this._refreshWidgetMiniHistory(element, config, newState); break;
       case "mini-graph": case "sparkline": case "line-chart": case "bar-chart":
       case "area-chart": case "multi-line-chart": case "stacked-bar-chart":
       case "horizontal-bar-chart": case "donut-chart": case "pie-chart":
@@ -1223,9 +1274,6 @@ class ScreenManager {
         break;
       }
       default: { const wv = element.querySelector(".w-value"); if (wv) wv.textContent = Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false }); }
-    }
-    if (VALUE_STATUS_WIDGET_TYPES.has(config.type)) {
-      this._renderMiniHistoryWidget(element, config, this.app.entityStates[config.entity_id] || newState || {});
     }
     this._updateExtraEntityList(element, config);
     element.classList.remove("value-changed"); void element.offsetWidth; element.classList.add("value-changed");

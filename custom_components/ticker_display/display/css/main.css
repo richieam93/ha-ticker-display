@@ -1641,23 +1641,106 @@ body {
 }
 
 
+/* Additional widget polish / mini history */
+.widget {
+  transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+.widget:focus-within {
+  box-shadow: 0 0 0 1px rgba(255,255,255,.10) inset, 0 0 0 2px rgba(100,181,246,.18);
+}
+
 .widget-mini-history {
   position: relative;
   width: 100%;
-  height: 42px;
-  margin-top: 8px;
-  opacity: .95;
+  height: 62px;
+  margin-top: 10px;
+  opacity: .96;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
 }
-.widget-mini-history canvas {
-  width: 100% !important;
-  height: 100% !important;
+
+.widget-mini-history::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 38%);
+  pointer-events: none;
+}
+
+.widget-mini-history svg {
   display: block;
+  width: 100%;
+  height: 100%;
 }
-.widget.widget-gauge .widget-mini-history {
-  margin-top: 2px;
-  height: 32px;
+
+.widget-mini-history-line {
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.18));
 }
+
+.widget-mini-history-dot {
+  filter: drop-shadow(0 0 8px rgba(255,255,255,.22));
+}
+
 .widget.widget-status-dot .widget-mini-history,
-.widget.widget-trend-arrow .widget-mini-history {
-  height: 36px;
+.widget.widget-progress-bar .widget-mini-history,
+.widget.widget-gauge .widget-mini-history {
+  height: 56px;
+}
+
+.widget-media-modern .media-widget-shell {
+  align-items: stretch;
+}
+
+.widget-media-modern .media-widget-meta {
+  justify-content: center;
+}
+
+.widget-camera-image,
+.popup-camera-image {
+  image-rendering: auto;
+}
+
+.screen-grid {
+  align-content: start;
+}
+
+.empty-state,
+.offline-screen,
+.loading-screen {
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+}
+
+@media (max-width: 860px) {
+  .widget {
+    min-width: 0;
+  }
+
+  .widget-mini-history {
+    height: 54px;
+    margin-top: 8px;
+  }
+
+  .widget-media-modern .media-widget-cover {
+    width: 56px;
+    height: 56px;
+  }
+
+  .widget-media-modern .media-widget-title {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget,
+  .widget *,
+  .weather-animated-bg,
+  .weather-animated-bg * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

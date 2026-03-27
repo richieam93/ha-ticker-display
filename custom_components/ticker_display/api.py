@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -82,7 +83,7 @@ class TickerDisplayAPI:
 
         # Config API
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
-        app.router.add_post(f"{API_BASE}/api/config/device/virtual", self._config_virtual_device_create)
+        app.router.add_post(f"{API_BASE}/api/config/device/virtual", self._config_device_virtual)
         app.router.add_get(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_get)
         app.router.add_post(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_save)
         app.router.add_get(f"{API_BASE}/api/config/templates", self._config_templates)
@@ -101,6 +102,47 @@ class TickerDisplayAPI:
 
         self._registered = True
         _LOGGER.info("API routes registered")
+
+    def _state_domain(self, state) -> str:
+        entity_id = getattr(state, "entity_id", "") or ""
+        return entity_id.split(".", 1)[0] if "." in entity_id else ""
+
+    def _json_safe(self, value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {str(k): self._json_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [self._json_safe(v) for v in value]
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if hasattr(value, "isoformat"):
+            try:
+                return value.isoformat()
+            except Exception:
+                pass
+        if hasattr(value, "as_dict"):
+            try:
+                return self._json_safe(value.as_dict())
+            except Exception:
+                pass
+        try:
+            json.dumps(value)
+            return value
+        except Exception:
+            return str(value)
+
+    def _serialize_state(self, state) -> dict:
+        attrs = dict(getattr(state, "attributes", {}) or {})
+        return {
+            "entity_id": getattr(state, "entity_id", ""),
+            "state": getattr(state, "state", None),
+            "attributes": self._json_safe(attrs),
+            "last_changed": getattr(state, "last_changed", None).isoformat() if getattr(state, "last_changed", None) else None,
+            "last_updated": getattr(state, "last_updated", None).isoformat() if getattr(state, "last_updated", None) else None,
+        }
 
     # ══════════════════════════════════════════════════════
     # Device API
@@ -225,48 +267,65 @@ class TickerDisplayAPI:
         mode = request.query.get("mode", "auto")
         if mode == "stream":
             mode = "camera_proxy_stream"
+
         state = self.hass.states.get(entity_id)
+        if not state:
+            return web.json_response({"error": "not found"}, status=404)
 
         async def _snapshot():
-            image = await self.hass.components.camera.async_get_image(
-                self.hass, entity_id
-            )
+            camera_component = getattr(self.hass.components, "camera", None)
+            if not camera_component or not hasattr(camera_component, "async_get_image"):
+                raise RuntimeError("camera async_get_image unavailable")
+            image = await camera_component.async_get_image(self.hass, entity_id)
             return web.Response(body=image.content, content_type=image.content_type)
+
+        def _proxy_url(stream: bool = False) -> str:
+            base = "/api/camera_proxy_stream" if stream else "/api/camera_proxy"
+            token = state.attributes.get("access_token")
+            url = f"{base}/{entity_id}"
+            if token:
+                url = f"{url}?token={token}"
+            return url
+
+        def _entity_picture_url() -> str | None:
+            picture = state.attributes.get("entity_picture")
+            if not picture:
+                return None
+            if str(picture).startswith(("http://", "https://", "/")):
+                return picture
+            return f"/{picture.lstrip('/')}"
 
         try:
             if mode in ("auto", "snapshot"):
                 try:
                     return await _snapshot()
-                except Exception:
+                except Exception as err:
+                    _LOGGER.debug("Camera snapshot failed for %s: %s", entity_id, err)
                     if mode == "snapshot":
-                        raise
+                        # Für Browser-Displays lieber sauber auf Proxy zurückfallen
+                        mode = "camera_proxy"
 
-            if state:
-                entity_picture = state.attributes.get("entity_picture")
-                if entity_picture and mode in ("auto", "entity_picture"):
-                    return web.json_response(
-                        {"redirect": entity_picture, "mode": "entity_picture"}
-                    )
+            if mode in ("auto", "entity_picture"):
+                picture_url = _entity_picture_url()
+                if picture_url:
+                    raise web.HTTPFound(picture_url)
 
-                token = state.attributes.get("access_token")
-                if token and mode in ("auto", "camera_proxy"):
-                    proxy_url = f"/api/camera_proxy/{entity_id}?token={token}"
-                    return web.json_response(
-                        {"redirect": proxy_url, "mode": "camera_proxy"}
-                    )
+            if mode in ("auto", "camera_proxy"):
+                raise web.HTTPFound(_proxy_url(False))
 
-                if token and mode in ("auto", "camera_proxy_stream"):
-                    stream_url = (
-                        f"/api/camera_proxy_stream/{entity_id}?token={token}"
-                    )
-                    return web.json_response(
-                        {"redirect": stream_url, "mode": "camera_proxy_stream"}
-                    )
+            if mode == "camera_proxy_stream":
+                raise web.HTTPFound(_proxy_url(True))
 
-            return web.Response(status=500)
+            # letzter Fallback
+            picture_url = _entity_picture_url()
+            if picture_url:
+                raise web.HTTPFound(picture_url)
+            raise web.HTTPFound(_proxy_url(False))
+        except web.HTTPException:
+            raise
         except Exception as e:
-            _LOGGER.error("Camera proxy error for %s: %s", entity_id, e)
-            return web.Response(status=500)
+            _LOGGER.error("Camera proxy error for %s: %s", entity_id, e, exc_info=True)
+            return web.json_response({"error": str(e), "entity_id": entity_id}, status=500)
 
     # ══════════════════════════════════════════════════════════
     # ██  HISTORY – KOMPLETT NEU  ██
@@ -589,14 +648,7 @@ class TickerDisplayAPI:
         state = self.hass.states.get(entity_id)
         if not state:
             return web.json_response({"error": "not found"}, status=404)
-        return web.json_response(
-            {
-                "entity_id": entity_id,
-                "state": state.state,
-                "attributes": dict(state.attributes),
-                "last_changed": state.last_changed.isoformat(),
-            }
-        )
+        return web.json_response(self._serialize_state(state))
 
 
     async def _entity_toggle(self, request):
@@ -654,28 +706,26 @@ class TickerDisplayAPI:
     async def _media_player_state(self, request):
         entity_id = request.match_info["entity_id"]
         state = self.hass.states.get(entity_id)
-        if not state or state.domain != "media_player":
+        if not state or self._state_domain(state) != "media_player":
             return web.json_response({"error": "not found"}, status=404)
-        attrs = dict(state.attributes)
-        return web.json_response(
+        payload = self._serialize_state(state)
+        attrs = payload.get("attributes", {})
+        payload.update(
             {
-                "entity_id": entity_id,
-                "state": state.state,
-                "attributes": attrs,
                 "title": attrs.get("media_title"),
                 "artist": attrs.get("media_artist"),
                 "album": attrs.get("media_album_name"),
                 "source": attrs.get("source"),
                 "volume_level": attrs.get("volume_level"),
                 "entity_picture": attrs.get("entity_picture"),
-                "last_changed": state.last_changed.isoformat(),
             }
         )
+        return web.json_response(payload)
 
     async def _media_player_command(self, request):
         entity_id = request.match_info["entity_id"]
         state = self.hass.states.get(entity_id)
-        if not state or state.domain != "media_player":
+        if not state or self._state_domain(state) != "media_player":
             return web.json_response({"error": "not found"}, status=404)
 
         data = await request.json()
@@ -883,23 +933,6 @@ class TickerDisplayAPI:
             result.append(item)
         return web.json_response(result)
 
-    async def _config_virtual_device_create(self, request):
-        data = await request.json()
-        name = data.get("name")
-        template_device_id = data.get("template_device_id") or data.get("copy_from")
-        device = await self.store.async_create_virtual_device(name, template_device_id)
-        did = device.get("id")
-        return web.json_response({
-            "status": "ok",
-            "device": {
-                **device,
-                "online": False,
-                "connected": False,
-                "display_url": f"{API_BASE}/{did}",
-                "preview_url": f"{API_BASE}/preview/{did}",
-            },
-        })
-
     async def _config_device_get(self, request):
         config = self.store.get_device(request.match_info["device_id"])
         if not config:
@@ -919,6 +952,25 @@ class TickerDisplayAPI:
         )
         return web.json_response({"status": "ok"})
 
+
+
+    async def _config_device_virtual(self, request):
+        data = await request.json()
+        source_device_id = data.get("source_device_id") or None
+        name = (data.get("name") or "").strip() or None
+        device = await self.store.async_create_virtual_device(
+            name=name,
+            source_device_id=source_device_id,
+        )
+        return web.json_response(
+            {
+                "status": "ok",
+                "device_id": device["id"],
+                "device": device,
+                "display_url": f"{API_BASE}/{device['id']}",
+                "preview_url": f"{API_BASE}/preview/{device['id']}",
+            }
+        )
     async def _config_templates(self, request):
         return web.json_response(self.store.get_templates())
 
