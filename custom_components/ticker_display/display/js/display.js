@@ -657,6 +657,51 @@ class ScreenManager {
     }
   }
 
+  _applyScreenStyle(screen, config = {}) {
+    screen.style.backgroundColor = config.background_color || "var(--td-bg, #121212)";
+    if (config.background_image) {
+      const overlay = Number(config.background_overlay_opacity ?? 1);
+      const shade = Math.max(0, Math.min(1, 1 - overlay));
+      screen.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url(${config.background_image})`;
+      screen.style.backgroundRepeat = "no-repeat, no-repeat";
+      screen.style.backgroundPosition = "center center, center center";
+      screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
+    } else {
+      screen.style.backgroundImage = "";
+      screen.style.backgroundRepeat = "";
+      screen.style.backgroundPosition = "";
+      screen.style.backgroundSize = "";
+    }
+  }
+
+  _getScreenWeatherEffectConfig(config = {}) {
+    const enabled = config.screen_weather_fx === true || config.weather_fullscreen_fx === true;
+    if (!enabled) return null;
+    let entityId = config.entity_id || null;
+    if (!entityId) {
+      const ww = Utils.safeArray(config.widgets).find((w) => w.type === "weather" && w.entity_id);
+      entityId = ww?.entity_id || null;
+    }
+    if (!entityId) return null;
+    const state = this.app.entityStates[entityId] || {};
+    const visual = this._weatherVisual(state?.state, config.config || config);
+    return {
+      entityId,
+      visual,
+      intensity: config.screen_weather_fx_intensity || "normal",
+      layers: Number(config.screen_weather_fx_layers || 1),
+    };
+  }
+
+  _applyScreenWeatherOverlay(screen, config = {}) {
+    const fx = this._getScreenWeatherEffectConfig(config);
+    if (!fx) return;
+    const overlay = document.createElement("div");
+    overlay.className = `screen-weather-overlay ${fx.visual.theme} ${fx.visual.animClass} ${fx.visual.animate ? "animate" : ""} intensity-${fx.intensity} layers-${fx.layers}`;
+    overlay.innerHTML = this._weatherFxMarkup(fx.visual.animClass, fx.layers);
+    screen.appendChild(overlay);
+  }
+
   _renderScreen(config) {
     this._widgetElements = {};
     this._clearIntervals();

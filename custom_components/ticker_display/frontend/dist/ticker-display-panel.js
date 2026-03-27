@@ -302,10 +302,11 @@ function tdFindEntitiesForPreset(hass, kind = "blank") {
 
 function tdNormalizeLegacyWidgetConfig(widget = {}) {
   const w = deepClone(widget || {});
-  const type = w.type || "";
+  const type = String(w.type || "");
   const entityId = String(w.entity_id || "");
   const domain = entityId.includes(".") ? entityId.split(".", 1)[0] : "";
   const cfg = { ...(w.config || {}) };
+
   if (cfg.mini_chart_fill === undefined) cfg.mini_chart_fill = false;
   if (cfg.show_progress_bar === undefined) cfg.show_progress_bar = false;
 
@@ -315,66 +316,54 @@ function tdNormalizeLegacyWidgetConfig(widget = {}) {
     w.type = domain && !["sensor", "number", "input_number"].includes(domain) ? "entity-control" : "bullet-chart";
   }
 
-  if (w.type === "light-card") {
-    return html`
-      <div class="ed-section">
-        <h4>💡 Licht-Karte</h4>
-        ${this._entityPickerRow(w.entity_id || "", {
-          label: "Licht",
-          domains: ["light"],
-          onChange: (v) => this._setWidgetProp("entity_id", v),
-        })}
-        ${this._switchRow("show_progress_bar", "Helligkeitsbalken", !!w.config?.show_progress_bar)}
-        ${this._switchRow("show_brightness_buttons", "Helligkeits-Tasten", w.config?.show_brightness_buttons !== false)}
-        ${this._switchRow("show_color_presets", "Farb-Presets", w.config?.show_color_presets !== false)}
-        ${this._switchRow("show_color_temp", "Warm/Kalt-Presets", w.config?.show_color_temp !== false)}
-        ${this._switchRow("mini_chart", "Mini-Verlauf", w.config?.mini_chart !== false)}
-      </div>
-    `;
+  switch (w.type) {
+    case "shutter-card":
+      cfg.show_position_bar = cfg.show_position_bar === true;
+      cfg.show_presets = cfg.show_presets !== false;
+      cfg.show_name = cfg.show_name !== false;
+      cfg.compact = cfg.compact !== false;
+      break;
+    case "entity-control":
+      cfg.show_progress_bar = cfg.show_progress_bar === true;
+      cfg.compact = cfg.compact !== false;
+      cfg.show_state_icon = cfg.show_state_icon !== false;
+      cfg.control_style = cfg.control_style || "auto";
+      break;
+    case "media-card":
+      cfg.show_cover = cfg.show_cover !== false;
+      cfg.show_volume = cfg.show_volume !== false;
+      cfg.show_progress_bar = cfg.show_progress_bar === true;
+      cfg.media_layout = cfg.media_layout || "card";
+      break;
+    case "light-card":
+      cfg.show_progress_bar = cfg.show_progress_bar === true;
+      cfg.show_brightness_buttons = cfg.show_brightness_buttons !== false;
+      cfg.show_color_presets = cfg.show_color_presets !== false;
+      cfg.show_color_temp = cfg.show_color_temp !== false;
+      cfg.compact = cfg.compact !== false;
+      cfg.mini_chart = cfg.mini_chart !== false;
+      break;
+    case "climate-card":
+      cfg.show_progress_bar = cfg.show_progress_bar === true;
+      cfg.show_modes = cfg.show_modes !== false;
+      cfg.show_presets = cfg.show_presets !== false;
+      cfg.compact = cfg.compact !== false;
+      break;
+    case "alarm-card":
+      cfg.show_changed_by = cfg.show_changed_by !== false;
+      cfg.show_quick_actions = cfg.show_quick_actions !== false;
+      cfg.compact = cfg.compact !== false;
+      break;
+    case "person-card":
+      cfg.show_avatar = cfg.show_avatar !== false;
+      cfg.show_coordinates = cfg.show_coordinates === true;
+      cfg.show_last_changed = cfg.show_last_changed !== false;
+      cfg.compact = cfg.compact !== false;
+      break;
+    default:
+      break;
   }
 
-  if (w.type === "shutter-card") {
-    cfg.show_position_bar = cfg.show_position_bar === true;
-    cfg.show_presets = cfg.show_presets !== false;
-    cfg.show_name = cfg.show_name !== false;
-    cfg.compact = cfg.compact !== false;
-  }
-  if (w.type === "entity-control") {
-    cfg.show_progress_bar = cfg.show_progress_bar === true;
-    cfg.compact = cfg.compact !== false;
-    cfg.show_state_icon = cfg.show_state_icon !== false;
-    cfg.control_style = cfg.control_style || "auto";
-  }
-  if (w.type === "media-card") {
-    cfg.show_cover = cfg.show_cover !== false;
-    cfg.show_volume = cfg.show_volume !== false;
-    cfg.show_progress_bar = cfg.show_progress_bar === true;
-    cfg.media_layout = cfg.media_layout || "card";
-  }
-  if (w.type === "light-card") {
-    cfg.show_progress_bar = cfg.show_progress_bar === true;
-    cfg.show_brightness_buttons = cfg.show_brightness_buttons !== false;
-    cfg.show_color_presets = cfg.show_color_presets !== false;
-    cfg.show_color_temp = cfg.show_color_temp !== false;
-    cfg.compact = cfg.compact !== false;
-  }
-  if (w.type === "climate-card") {
-    cfg.show_progress_bar = cfg.show_progress_bar === true;
-    cfg.show_modes = cfg.show_modes !== false;
-    cfg.show_presets = cfg.show_presets !== false;
-    cfg.compact = cfg.compact !== false;
-  }
-  if (w.type === "alarm-card") {
-    cfg.show_changed_by = cfg.show_changed_by !== false;
-    cfg.show_quick_actions = cfg.show_quick_actions !== false;
-    cfg.compact = cfg.compact !== false;
-  }
-  if (w.type === "person-card") {
-    cfg.show_avatar = cfg.show_avatar !== false;
-    cfg.show_coordinates = cfg.show_coordinates === true;
-    cfg.show_last_changed = cfg.show_last_changed !== false;
-    cfg.compact = cfg.compact !== false;
-  }
   w.config = cfg;
   return w;
 }
