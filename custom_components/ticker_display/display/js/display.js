@@ -725,6 +725,72 @@ class ScreenManager {
     this._doTransition(screen, transition);
   }
 
+
+
+  /* ────── Screen Builders ────── */
+  _buildDashboardScreen(screen, config) {
+    const grid = document.createElement("div");
+    grid.className = "dashboard-grid";
+    const cols = config.grid?.columns || 3;
+    const rows = config.grid?.rows || 2;
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    const widgets = Utils.safeArray(config.widgets);
+    widgets.forEach((wc, index) => {
+      const widget = this._createWidget(wc);
+      widget.style.setProperty("--widget-enter-delay", `${index * 60}ms`);
+      widget.classList.add("widget-enter");
+      widget.style.gridColumn = `${(wc.col || 0) + 1}/span ${wc.colspan || 1}`;
+      widget.style.gridRow = `${(wc.row || 0) + 1}/span ${wc.rowspan || 1}`;
+      grid.appendChild(widget);
+    });
+    screen.appendChild(grid);
+  }
+
+  _buildClockScreen(screen) {
+    screen.innerHTML = `<div class="full-screen-center"><div id="clock-time" class="clock-time-large clock-animated">--:--</div><div id="clock-date" class="clock-date-large"></div></div>`;
+    const update = () => {
+      const now = new Date();
+      const t = screen.querySelector("#clock-time");
+      const d = screen.querySelector("#clock-date");
+      if (t) t.textContent = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      if (d) d.textContent = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    };
+    update();
+    this._clockIntervals.push(setInterval(update, 1000));
+  }
+
+  _buildWeatherScreen(screen, config) {
+    const state = config.entity_id ? (this.app.entityStates[config.entity_id] || {}) : {};
+    const visual = this._weatherVisual(state?.state, config.config || config);
+    const temp = state?.attributes?.temperature ?? "--";
+    const feels = state?.attributes?.temperature ?? temp;
+    screen.innerHTML = `<div class="weather-screen ${visual.theme}"><div class="weather-animated-bg ${visual.animClass} ${visual.animate ? "animate" : ""}">${this._weatherFxMarkup(visual.animClass)}</div><div class="weather-screen-card"><div class="weather-hero-icon">${visual.icon}</div><div id="weather-temp" class="weather-temp-large">${temp}°C</div><div id="weather-condition" class="weather-cond-large">${visual.label}</div><div class="weather-meta-row"><span>Gefühlt</span><strong>${feels}°C</strong></div></div></div>`;
+  }
+
+  _buildCameraScreen(screen, config) {
+    const eid = config.entity_id || config.config?.camera_entity || config.camera_entity || "";
+    const preferredSource = config.config?.camera_source || config.camera_source || "auto";
+    const liveMode = (config.config?.camera_view || config.camera_view || "still") === "live";
+    const source = liveMode && preferredSource === "auto" ? "camera_proxy_stream" : preferredSource;
+    const fit = config.config?.camera_fit || config.camera_fit || "contain";
+    const title = this._widgetCameraTitle(config, config.title || config.name || eid || "Kamera");
+    screen.innerHTML = `<img id="camera-img" class="screen-image-contain" style="object-fit:${fit}" alt="Camera">${title ? `<div class="screen-caption">${title}</div>` : ""}`;
+    const img = screen.querySelector("#camera-img");
+    if (img && eid) this._loadCameraInto(img, eid, source);
+    if (!liveMode) {
+      const ms = (config.refresh_interval || config.config?.refresh_interval || 5) * 1000;
+      this._cameraIntervals.push(setInterval(() => {
+        const ni = screen.querySelector("#camera-img");
+        if (ni && eid) this._loadCameraInto(ni, eid, source);
+      }, ms));
+    }
+  }
+
+  _buildImageScreen(screen, config) {
+    const src = config.image_url || config.imageUrl || config.url || "";
+    screen.innerHTML = `<div class="image-screen-wrap">${src ? `<img src="${src}" class="screen-image-contain" style="object-fit:${config.image_fit || config.background_image_size || "contain"}" alt="Image">` : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild gesetzt</div></div>`}</div>`;
+  }
   _applyDynamicWidgetStateClasses(widget, config, state = null) {
     const st = state || {};
     const attrs = st.attributes || {};
