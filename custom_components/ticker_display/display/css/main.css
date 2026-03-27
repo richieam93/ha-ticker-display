@@ -700,8 +700,10 @@ body {
 
 
 .screen-weather-overlay {
-  position:absolute;
+  position:fixed;
   inset:0;
+  width:100vw;
+  height:100vh;
   pointer-events:none;
   z-index:1;
   opacity:.22;
@@ -781,6 +783,81 @@ body {
 .widget-media-modern .media-widget-title { font-size:18px; font-weight:700; }
 .widget-media-modern .media-widget-subtitle { color:var(--td-text-secondary); font-size:13px; }
 .widget-media-modern .media-widget-state { color:var(--td-accent); font-size:12px; text-transform:capitalize; }
+
+.widget-switch-control .td-control-shell,
+.widget-light-control .td-control-shell,
+.widget-climate-control .td-control-shell,
+.widget-cover-control .td-control-shell {
+  width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; gap:12px;
+}
+.widget-switch-control .td-control-top,
+.widget-light-control .td-control-top,
+.widget-climate-control .td-control-top,
+.widget-cover-control .td-control-top {
+  display:flex; align-items:center; gap:12px; min-width:0;
+}
+.widget-switch-control .td-control-icon,
+.widget-light-control .td-control-icon,
+.widget-climate-control .td-control-icon,
+.widget-cover-control .td-control-icon {
+  width:58px; height:58px; border-radius:18px; display:flex; align-items:center; justify-content:center;
+  flex:none; font-size:30px; background:rgba(255,255,255,.08); box-shadow:0 8px 18px rgba(0,0,0,.18);
+}
+.widget-switch-control .td-control-icon.active,
+.widget-light-control .td-control-icon.active,
+.widget-climate-control .td-control-icon.active,
+.widget-cover-control .td-control-icon.active {
+  background:linear-gradient(135deg, rgba(64,196,255,.28), rgba(126,87,194,.22));
+  box-shadow:0 12px 24px rgba(0,0,0,.22), 0 0 0 1px rgba(64,196,255,.14) inset;
+}
+.widget-switch-control .td-control-main,
+.widget-light-control .td-control-main,
+.widget-climate-control .td-control-main,
+.widget-cover-control .td-control-main {
+  min-width:0; flex:1; display:flex; flex-direction:column; gap:4px;
+}
+.widget-switch-control .td-control-value,
+.widget-light-control .td-control-value,
+.widget-climate-control .td-control-value,
+.widget-cover-control .td-control-value {
+  font-size:22px; font-weight:800; line-height:1.05; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.widget-switch-control .td-control-sub,
+.widget-light-control .td-control-sub,
+.widget-climate-control .td-control-sub,
+.widget-cover-control .td-control-sub {
+  font-size:12px; color:var(--td-text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.widget-switch-control .td-control-chip,
+.widget-light-control .td-control-chip,
+.widget-climate-control .td-control-chip,
+.widget-cover-control .td-control-chip {
+  border-radius:999px; padding:7px 10px; font-size:11px; font-weight:700; letter-spacing:.04em;
+  white-space:nowrap; background:rgba(255,255,255,.08); color:rgba(255,255,255,.78);
+}
+.widget-switch-control .td-control-chip.on,
+.widget-light-control .td-control-chip.on,
+.widget-climate-control .td-control-chip.on,
+.widget-cover-control .td-control-chip.on {
+  background:rgba(76,175,80,.18); color:#b9f6ca;
+}
+.widget-switch-control .td-control-chip.off,
+.widget-light-control .td-control-chip.off,
+.widget-cover-control .td-control-chip.off {
+  background:rgba(255,255,255,.08); color:rgba(255,255,255,.62);
+}
+.widget-switch-control .td-control-meter,
+.widget-light-control .td-control-meter,
+.widget-climate-control .td-control-meter,
+.widget-cover-control .td-control-meter {
+  position:relative; width:100%; height:8px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.10);
+}
+.widget-switch-control .td-control-meter span,
+.widget-light-control .td-control-meter span,
+.widget-climate-control .td-control-meter span,
+.widget-cover-control .td-control-meter span {
+  display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, var(--td-accent), rgba(255,255,255,.95)); box-shadow:0 0 14px rgba(64,196,255,.35);
+}
 
 .widget-popup-overlay { position:fixed; inset:0; z-index:2600; background:rgba(3,6,12,.72); display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(10px); }
 .widget-popup-panel { position:relative; width:min(1100px,94vw); min-height:min(70vh,760px); border-radius:28px; background:linear-gradient(180deg, rgba(16,20,28,.98), rgba(10,14,20,.96)); border:1px solid rgba(255,255,255,.1); box-shadow:0 30px 80px rgba(0,0,0,.45); overflow:hidden; }

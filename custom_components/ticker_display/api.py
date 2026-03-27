@@ -146,6 +146,17 @@ class TickerDisplayAPI:
             "last_updated": getattr(state, "last_updated", None).isoformat() if getattr(state, "last_updated", None) else None,
         }
 
+
+    def _absolute_url(self, request, path: str) -> str:
+        if not path:
+            return f"{request.scheme}://{request.host}"
+        if str(path).startswith(("http://", "https://")):
+            return str(path)
+        normalized = str(path)
+        if not normalized.startswith("/"):
+            normalized = f"/{normalized}"
+        return f"{request.scheme}://{request.host}{normalized}"
+
     # ══════════════════════════════════════════════════════
     # Device API
     # ══════════════════════════════════════════════════════
@@ -164,8 +175,8 @@ class TickerDisplayAPI:
                 "status": "ok",
                 "device_id": device_id,
                 "existing": existing is not None,
-                "display_url": f"{API_BASE}/{device_id}",
-                "ws_url": f"/ticker-display/ws/{device_id}",
+                "display_url": self._absolute_url(request, f"{API_BASE}/{device_id}"),
+                "ws_url": self._absolute_url(request, f"/ticker-display/ws/{device_id}"),
             }
         )
 
@@ -1138,8 +1149,8 @@ class TickerDisplayAPI:
             item = dict(config)
             item["online"] = self.coordinator.is_device_online(did)
             item["connected"] = self.ws.is_device_connected(did)
-            item["display_url"] = f"{API_BASE}/{did}"
-            item["preview_url"] = f"{API_BASE}/preview/{did}"
+            item["display_url"] = self._absolute_url(request, f"{API_BASE}/{did}")
+            item["preview_url"] = self._absolute_url(request, f"{API_BASE}/preview/{did}")
             result.append(item)
         return web.json_response(result)
 
@@ -1177,8 +1188,8 @@ class TickerDisplayAPI:
                 "status": "ok",
                 "device_id": device["id"],
                 "device": device,
-                "display_url": f"{API_BASE}/{device['id']}",
-                "preview_url": f"{API_BASE}/preview/{device['id']}",
+                "display_url": self._absolute_url(request, f"{API_BASE}/{device['id']}"),
+                "preview_url": self._absolute_url(request, f"{API_BASE}/preview/{device['id']}"),
             }
         )
     async def _config_templates(self, request):

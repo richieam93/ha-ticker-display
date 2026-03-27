@@ -471,10 +471,8 @@ class ScreenManager {
   _cameraUrlForEntity(entityId, source = "auto") {
     if (!entityId) return "";
     const base = this.app.apiBase || "/ticker-display";
-    if (source === "camera_proxy_stream" || source === "mjpeg" || source === "stream") {
-      return `${base}/api/camera_proxy_stream/${entityId}?t=${Date.now()}`;
-    }
-    return `${base}/api/image/camera/${entityId}?mode=${encodeURIComponent(source)}&t=${Date.now()}`;
+    const mode = source || "auto";
+    return `${base}/api/image/camera/${entityId}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
   }
 
   /* ────── FIX: _normalizePoints ────── */
@@ -712,6 +710,11 @@ class ScreenManager {
       case "progress-bar": this._renderProgressBarWidget(widget, config, value, unit, name); break;
       case "status-dot": this._renderStatusDotWidget(widget, config, value, name); break;
       case "trend-arrow": this._renderTrendArrowWidget(widget, config, state, name, icon); break;
+      case "media-player-control": this._renderMediaPlayerControlWidget(widget, config, state, name, icon); break;
+      case "switch-control": this._renderSwitchControlWidget(widget, config, state, name, icon); break;
+      case "light-control": this._renderLightControlWidget(widget, config, state, name, icon); break;
+      case "climate-control": this._renderClimateControlWidget(widget, config, state, name, icon); break;
+      case "cover-control": this._renderCoverControlWidget(widget, config, state, name, icon); break;
       case "camera": this._renderCameraWidget(widget, config, name); break;
       case "weather": this._renderWeatherWidget(widget, config, state); break;
       case "clock": this._renderClockWidget(widget, config); break;
@@ -768,6 +771,48 @@ class ScreenManager {
     widget.classList.add("widget-media-modern");
     widget.innerHTML = `<div class="media-widget-shell">${cover ? `<img class="media-widget-cover" src="${cover}" alt="Cover">` : `<div class="media-widget-cover placeholder">${icon || "🎵"}</div>`}<div class="media-widget-meta">${name ? `<div class="w-name">${name}</div>` : ""}<div class="media-widget-title">${title}</div><div class="media-widget-subtitle">${subtitle}</div><div class="media-widget-state-row"><div class="media-widget-state">${Utils.text(state?.state || "—")}</div><div class="media-widget-vol">🔊 ${vol}%</div></div><div class="media-widget-progress"><span style="width:${progress}%"></span></div><div class="media-widget-controls"><span>⏮</span><span>⏯</span><span>⏭</span></div></div></div>`;
     this._renderExtraEntityList(widget, config);
+  }
+
+  _renderMediaPlayerControlWidget(widget, config, state, name, icon) {
+    this._renderMediaPlayerWidget(widget, config, state, name, icon || "🎵");
+  }
+
+  _renderSwitchControlWidget(widget, config, state, name, icon) {
+    const attrs = state?.attributes || {};
+    const rawState = String(state?.state || "off");
+    const isOn = Utils.isTruthyState(rawState);
+    const domain = String(config.entity_id || "").split(".")[0] || "switch";
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon ${isOn ? "active" : ""}">${icon || "🎚️"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${isOn ? "Ein" : "Aus"}</div><div class="td-control-sub">${Utils.text(attrs.friendly_name || domain)} · ${Utils.text(rawState)}</div></div><div class="td-control-chip ${isOn ? "on" : "off"}">${isOn ? "ON" : "OFF"}</div></div></div>`;
+  }
+
+  _renderLightControlWidget(widget, config, state, name, icon) {
+    const attrs = state?.attributes || {};
+    const rawState = String(state?.state || "off");
+    const isOn = Utils.isTruthyState(rawState);
+    const brightness = attrs.brightness == null ? (isOn ? 100 : 0) : Math.round((Number(attrs.brightness || 0) / 255) * 100);
+    const colorMode = Utils.text(attrs.color_mode || attrs.supported_color_modes?.[0] || "Licht");
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon ${isOn ? "active" : ""}">${icon || "💡"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${isOn ? `${brightness}%` : "Aus"}</div><div class="td-control-sub">${colorMode}</div></div><div class="td-control-chip ${isOn ? "on" : "off"}">${isOn ? "Licht an" : "Aus"}</div></div><div class="td-control-meter"><span style="width:${Math.max(0, Math.min(100, brightness))}%"></span></div></div>`;
+  }
+
+  _renderClimateControlWidget(widget, config, state, name, icon) {
+    const attrs = state?.attributes || {};
+    const currentTemp = attrs.current_temperature ?? "—";
+    const targetTemp = attrs.temperature ?? attrs.target_temp_high ?? "—";
+    const mode = Utils.text(state?.state || attrs.hvac_mode || "—");
+    const meterValue = Number.isFinite(Number(targetTemp)) ? Math.max(0, Math.min(100, (Number(targetTemp) / 30) * 100)) : 0;
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon active">${icon || "🌡️"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${Utils.text(currentTemp)}°C</div><div class="td-control-sub">Soll ${Utils.text(targetTemp)}°C · ${mode}</div></div><div class="td-control-chip on">${mode}</div></div><div class="td-control-meter"><span style="width:${meterValue}%"></span></div></div>`;
+  }
+
+  _renderCoverControlWidget(widget, config, state, name, icon) {
+    const attrs = state?.attributes || {};
+    const pos = attrs.current_position ?? attrs.position;
+    const pct = Number.isFinite(Number(pos)) ? Math.max(0, Math.min(100, Number(pos))) : 0;
+    const stateText = Utils.text(state?.state || (pct > 0 ? "open" : "closed"));
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon active">${icon || "🪟"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${Number.isFinite(Number(pos)) ? `${pct}%` : stateText}</div><div class="td-control-sub">${stateText}</div></div><div class="td-control-chip ${pct > 10 ? "on" : "off"}">${pct > 10 ? "Offen" : "Zu"}</div></div><div class="td-control-meter"><span style="width:${pct}%"></span></div></div>`;
   }
 
   _renderGaugeWidget(widget, config, value, unit, name) {
@@ -991,9 +1036,10 @@ class ScreenManager {
       labels: { color: "rgba(255,255,255,0.72)", boxWidth: compact ? 10 : 14, usePointStyle: true, padding: compact ? 10 : 14, filter: (item, data) => !data?.datasets?.[item.datasetIndex]?.tdHideName }
     };
 
+    const chartAnimationEnabled = (config.config?.chart_animation !== false) && (this.app?.globalSettings?.default_chart_widget_animations !== false);
     const baseOptions = {
       responsive: true, maintainAspectRatio: false,
-      animation: { duration: compact ? 220 : 600, easing: "easeOutCubic" },
+      animation: chartAnimationEnabled ? { duration: compact ? 220 : 600, easing: "easeOutCubic" } : false,
       interaction: { mode: "nearest", intersect: false },
       plugins: { legend: legendOptions, tooltip: { enabled: true, displayColors: true } },
       scales: {
@@ -1144,6 +1190,11 @@ class ScreenManager {
       }
       case "weather": this._renderWeatherWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}); break;
       case "trend-arrow": this._renderTrendArrowWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, config.name || "", config.icon || this._defaultIconForType(config.type)); break;
+      case "media-player-control": this._renderMediaPlayerControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "switch-control": this._renderSwitchControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "light-control": this._renderLightControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "climate-control": this._renderClimateControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "cover-control": this._renderCoverControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
       case "mini-graph": case "sparkline": case "line-chart": case "bar-chart":
       case "area-chart": case "multi-line-chart": case "stacked-bar-chart":
       case "horizontal-bar-chart": case "donut-chart": case "pie-chart":
@@ -1169,6 +1220,25 @@ class ScreenManager {
     const hasOwnAction = config.tap_action && config.tap_action !== "none";
     const cameraFullscreen = (config.type === "camera" && (config.config?.camera_tap_fullscreen || config.camera_tap_fullscreen));
     if (hasOwnAction || cameraFullscreen) return config;
+
+    const defaultToggleTypes = new Set(["switch-control", "light-control"]);
+    const defaultPopupTypes = new Set(["media-player-control", "climate-control", "cover-control"]);
+    if (defaultToggleTypes.has(config.type)) {
+      return {
+        ...config,
+        tap_action: "toggle",
+        tap_target_entity: config.tap_target_entity || config.entity_id || "",
+        toggle_badge: config.toggle_badge ?? true,
+      };
+    }
+    if (defaultPopupTypes.has(config.type)) {
+      return {
+        ...config,
+        tap_action: "popup",
+        tap_target_entity: config.tap_target_entity || config.entity_id || "",
+      };
+    }
+
     const group = String(config.group || "").trim();
     if (!group) return config;
     const current = this.temporaryScreen || this.screens[this.currentIndex] || {};
@@ -1591,7 +1661,7 @@ class ScreenManager {
   }
 
   _defaultIconForType(type) {
-    const map = { "simple-value": "🔢", "icon-value": "ℹ️", "mini-graph": "📉", "line-chart": "📈", "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈", "stacked-bar-chart": "🧱", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "🕒", "scatter-chart": "✳️", "bubble-chart": "🫧", "polar-area-chart": "🧿", "forecast-chart": "🔮", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", "sparkline": "〰️", "trend-arrow": "📈", "weather": "🌤️", "clock": "🕐", "image": "🖼️", "camera": "📹", "qr-code": "🔳", "countdown": "⏱️", "button": "🔘" };
+    const map = { "simple-value": "🔢", "icon-value": "ℹ️", "mini-graph": "📉", "line-chart": "📈", "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈", "stacked-bar-chart": "🧱", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "🕒", "scatter-chart": "✳️", "bubble-chart": "🫧", "polar-area-chart": "🧿", "forecast-chart": "🔮", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", "sparkline": "〰️", "trend-arrow": "📈", "media-player-control": "🎵", "switch-control": "🎚️", "light-control": "💡", "climate-control": "🌡️", "cover-control": "🪟", "weather": "🌤️", "clock": "🕐", "image": "🖼️", "camera": "📹", "qr-code": "🔳", "countdown": "⏱️", "button": "🔘" };
     return map[type] || "📊";
   }
 }
@@ -1812,6 +1882,7 @@ class TickerDisplayApp {
     this.deviceId = window.TICKER_DEVICE_ID || "unknown";
     this.wsUrl = window.TICKER_WS_URL || "";
     this.apiBase = window.TICKER_API_BASE || "/ticker-display";
+    this.globalSettings = window.TICKER_GLOBAL_SETTINGS || {};
     this.neededEntities = window.TICKER_ENTITIES || [];
     this.entityStates = {};
     this.previousEntityStates = {};

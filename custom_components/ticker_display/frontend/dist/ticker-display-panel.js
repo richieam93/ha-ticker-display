@@ -56,9 +56,28 @@ const TD_CAMERA_SOURCES = [
   ["camera_proxy_stream",  "camera_proxy_stream"],
 ];
 
+const TD_VALUE_STATUS_WIDGETS = [
+  ["simple-value",  "🔢", "Wert",          "Klassische Zahl oder Sensorwert"],
+  ["icon-value",    "ℹ️", "Icon+Wert",     "Wert mit Symbol und Titel"],
+  ["trend-arrow",   "📈", "Trend",         "Tendenz nach oben oder unten"],
+  ["status-dot",    "🟢", "Status",        "Kompakter Zustand mit Farbe"],
+  ["gauge",         "🎯", "Gauge",         "Runder Füllstand / Prozentwert"],
+  ["progress-bar",  "📊", "Fortschritt",   "Horizontaler Fortschrittsbalken"],
+];
+
+const TD_SMART_HOME_WIDGETS = [
+  ["media-player-control", "🎵", "Media Player", "Cover, Titel und Transport"],
+  ["switch-control",       "🎚️", "Schalter",     "Ein/Aus für Switch, Fan oder Input Boolean"],
+  ["light-control",        "💡", "Licht",        "Status und Helligkeit"],
+  ["climate-control",      "🌡️", "Klima",        "Ist-/Sollwert und HVAC-Modus"],
+  ["cover-control",        "🪟", "Rollladen",    "Position und Schnellaktionen"],
+];
+
 const TD_WIDGET_TYPE_ICONS = {
   "simple-value": "🔢", "icon-value": "ℹ️", "trend-arrow": "📈",
   "status-dot": "🟢", "gauge": "🎯", "progress-bar": "📊",
+  "media-player-control": "🎵", "switch-control": "🎚️", "light-control": "💡",
+  "climate-control": "🌡️", "cover-control": "🪟",
   "camera": "📹", "image": "🖼️", "clock": "🕐", "weather": "🌦️",
   "countdown": "⏱️", "button": "🔘", "color-block": "🟦",
   "qr-code": "🔳",
@@ -95,29 +114,59 @@ const TD_SCREEN_TYPE_LABELS = {
 };
 
 const TD_WIDGET_TYPES_ALL = [
-  { v: "simple-value",    l: "Einfacher Wert"     },
-  { v: "gauge",            l: "Gauge"              },
-  { v: "progress-bar",     l: "Fortschrittsbalken" },
-  { v: "status-dot",       l: "Status Punkt"       },
-  { v: "icon-value",       l: "Icon+Wert"          },
-  { v: "trend-arrow",      l: "Trend Pfeil"        },
+  ...TD_VALUE_STATUS_WIDGETS.map(([v, , l]) => ({ v, l })),
   ...TD_CHART_WIDGETS.map(([v, , l]) => ({ v, l })),
-  { v: "camera",           l: "Kamera"             },
-  { v: "clock",            l: "Uhr"                },
-  { v: "weather",          l: "Wetter"             },
-  { v: "image",            l: "Bild"               },
-  { v: "color-block",      l: "Farbblock"          },
-  { v: "countdown",        l: "Countdown"          },
-  { v: "button",           l: "Button"             },
+  ...TD_SMART_HOME_WIDGETS.map(([v, , l]) => ({ v, l })),
+  { v: "camera",      l: "Kamera" },
+  { v: "clock",       l: "Uhr" },
+  { v: "weather",     l: "Wetter" },
+  { v: "image",       l: "Bild" },
+  { v: "color-block", l: "Farbblock" },
+  { v: "countdown",   l: "Countdown" },
+  { v: "button",      l: "Button" },
+  { v: "qr-code",     l: "QR-Code" },
+].filter((item, index, arr) => arr.findIndex((x) => x.v === item.v) === index);
+
+const TD_WIDGET_SETTINGS_GROUPS = [
+  { label: "Werte & Status", items: TD_VALUE_STATUS_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
+  { label: "Graphen & Charts", items: TD_CHART_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
+  { label: "Steuerung & Smart Home", items: TD_SMART_HOME_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
+  { label: "Medien & Info", items: [
+    { type: "camera", icon: "📹", name: "Kamera" },
+    { type: "weather", icon: "🌦️", name: "Wetter" },
+    { type: "clock", icon: "🕐", name: "Uhr" },
+    { type: "image", icon: "🖼️", name: "Bild" },
+    { type: "countdown", icon: "⏱️", name: "Countdown" },
+    { type: "button", icon: "🔘", name: "Button" },
+    { type: "color-block", icon: "🟦", name: "Farbblock" },
+    { type: "qr-code", icon: "🔳", name: "QR-Code" },
+  ] },
 ];
 
 const TD_NO_MULTI_ENTITY = new Set([
   "camera", "weather", "clock", "countdown", "qr-code", "button", "color-block",
+  "media-player-control", "switch-control", "light-control", "climate-control", "cover-control",
 ]);
 
 const TD_NO_VALUE_FORMAT = new Set([
   "camera", "weather", "clock", "countdown", "qr-code", "button", "color-block", "image",
+  "media-player-control", "switch-control", "light-control", "climate-control", "cover-control",
 ]);
+
+function tdNormalizedWidgetFeatureFlags(settings = {}) {
+  return {
+    ...Object.fromEntries(TD_WIDGET_TYPES_ALL.map((item) => [item.v, true])),
+    ...(settings.widget_feature_flags || {}),
+  };
+}
+
+function tdWidgetEnabled(settings = {}, type = "") {
+  return tdNormalizedWidgetFeatureFlags(settings)[type] !== false;
+}
+
+function tdVisibleWidgetOptions(settings = {}, currentType = "") {
+  return TD_WIDGET_TYPES_ALL.filter((item) => item.v === currentType || tdWidgetEnabled(settings, item.v));
+}
 
 /* ══════════════════════════════════════════════════════════
    UTILITY FUNCTIONS
@@ -208,21 +257,32 @@ function lsSet(key, value) {
 
 function tdNormalizedDefaults(settings = {}) {
   return {
-    default_theme:           settings.default_theme           || "dark",
-    default_transition:      settings.default_transition      || "fade",
-    default_screen_duration: Number(settings.default_screen_duration || 15),
-    default_camera_source:   settings.default_camera_source   || "auto",
-    default_chart_hours:     Number(settings.default_chart_hours || 24),
-    default_widget_opacity:  settings.default_widget_opacity  ?? 0.75,
-    default_widget_blur:     Number(settings.default_widget_blur || 0),
-    default_widget_radius:   Number(settings.default_widget_radius || 12),
-    default_background_color: settings.default_background_color || "#121212",
-    default_ticker_height:   Number(settings.default_ticker_height || 36),
+    default_theme:             settings.default_theme             || "dark",
+    default_transition:        settings.default_transition        || "fade",
+    default_screen_duration:   Number(settings.default_screen_duration || 15),
+    default_camera_source:     settings.default_camera_source     || "auto",
+    default_chart_hours:       Number(settings.default_chart_hours || 24),
+    default_chart_widget_animations: settings.default_chart_widget_animations !== false,
+    default_widget_opacity:    settings.default_widget_opacity    ?? 0.75,
+    default_widget_blur:       Number(settings.default_widget_blur || 0),
+    default_widget_radius:     Number(settings.default_widget_radius || 12),
+    default_background_color:  settings.default_background_color || "#121212",
+    default_ticker_height:     Number(settings.default_ticker_height || 36),
+    widget_feature_flags:      tdNormalizedWidgetFeatureFlags(settings),
   };
+}
+
+function tdDefaultTapActionForWidget(type = "") {
+  if (["switch-control", "light-control"].includes(type)) return "toggle";
+  if (["media-player-control", "climate-control", "cover-control"].includes(type)) return "popup";
+  return "none";
 }
 
 function tdCreateWidget(type, col, row, settings = {}) {
   const d = tdNormalizedDefaults(settings);
+  const tapAction = tdDefaultTapActionForWidget(type);
+  const isChart = TD_CHART_TYPES.has(type);
+  const isToggleWidget = ["switch-control", "light-control"].includes(type);
   return {
     id: uniqueId("w"),
     type,
@@ -237,13 +297,16 @@ function tdCreateWidget(type, col, row, settings = {}) {
     blur: d.default_widget_blur,
     borderRadius: d.default_widget_radius,
     bgColor: "#1E1E1E",
-    animations: true,
+    animations: isChart ? d.default_chart_widget_animations !== false : true,
     animation_style: "auto",
+    tap_action: tapAction,
+    toggle_badge: isToggleWidget,
     locked: false,
     config: {
       camera_source: d.default_camera_source,
       hours: d.default_chart_hours,
       chart_use_history: true,
+      chart_animation: d.default_chart_widget_animations !== false,
       chart_max_points: 48,
       value_decimals: 1,
       extra_value_decimals: 1,
@@ -1398,6 +1461,7 @@ class TdDeviceList extends LitElement {
       <div class="hdr">
         <h2>📱 Meine Geräte</h2>
         <div class="hdr-actions">
+          <button class="ab p" @click=${() => this._emit("create-virtual-device", {})}>➕ Virtuelles Gerät</button>
           <button class="ab" @click=${() => this._emit("refresh", {})}>🔄 Aktualisieren</button>
         </div>
       </div>
@@ -1475,23 +1539,24 @@ class TdDeviceList extends LitElement {
     const on = d.online || false;
     const screenCount = d.screens?.length || 0;
     const widgetCount = (d.screens || []).reduce((sum, s) => sum + (s.widgets?.length || 0), 0);
+    const linkUrl = d.display_url || `${window.location.origin}${API}/${d.id}`;
 
     return html`
       <div class="card">
         <div class="ch">
-          <div class="ci">${on ? "📱" : "📴"}</div>
+          <div class="ci">${d.virtual ? "🌐" : (on ? "📱" : "📴")}</div>
           <div class="cn">
             ${d.name || d.id}
             <span class="did">${d.id}</span>
           </div>
           <span class="sb ${on ? "on" : "off"}">
-            <span class="sd"></span>${on ? "Online" : "Offline"}
+            <span class="sd"></span>${on ? "Online" : (d.virtual ? "Virtuell" : "Offline")}
           </span>
         </div>
 
         <div class="di">
-          <span>Modell:</span><span class="v">${d.model || "—"}</span>
-          <span>Android:</span><span class="v">${d.android_version || "—"}</span>
+          <span>Modell:</span><span class="v">${d.model || (d.virtual ? "Browser / Web" : "—")}</span>
+          <span>Typ:</span><span class="v">${d.virtual ? "Virtuelles Gerät" : "Android / App"}</span>
           <span>Auflösung:</span><span class="v">${d.screen_resolution || "—"}</span>
           <span>Screens:</span><span class="v">${screenCount} (${widgetCount} Widgets)</span>
           <span>Theme:</span><span class="v">${d.theme || "dark"}</span>
@@ -1510,6 +1575,10 @@ class TdDeviceList extends LitElement {
         <div class="da" style="margin-top:12px">
           <button class="ab p" @click=${() => this._emit("edit-device", { deviceId: d.id })}>
             🧱 Editor
+          </button>
+          <button class="ab" @click=${() => this._emit("copy-link", { deviceId: d.id, url: linkUrl })}
+                  title="Display-Link kopieren">
+            🔗 Link-Kopieren
           </button>
           <button class="ab" @click=${() => this._emit("preview-device", { deviceId: d.id })}
                   title="Vorschau öffnen">
@@ -2251,8 +2320,8 @@ class TdScreenEditor extends LitElement {
       this._doRedo();
       return;
     }
-    // Delete / Backspace = Delete selected
-    if ((e.key === "Delete" || e.key === "Backspace") && this._sel >= 0) {
+    // Entf/Delete = Delete selected (Backspace bleibt fürs Tippen frei)
+    if (e.key === "Delete" && this._sel >= 0) {
       e.preventDefault();
       this._deleteSelected();
       return;
@@ -2547,6 +2616,96 @@ class TdScreenEditor extends LitElement {
         font-size: 8px; color: rgba(255,255,255,.3);
         margin-top: 1px; text-align: center; max-width: 100%;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .wb .pv {
+        width: 100%; height: 100%; display: flex; flex-direction: column;
+        justify-content: center; gap: 6px; position: relative; z-index: 1;
+      }
+      .wb .pv-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        min-width: 0;
+      }
+      .wb .pv-title {
+        font-size: 9px; color: rgba(255,255,255,.62);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+      }
+      .wb .pv-icon { font-size: 16px; opacity: .9; flex-shrink: 0; }
+      .wb .pv-value {
+        font-size: 18px; font-weight: 700; color: #fff; line-height: 1.05;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .wb .pv-sub {
+        font-size: 9px; color: rgba(255,255,255,.5);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .wb .pv-meter {
+        width: 100%; height: 8px; border-radius: 999px;
+        background: rgba(255,255,255,.12); overflow: hidden;
+      }
+      .wb .pv-meter > span {
+        display: block; height: 100%; border-radius: inherit;
+        background: linear-gradient(90deg, rgba(64,196,255,.92), rgba(126,87,194,.95));
+      }
+      .wb .pv-dot {
+        width: 18px; height: 18px; border-radius: 999px;
+        box-shadow: 0 0 0 6px rgba(76,175,80,.12);
+      }
+      .wb .pv-dot.off {
+        background: rgba(255,255,255,.26); box-shadow: none;
+      }
+      .wb .pv-dot.on {
+        background: #4caf50;
+      }
+      .wb .pv-trend {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11px; font-weight: 600; color: #8bc34a;
+      }
+      .wb .pv-trend.down { color: #ef5350; }
+      .wb .pv-trend.flat { color: #ffca28; }
+      .wb .pv-cam {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        object-fit: cover; z-index: 0;
+      }
+      .wb .pv-cam-fade {
+        position: absolute; inset: 0; z-index: 0;
+        background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.52));
+      }
+      .wb .pv-overlay {
+        position: absolute; left: 8px; right: 8px; bottom: 8px;
+        z-index: 1; padding: 6px 8px; border-radius: 8px;
+        background: rgba(0,0,0,.45); backdrop-filter: blur(6px);
+      }
+      .wb .pv-placeholder {
+        display: grid; place-items: center; height: 100%;
+        font-size: 28px; opacity: .34;
+      }
+      .wb .pv-chart-lines {
+        width: 100%; height: 42px; border-radius: 10px;
+        background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+        position: relative; overflow: hidden;
+      }
+      .wb .pv-chart-lines::before,
+      .wb .pv-chart-lines::after {
+        content: ""; position: absolute; left: 6px; right: 6px; border-radius: 999px;
+      }
+      .wb .pv-chart-lines::before {
+        top: 11px; height: 2px;
+        background: linear-gradient(90deg, rgba(64,196,255,.0), rgba(64,196,255,.95) 25%, rgba(126,87,194,.95) 70%, rgba(255,255,255,.0));
+        transform: rotate(-6deg);
+      }
+      .wb .pv-chart-lines::after {
+        top: 22px; height: 2px;
+        background: linear-gradient(90deg, rgba(255,255,255,.0), rgba(255,193,7,.85) 30%, rgba(76,175,80,.85) 75%, rgba(255,255,255,.0));
+        transform: rotate(7deg);
+      }
+      .wb .pv-media-cover {
+        width: 50px; height: 50px; border-radius: 12px; flex-shrink: 0;
+        background: rgba(255,255,255,.08); display: flex; align-items: center; justify-content: center;
+        font-size: 24px; overflow: hidden;
+      }
+      .wb .pv-media-cover img { width: 100%; height: 100%; object-fit: cover; }
+      .wb .pv-split {
+        display: flex; align-items: center; gap: 10px; min-width: 0;
       }
 
       /* ── Widget badges ── */
@@ -2869,6 +3028,10 @@ class TdScreenEditor extends LitElement {
   }
 
   _getPaletteCategories() {
+    const settings = tdNormalizedDefaults(this.globalSettings || {});
+    const uniqueByType = (items = []) => items.filter((item, index, arr) => arr.findIndex((x) => x.type === item.type) === index);
+    const enabled = (items = []) => uniqueByType(items.filter((item) => item.type.startsWith("saved-template:") || tdWidgetEnabled(settings, item.type)));
+
     const userTemplates = Object.entries(this.templates || {})
       .filter(([, t]) => t?.screen_config)
       .map(([id, t]) => ({
@@ -2878,26 +3041,27 @@ class TdScreenEditor extends LitElement {
       }));
 
     const raw = [
-      { name: "📁 Werte & Status", items: [
-        { type: "simple-value",  icon: "🔢", label: "Wert",       desc: "Klassische Zahl oder Sensorwert" },
-        { type: "icon-value",    icon: "ℹ️", label: "Icon+Wert",  desc: "Wert mit Symbol und Titel" },
-        { type: "trend-arrow",   icon: "📈", label: "Trend",      desc: "Tendenz nach oben oder unten" },
-        { type: "status-dot",    icon: "🟢", label: "Status",     desc: "Kompakter Zustand mit Farbe" },
-        { type: "gauge",         icon: "🎯", label: "Gauge",      desc: "Runder Füllstand / Prozentwert" },
-        { type: "progress-bar",  icon: "📊", label: "Fortschritt",desc: "Horizontaler Fortschrittsbalken" },
-      ]},
-      { name: "📁 Graphen & Charts", items:
-        TD_CHART_WIDGETS.map(([t, i, l]) => ({ type: t, icon: i, label: l, desc: "Chart.js Widget" }))
-      },
-      { name: "📁 Medien & Kamera", items: [
+      { name: "📁 Werte & Status", items: enabled(
+        TD_VALUE_STATUS_WIDGETS.map(([type, icon, label, desc]) => ({ type, icon, label, desc }))
+      )},
+      { name: "📁 Graphen & Charts", items: enabled(
+        TD_CHART_WIDGETS.map(([type, icon, label]) => ({ type, icon, label, desc: "Chart.js Widget" }))
+      )},
+      { name: "📁 Steuerung & Smart Home", items: enabled(
+        TD_SMART_HOME_WIDGETS.map(([type, icon, label, desc]) => ({ type, icon, label, desc }))
+      )},
+      { name: "📁 Medien & Kamera", items: enabled([
         { type: "camera", icon: "📹", label: "Kamera", desc: "Snapshot, Proxy oder Stream" },
         { type: "image",  icon: "🖼️", label: "Bild",   desc: "Lokale oder HA-Medienbilder" },
-      ]},
-      { name: "📁 Uhr, Wetter & Info", items: [
+      ])},
+      { name: "📁 Uhr, Wetter & Info", items: enabled([
         { type: "clock",     icon: "🕐", label: "Uhr",       desc: "Zeit und Datum" },
         { type: "weather",   icon: "🌦️", label: "Wetter",    desc: "Wetter-Entity mit Übersicht" },
         { type: "countdown", icon: "⏱️", label: "Countdown", desc: "Ereignis oder Zielzeit" },
-      ]},
+        { type: "qr-code",   icon: "🔳", label: "QR-Code",   desc: "Link, Text oder WLAN" },
+        { type: "button",    icon: "🔘", label: "Button",    desc: "Touch-Aktion, Screen oder URL" },
+        { type: "color-block", icon: "🟦", label: "Farbblock", desc: "Dekorativer Block / Platzhalter" },
+      ])},
       { name: "📁 HA Presets", items: [
         { type: "preset-energy",  icon: "⚡", label: "Energie",  desc: "Leistungs- oder Energiesensor" },
         { type: "preset-person",  icon: "👤", label: "Personen", desc: "Anwesenheit und Status" },
@@ -2918,29 +3082,15 @@ class TdScreenEditor extends LitElement {
         { type: "ha-template-family",   icon: "👨‍👩‍👧", label: "Familie",  desc: "Personen, Kalender" },
         { type: "ha-template-media",    icon: "📺", label: "Medien",     desc: "Player und Cover" },
       ]},
-      ...(userTemplates.length ? [{ name: "📁 Meine Vorlagen", items: userTemplates }] : []),
-      { name: "📁 Sonstige", items: [
-        { type: "color-block", icon: "🟦", label: "Farbblock", desc: "Dekoratives Element" },
-        { type: "button",      icon: "🔘", label: "Button",    desc: "Interaktive Aktion" },
-      ]},
     ];
 
-    // Apply filter
-    return raw.map((cat) => ({
-      ...cat,
-      items: cat.items.filter((it) => {
-        const q = (this._paletteQuery || "").toLowerCase().trim();
-        if (this._paletteFilter === "favorites" && !this._isFavorite(it.type)) return false;
-        if (this._paletteFilter === "recent" && !this._isRecent(it.type)) return false;
-        if (!q) return true;
-        return [it.type, it.label, it.desc, cat.name].join(" ").toLowerCase().includes(q);
-      }).sort((a, b) => {
-        const af = this._isFavorite(a.type) ? 1 : 0;
-        const bf = this._isFavorite(b.type) ? 1 : 0;
-        if (af !== bf) return bf - af;
-        return String(a.label).localeCompare(String(b.label), "de");
-      }),
-    })).filter((cat) => cat.items.length > 0);
+    if (userTemplates.length) {
+      raw.unshift({ name: "📁 Gespeicherte Templates", items: userTemplates });
+    }
+
+    return raw
+      .map((cat) => ({ ...cat, items: uniqueByType(cat.items) }))
+      .filter((cat) => cat.items.length > 0);
   }
 
   _isFavorite(type) { return (this._favoriteWidgets || []).includes(type); }
@@ -3054,7 +3204,7 @@ class TdScreenEditor extends LitElement {
   }
 
   _renderWidgetBox(w, i) {
-    const st = this.hass?.states?.[w.entity_id];
+    const st = this.hass?.states?.[w.entity_id] || {};
     const value = st?.state || "—";
     const unit = st?.attributes?.unit_of_measurement || "";
     const name = w.name || st?.attributes?.friendly_name || w.type || "";
@@ -3084,12 +3234,7 @@ class TdScreenEditor extends LitElement {
           L${w.z_index || i + 1}${w.locked ? " 🔒" : ""}
         </span>
 
-        <span class="wi">${icon}</span>
-        <span class="wv">${value}${unit ? ` ${unit}` : ""}</span>
-        <span class="wn">${name}</span>
-        ${extras.length ? html`
-          <span class="wx">+ ${extras.join(" · ")}</span>
-        ` : ""}
+        ${this._renderEditorWidgetPreview(w, st, value, unit, name, icon, extras)}
 
         ${isSel && !w.locked ? html`
           <span class="rh e"  @pointerdown=${(e) => this._onResizeStart(e, i, "e")}></span>
@@ -3110,6 +3255,108 @@ class TdScreenEditor extends LitElement {
       style += `background-position:center;background-repeat:no-repeat;`;
     }
     return style;
+  }
+
+  _editorCameraPreviewUrl(w) {
+    const entityId = w.entity_id || w.config?.camera_entity || "";
+    if (!entityId) return "";
+    const mode = w.config?.camera_source || this.globalSettings?.default_camera_source || "auto";
+    return `${API}/api/image/camera/${encodeURIComponent(entityId)}?mode=${encodeURIComponent(mode)}&t=${Date.now()}`;
+  }
+
+  _editorWidgetNumeric(value, fallback = 0) {
+    const n = Number.parseFloat(String(value).replace(",", "."));
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  _renderEditorWidgetPreview(w, st, value, unit, name, icon, extras = []) {
+    const attrs = st?.attributes || {};
+    const valText = `${value}${unit ? ` ${unit}` : ""}`;
+    const fallbackTitle = name || w.type || "Widget";
+
+    if (w.type === "camera") {
+      const src = this._editorCameraPreviewUrl(w);
+      return html`
+        <div class="pv">
+          ${src ? html`<img class="pv-cam" src=${src} alt="Kamera">` : html`<div class="pv-placeholder">📹</div>`}
+          <div class="pv-cam-fade"></div>
+          <div class="pv-overlay">
+            <div class="pv-title">${fallbackTitle}</div>
+            <div class="pv-sub">${w.entity_id || w.config?.camera_entity || "Keine Kamera"}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (w.type === "gauge") {
+      const min = Number(w.config?.min ?? 0);
+      const max = Number(w.config?.max ?? 100);
+      const pct = Math.max(0, Math.min(100, ((this._editorWidgetNumeric(value, 0) - min) / Math.max(1, max - min)) * 100));
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div><div class="pv-sub">Gauge ${Math.round(pct)}%</div></div>`;
+    }
+
+    if (w.type === "progress-bar") {
+      const min = Number(w.config?.min ?? 0);
+      const max = Number(w.config?.max ?? 100);
+      const pct = Math.max(0, Math.min(100, ((this._editorWidgetNumeric(value, 0) - min) / Math.max(1, max - min)) * 100));
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div><div class="pv-sub">Fortschritt ${Math.round(pct)}%</div></div>`;
+    }
+
+    if (w.type === "status-dot") {
+      const isOn = ["on","open","home","playing","true","1","heat","cool"].includes(String(value).toLowerCase());
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-dot ${isOn ? "on" : "off"}"></span></div><div class="pv-value">${isOn ? "Aktiv" : "Inaktiv"}</div><div class="pv-sub">${String(value || "—")}</div></div>`;
+    }
+
+    if (w.type === "trend-arrow") {
+      const numeric = this._editorWidgetNumeric(value, 0);
+      const direction = numeric > 0 ? "up" : numeric < 0 ? "down" : "flat";
+      const arrow = direction === "up" ? "▲" : direction === "down" ? "▼" : "▶";
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-trend ${direction}">${arrow} Trend</div><div class="pv-chart-lines"></div></div>`;
+    }
+
+    if (w.type === "simple-value" || w.type === "icon-value") {
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-chart-lines"></div><div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div></div>`;
+    }
+
+    if (w.type === "media-player-control") {
+      const cover = attrs.entity_picture || "";
+      const title = attrs.media_title || value || "—";
+      const artist = attrs.media_artist || attrs.source || attrs.friendly_name || "";
+      return html`<div class="pv"><div class="pv-split"><div class="pv-media-cover">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div><div style="min-width:0;flex:1"><div class="pv-title">${fallbackTitle}</div><div class="pv-value">${title}</div><div class="pv-sub">${artist}</div></div></div><div class="pv-meter"><span style="width:${Math.round(Number(attrs.volume_level || 0) * 100)}%"></span></div></div>`;
+    }
+
+    if (w.type === "switch-control" || w.type === "light-control" || w.type === "climate-control" || w.type === "cover-control") {
+      let main = valText;
+      let sub = attrs.friendly_name || w.entity_id || "";
+      let pct = 0;
+      if (w.type === "light-control") {
+        pct = attrs.brightness == null ? 0 : Math.round((Number(attrs.brightness || 0) / 255) * 100);
+        main = (String(value).toLowerCase() === "on") ? `${pct || 100}%` : "Aus";
+        sub = attrs.color_mode || "Licht";
+      } else if (w.type === "climate-control") {
+        main = `${attrs.current_temperature ?? "—"}°C`;
+        sub = `Soll ${attrs.temperature ?? "—"}°C · ${value || "—"}`;
+        pct = Number.isFinite(Number(attrs.temperature)) ? Math.max(0, Math.min(100, (Number(attrs.temperature) / 30) * 100)) : 0;
+      } else if (w.type === "cover-control") {
+        pct = Number(attrs.current_position ?? 0);
+        main = Number.isFinite(pct) ? `${pct}%` : String(value || "—");
+        sub = String(value || "Rollladen");
+      } else {
+        const on = ["on","open","home","playing","true","1"].includes(String(value).toLowerCase());
+        main = on ? "Ein" : "Aus";
+        pct = on ? 100 : 0;
+        sub = String(value || "Schalter");
+      }
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${main}</div><div class="pv-meter"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div><div class="pv-sub">${sub}</div></div>`;
+    }
+
+    return html`
+      <div class="pv">
+        <div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div>
+        <div class="pv-value">${valText}</div>
+        <div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div>
+      </div>
+    `;
   }
 
   /* ══════════════════════════════════════════════════════════
@@ -3815,7 +4062,7 @@ TdScreenEditor.prototype._renderPropsGeneral = function (w) {
       <label>Widget-Typ</label>
       <select .value=${w.type || "simple-value"}
               @change=${(e) => this._setWidget("type", e.target.value)}>
-        ${TD_WIDGET_TYPES_ALL.map((t) => html`<option value=${t.v}>${t.l}</option>`)}
+        ${tdVisibleWidgetOptions(this.globalSettings || {}, w.type).map((t) => html`<option value=${t.v}>${t.l}</option>`)}
       </select>
     </div>
 
@@ -4408,6 +4655,34 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
     `);
   }
 
+  // Smart-Home Control Widgets
+  if (["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(w.type)) {
+    const defaultAction = tdDefaultTapActionForWidget(w.type) || "popup";
+    parts.push(html`
+      <div class="pg4">Steuerung</div>
+      <div class="pf2">
+        <label>Standardaktion</label>
+        <select .value=${w.tap_action || defaultAction}
+                @change=${(e) => this._setWidget("tap_action", e.target.value)}>
+          <option value="none">Keine</option>
+          <option value="toggle">Toggle</option>
+          <option value="popup">Popup</option>
+          <option value="expand">Expand</option>
+        </select>
+      </div>
+      ${["switch-control", "light-control"].includes(w.type) ? html`
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.toggle_badge !== false}
+                 @change=${(e) => this._setWidget("toggle_badge", e.target.checked)}>
+          <span>Status-Badge anzeigen</span>
+        </label>
+      ` : html`
+        <div class="pf2-hint">Dieses Widget ist für eine direkte Steuerung per Popup vorbereitet.</div>
+      `}
+    `);
+  }
+
   // Countdown
   if (w.type === "countdown") {
     parts.push(html`
@@ -4547,6 +4822,7 @@ TdScreenEditor.prototype._renderChartConfig = function (w) {
     <!-- Toggle grid -->
     <div class="tog-grid">
       ${[
+        ["chart_animation",   "Animation", true],
         ["chart_show_legend", "Legende", true],
         ["chart_show_axes",   "Achsen",  true],
         ["chart_show_grid",   "Grid",    true],
@@ -4847,6 +5123,10 @@ TdScreenEditor.prototype._applyWidgetJson = function (jsonStr) {
 TdScreenEditor.prototype._domainForType = function (type) {
   if (type === "camera") return "camera";
   if (type === "weather") return "weather";
+  if (type === "media-player-control") return "media_player";
+  if (type === "light-control") return "light";
+  if (type === "climate-control") return "climate";
+  if (type === "cover-control") return "cover";
   return "";
 };
 
@@ -7381,7 +7661,7 @@ class TdGlobalSettings extends LitElement {
 
   updated(changed) {
     if (changed.has("settings") && this.settings) {
-      this._ed = deepClone(this.settings);
+      this._ed = tdNormalizedDefaults(this.settings || {});
       this._dirty = false;
     }
   }
@@ -7428,6 +7708,37 @@ class TdGlobalSettings extends LitElement {
       }
 
       .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+      .tog {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 0; font-size: 13px;
+      }
+      .tog input[type=checkbox] {
+        width: 18px; height: 18px; accent-color: var(--primary-color);
+      }
+      .tog-grid {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 8px 12px; margin-top: 10px;
+      }
+      .widget-flag-group {
+        border: 1px solid rgba(255,255,255,.05);
+        border-radius: 12px; padding: 14px; margin-top: 14px;
+        background: rgba(255,255,255,.02);
+      }
+      .widget-flag-header {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; margin-bottom: 10px;
+      }
+      .widget-flag-title { font-size: 14px; font-weight: 600; }
+      .widget-flag-meta { font-size: 12px; color: var(--secondary-text-color); }
+      .widget-flag-card {
+        display: flex; align-items: center; gap: 10px;
+        border: 1px solid var(--divider-color); border-radius: 10px;
+        padding: 10px 12px; background: rgba(255,255,255,.02);
+        cursor: pointer; font-size: 13px;
+      }
+      .widget-flag-card:hover { background: rgba(255,255,255,.04); }
+      .widget-flag-card input { flex-shrink: 0; }
 
       .slider-field label {
         display: flex; align-items: center; justify-content: space-between;
@@ -7597,6 +7908,40 @@ class TdGlobalSettings extends LitElement {
         </div>
       </div>
 
+      <div class="sec">
+        <h3>🧩 Widgets & Animationen</h3>
+        <p>Hier steuerst du, welche Widgets im Editor sichtbar sind und ob neue Chart-Widgets standardmäßig mit Animationen angelegt werden.</p>
+
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${d.default_chart_widget_animations !== false}
+                 @change=${(e) => this._set("default_chart_widget_animations", e.target.checked)}>
+          <span>Chart-Animationen standardmäßig aktivieren</span>
+        </label>
+
+        ${TD_WIDGET_SETTINGS_GROUPS.map((group) => {
+          const enabledCount = group.items.filter((it) => d.widget_feature_flags?.[it.type] !== false).length;
+          return html`
+            <div class="widget-flag-group">
+              <div class="widget-flag-header">
+                <div class="widget-flag-title">${group.label}</div>
+                <div class="widget-flag-meta">${enabledCount} / ${group.items.length} aktiv</div>
+              </div>
+              <div class="tog-grid">
+                ${group.items.map((it) => html`
+                  <label class="widget-flag-card">
+                    <input type="checkbox"
+                           .checked=${d.widget_feature_flags?.[it.type] !== false}
+                           @change=${(e) => this._setWidgetFlag(it.type, e.target.checked)}>
+                    <span>${it.icon} ${it.name}</span>
+                  </label>
+                `)}
+              </div>
+            </div>
+          `;
+        })}
+      </div>
+
       <!-- Backup -->
       <div class="sec">
         <h3>💾 Backup & Restore</h3>
@@ -7666,6 +8011,17 @@ class TdGlobalSettings extends LitElement {
 
   _set(key, value) {
     this._ed = { ...this._ed, [key]: value };
+    this._dirty = true;
+  }
+
+  _setWidgetFlag(type, enabled) {
+    this._ed = {
+      ...this._ed,
+      widget_feature_flags: {
+        ...(this._ed?.widget_feature_flags || {}),
+        [type]: enabled,
+      },
+    };
     this._dirty = true;
   }
 
@@ -7825,7 +8181,7 @@ class TickerDisplayPanel extends LitElement {
       this._images = im;
       this._haMediaImages = haIm;
       this._haMediaAudio = haAu;
-      this._globalSettings = gs;
+      this._globalSettings = tdNormalizedDefaults(gs || {});
     } catch (e) {
       console.error("Ticker Display: Load failed", e);
     }
@@ -8115,6 +8471,8 @@ class TickerDisplayPanel extends LitElement {
         @reload-device=${(e) => this.hass.callService("ticker_display", "reload_page", { device: e.detail.deviceId })}
         @identify-device=${(e) => this.hass.callService("ticker_display", "identify_device", { device: e.detail.deviceId })}
         @delete-device=${(e) => this._deleteDevice(e.detail.deviceId)}
+        @copy-link=${(e) => this._copyDeviceLink(e.detail.url || e.detail.deviceId)}
+        @create-virtual-device=${() => this._createVirtualDevice()}
         @refresh=${() => this._loadAll()}>
       </td-device-list>
     `;
@@ -8368,6 +8726,39 @@ TickerDisplayPanel.prototype._deleteDevice = async function (deviceId) {
   } catch (e) {
     console.error("Delete device failed:", e);
     this._toast("❌ Löschen fehlgeschlagen", "error");
+  }
+};
+
+TickerDisplayPanel.prototype._absoluteDisplayUrl = function (pathOrDeviceId) {
+  if (!pathOrDeviceId) return "";
+  const raw = String(pathOrDeviceId);
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return `${window.location.origin}${raw}`;
+  return `${window.location.origin}${API}/${raw}`;
+};
+
+TickerDisplayPanel.prototype._copyDeviceLink = async function (urlOrDeviceId) {
+  try {
+    const url = this._absoluteDisplayUrl(urlOrDeviceId);
+    await copyToClipboard(url);
+    this._toast("🔗 Display-Link kopiert", "success");
+  } catch (e) {
+    console.error("Copy device link failed:", e);
+    this._toast("❌ Link konnte nicht kopiert werden", "error");
+  }
+};
+
+TickerDisplayPanel.prototype._createVirtualDevice = async function () {
+  try {
+    const count = (this._devices || []).filter((d) => d.virtual).length + 1;
+    const created = await this._post("/api/config/device/virtual", { name: `Virtuelles Gerät ${count}` });
+    await this._loadAll();
+    const url = created?.display_url || this._absoluteDisplayUrl(created?.device?.id || created?.id || "");
+    if (url) await copyToClipboard(this._absoluteDisplayUrl(url));
+    this._toast("🌐 Virtuelles Gerät erstellt – Link wurde kopiert", "success");
+  } catch (e) {
+    console.error("Create virtual device failed:", e);
+    this._toast("❌ Virtuelles Gerät konnte nicht erstellt werden", "error");
   }
 };
 

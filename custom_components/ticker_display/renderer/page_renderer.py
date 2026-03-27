@@ -13,6 +13,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
     font_id = device_config.get("font", "roboto")
     font_css = media_manager.get_font_css(font_id)
     config_json = json.dumps(device_config)
+    global_settings_json = json.dumps(store.get_global_settings() or {})
     theme_css = _get_theme_css(theme, store.get_custom_themes())
     entities = _collect_entities(device_config)
     entities_json = json.dumps(entities)
@@ -61,6 +62,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 
 <script>
 window.TICKER_CONFIG = {config_json};
+window.TICKER_GLOBAL_SETTINGS = {global_settings_json};
 window.TICKER_DEVICE_ID = "{device_id}";
 window.TICKER_ENTITIES = {entities_json};
 window.TICKER_WS_URL = ((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ticker-display/ws/{device_id}");

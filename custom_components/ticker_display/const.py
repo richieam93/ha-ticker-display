@@ -20,6 +20,8 @@ WIDGET_TYPES = [
     "status-dot", "icon-value", "trend-arrow", "mini-graph",
     "bar-chart", "sparkline", "donut", "clock", "weather",
     "camera", "color-block", "image", "countdown", "button",
+    "media-player-control", "switch-control", "light-control",
+    "climate-control", "cover-control",
 ]
 
 SCREEN_TYPES = [

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
+from datetime import datetime
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -28,10 +29,13 @@ class TickerDisplayStore:
                 "default_screen_duration": 15,
                 "default_camera_source": "auto",
                 "default_chart_hours": 24,
+                "default_chart_widget_animations": True,
                 "default_widget_opacity": 0.75,
                 "default_widget_blur": 0,
                 "default_widget_radius": 12,
                 "default_background_color": "#121212",
+                "default_ticker_height": 36,
+                "widget_feature_flags": {},
                 "device_groups": {},
             },
         }
@@ -39,7 +43,17 @@ class TickerDisplayStore:
     async def async_load(self):
         data = await self._store.async_load()
         if data:
-            self._data = data
+            merged = deepcopy(self._data)
+            merged.update(data)
+            merged["devices"] = data.get("devices", {})
+            merged["templates"] = data.get("templates", {})
+            merged["alert_templates"] = data.get("alert_templates", {})
+            merged["themes"] = data.get("themes", {})
+            merged["global_settings"] = {
+                **deepcopy(self._data.get("global_settings", {})),
+                **(data.get("global_settings", {}) or {}),
+            }
+            self._data = merged
         _LOGGER.debug(
             "Loaded store with %d devices",
             len(self._data.get("devices", {})),
@@ -112,6 +126,51 @@ class TickerDisplayStore:
     async def async_remove_device(self, device_id: str):
         self._data.get("devices", {}).pop(device_id, None)
         await self.async_save()
+
+    async def async_create_virtual_device(
+        self,
+        name: str | None = None,
+        source_device_id: str | None = None,
+    ) -> dict:
+        devices = self._data.setdefault("devices", {})
+        source = deepcopy(devices.get(source_device_id, {})) if source_device_id else {}
+
+        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        device_id = f"virtual_{stamp}"
+        virtual_count = sum(1 for d in devices.values() if d.get("virtual")) + 1
+
+        device = {
+            "id": device_id,
+            "name": name or f"Virtuelles Gerät {virtual_count}",
+            "model": source.get("model") or "Browser / Web",
+            "android_version": source.get("android_version") or "Web",
+            "screen_resolution": source.get("screen_resolution") or "",
+            "screens": deepcopy(source.get("screens", [])),
+            "rotation": deepcopy(source.get("rotation", {"enabled": True, "transition": "fade"})),
+            "ticker": deepcopy(
+                source.get(
+                    "ticker",
+                    {
+                        "enabled": True,
+                        "position": "bottom",
+                        "speed": "normal",
+                        "entities": [],
+                        "messages": [],
+                    },
+                )
+            ),
+            "theme": source.get("theme", DEFAULT_THEME),
+            "font": source.get("font", "roboto"),
+            "created_at": datetime.utcnow().isoformat(),
+            "virtual": True,
+            "browser_mode": True,
+            "source_device_id": source_device_id,
+        }
+
+        devices[device_id] = device
+        await self.async_save()
+        _LOGGER.info("Virtual device created: %s", device_id)
+        return deepcopy(device)
 
     # ── TEMPLATES ──
     def get_templates(self) -> dict:
