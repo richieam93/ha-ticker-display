@@ -47,6 +47,7 @@ const TD_CHART_WIDGETS = [
 ];
 
 const TD_CHART_TYPES = new Set(TD_CHART_WIDGETS.map((x) => x[0]));
+const TD_VALUE_STATUS_TYPES = new Set(["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"]);
 
 const TD_CAMERA_SOURCES = [
   ["auto",                 "Auto (Snapshot → entity_picture → camera_proxy → stream)"],
@@ -1398,6 +1399,7 @@ class TdDeviceList extends LitElement {
       <div class="hdr">
         <h2>📱 Meine Geräte</h2>
         <div class="hdr-actions">
+          <button class="ab p" @click=${() => this._emit("create-virtual-device", {})}>➕ Virtuelles Gerät</button>
           <button class="ab" @click=${() => this._emit("refresh", {})}>🔄 Aktualisieren</button>
         </div>
       </div>
@@ -1481,7 +1483,7 @@ class TdDeviceList extends LitElement {
         <div class="ch">
           <div class="ci">${on ? "📱" : "📴"}</div>
           <div class="cn">
-            ${d.name || d.id}
+            ${d.name || d.id}${d.is_virtual || d.virtual_device ? html` <span class="screen-chip">Virtuell</span>` : ""}
             <span class="did">${d.id}</span>
           </div>
           <span class="sb ${on ? "on" : "off"}">
@@ -1514,6 +1516,10 @@ class TdDeviceList extends LitElement {
           <button class="ab" @click=${() => this._emit("preview-device", { deviceId: d.id })}
                   title="Vorschau öffnen">
             👁️
+          </button>
+          <button class="ab" @click=${() => this._emit("copy-device-link", { deviceId: d.id, url: d.display_url || `${API}/${d.id}` })}
+                  title="Bildschirm-Link kopieren">
+            🔗
           </button>
           <button class="ab" @click=${() => this._emit("reload-device", { deviceId: d.id })}
                   title="Seite neu laden">
@@ -4260,7 +4266,7 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
   const parts = [];
 
   // Werte & Status
-  if (["simple-value", "icon-value", "trend-arrow", "status-dot", "progress-bar"].includes(w.type)) {
+  if (TD_VALUE_STATUS_TYPES.has(w.type)) {
     parts.push(html`
       <div class="pg4">Werte & Status</div>
       <div class="pf2-row">
@@ -4319,6 +4325,7 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
           ["show_unit", "Einheit", true],
           ["show_subvalue", "Unterzeile", true],
           ["animate_state", "Status animieren", true],
+          ["show_mini_chart", "Mini-Verlauf", true],
         ].map(([key, label, defaultVal]) => html`
           <label class="tog">
             <input type="checkbox"
@@ -4327,6 +4334,30 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
             <span>${label}</span>
           </label>
         `)}
+      </div>
+      <div class="pg4">Mini-Verlauf</div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Zeitraum (h)</label>
+          <input type="number" min="1" max="168"
+                 .value=${w.config?.hours || 24}
+                 @change=${(e) => this._setWidgetConfig("hours", +e.target.value)}>
+        </div>
+        <div class="pf2">
+          <label>Max. Punkte</label>
+          <input type="number" min="8" max="120"
+                 .value=${w.config?.chart_max_points || 48}
+                 @change=${(e) => this._setWidgetConfig("chart_max_points", +e.target.value)}>
+        </div>
+      </div>
+      <div class="pf2">
+        <label>Farbpalette</label>
+        <select .value=${w.config?.chart_palette || "default"}
+                @change=${(e) => this._setWidgetConfig("chart_palette", e.target.value)}>
+          ${["default","ocean","sunset","neon","mono"].map((p) => html`
+            <option value=${p}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>
+          `)}
+        </select>
       </div>
     `);
   }
@@ -8185,9 +8216,11 @@ class TickerDisplayPanel extends LitElement {
       <td-device-list .hass=${this.hass} .devices=${this._devices}
         @edit-device=${(e) => this._openDevice(e.detail.deviceId)}
         @preview-device=${(e) => window.open(`${API}/preview/${e.detail.deviceId}`, "_blank")}
+        @copy-device-link=${(e) => this._copyDeviceLink(e.detail)}
         @reload-device=${(e) => this.hass.callService("ticker_display", "reload_page", { device: e.detail.deviceId })}
         @identify-device=${(e) => this.hass.callService("ticker_display", "identify_device", { device: e.detail.deviceId })}
         @delete-device=${(e) => this._deleteDevice(e.detail.deviceId)}
+        @create-virtual-device=${() => this._createVirtualDevice()}
         @refresh=${() => this._loadAll()}>
       </td-device-list>
     `;

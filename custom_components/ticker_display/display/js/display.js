@@ -88,6 +88,8 @@ const CHART_WIDGET_TYPES = new Set([
   "radial-gauge-advanced", "bullet-chart"
 ]);
 
+const VALUE_STATUS_WIDGET_TYPES = new Set(["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"]);
+
 const CHART_TYPE_ICONS = {
   "mini-graph": "📉", "sparkline": "〰️", "line-chart": "📈",
   "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈",
@@ -774,11 +776,13 @@ class ScreenManager {
   /* ────── Widget Renderers ────── */
   _renderDefaultWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `<div class="w-icon"><span style="font-size:24px">${icon}</span></div><div class="w-value-wrap"><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>${name ? `<div class="w-name">${name}</div>` : ""}`;
+    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
   }
 
   _renderIconValueWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `<div class="w-icon"><span style="font-size:28px">${icon}</span></div><div class="w-value-wrap"><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>${name ? `<div class="w-name">${name}</div>` : ""}`;
+    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
   }
 
@@ -808,6 +812,7 @@ class ScreenManager {
     const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
     const color = this._getZoneColor(nv, config.config?.zones);
     widget.innerHTML = `<svg viewBox="0 0 200 130" class="gauge-svg"><defs><linearGradient id="gauge-grad-${Math.round(pct)}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="${color}" stop-opacity="0.6"/><stop offset="100%" stop-color="${color}" stop-opacity="1"/></linearGradient></defs><path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-bg"></path><path d="M 20 120 A 80 80 0 0 1 180 120" class="gauge-arc-value gauge-arc-animated" stroke="url(#gauge-grad-${Math.round(pct)})" stroke-dasharray="${pct * 2.51} 251"></path><text x="100" y="95" class="gauge-text-value">${Utils.formatStateWithUnit(nv, unit, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</text><text x="100" y="118" class="gauge-text-label">${name}</text></svg>`;
+    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
   }
 
@@ -818,6 +823,7 @@ class ScreenManager {
     const pct = Utils.clamp(((nv - min) / (max - min)) * 100, 0, 100);
     const color = config.config?.color || "var(--td-accent)";
     widget.innerHTML = `${name ? `<div class="w-name" style="margin-bottom:4px">${name}</div>` : ""}<div><span class="w-value">${Utils.formatValue(nv, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div><div class="progress-container"><div class="progress-fill progress-animated" style="width:${pct}%;background:${color}"></div></div>`;
+    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
   }
 
@@ -825,6 +831,7 @@ class ScreenManager {
     const isOn = Utils.isTruthyState(value);
     const color = isOn ? "var(--td-positive)" : "var(--td-text-secondary)";
     widget.innerHTML = `<div class="status-dot-indicator ${isOn ? "on" : ""} status-dot-animated" style="background:${color};color:${color}"></div>${name ? `<div class="w-name">${name}</div>` : ""}<div class="widget-subvalue">${Utils.text(value)}</div>`;
+    this._renderMiniHistoryWidget(widget, config, this.app.entityStates[config.entity_id] || {});
     this._renderExtraEntityList(widget, config);
   }
 
@@ -838,7 +845,34 @@ class ScreenManager {
     const unit = state?.attributes?.unit_of_measurement || config.unit || "";
     widget.classList.add("widget-trend-arrow");
     widget.innerHTML = `<div class="w-icon trend-arrow-icon"><span style="font-size:24px">${icon}</span></div><div class="trend-main"><div><span class="w-value">${Utils.formatValue(state?.state ?? "—", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div><div class="trend-arrow-chip ${direction} trend-chip-animated" style="color:${trendColor}">${arrow} <span class="trend-delta">${Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '0.0'}${unit}</span></div></div><div class="w-name">${name || state?.attributes?.friendly_name || config.entity_id || 'Trend'}</div>`;
+    this._renderMiniHistoryWidget(widget, config, state || {});
     this._renderExtraEntityList(widget, config);
+  }
+
+  _renderMiniHistoryWidget(widget, config, state) {
+    if (!VALUE_STATUS_WIDGET_TYPES.has(config?.type)) return;
+    if (config?.config?.show_mini_chart === false) { const existing = widget.querySelector('.widget-mini-history'); if (existing) existing.remove(); return; }
+    let wrap = widget.querySelector('.widget-mini-history');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'widget-mini-history';
+      wrap.innerHTML = '<canvas class="widget-mini-history-canvas"></canvas>';
+      widget.appendChild(wrap);
+    }
+    const canvas = wrap.querySelector('.widget-mini-history-canvas');
+    if (!canvas || !window.Chart) return;
+    const chartCfg = {
+      ...config,
+      type: 'sparkline',
+      config: {
+        ...(config.config || {}),
+        chart_use_history: config.config?.chart_use_history !== false,
+        chart_max_points: config.config?.chart_max_points || 48,
+        hours: config.config?.hours || 24,
+        chart_palette: config.config?.chart_palette || 'default',
+      },
+    };
+    this._scheduleChartBuild(widget, canvas, chartCfg, state || {});
   }
 
   _renderCameraWidget(widget, config, name) {
@@ -1189,6 +1223,9 @@ class ScreenManager {
         break;
       }
       default: { const wv = element.querySelector(".w-value"); if (wv) wv.textContent = Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false }); }
+    }
+    if (VALUE_STATUS_WIDGET_TYPES.has(config.type)) {
+      this._renderMiniHistoryWidget(element, config, this.app.entityStates[config.entity_id] || newState || {});
     }
     this._updateExtraEntityList(element, config);
     element.classList.remove("value-changed"); void element.offsetWidth; element.classList.add("value-changed");

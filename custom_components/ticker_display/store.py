@@ -167,3 +167,48 @@ class TickerDisplayStore:
     async def async_restore_backup(self, data: dict):
         self._data = data
         await self.async_save()
+
+    async def async_create_virtual_device(self, name: str | None = None, template_device_id: str | None = None) -> dict:
+        """Create a virtual browser device that can be opened via URL."""
+        from datetime import datetime
+        import re
+
+        base_name = (name or "Virtuelles Gerät").strip() or "Virtuelles Gerät"
+        slug = re.sub(r"[^a-z0-9]+", "-", base_name.lower()).strip("-") or "browser"
+        device_id = f"virtual_{slug}"
+        idx = 2
+        devices = self._data.setdefault("devices", {})
+        while device_id in devices:
+            device_id = f"virtual_{slug}_{idx}"
+            idx += 1
+
+        template = deepcopy(devices.get(template_device_id, {})) if template_device_id and template_device_id in devices else {}
+        template.pop("id", None)
+        template.pop("name", None)
+        template.pop("created_at", None)
+
+        device = {
+            "id": device_id,
+            "name": base_name,
+            "model": "Virtual Browser",
+            "android_version": "Web",
+            "screen_resolution": template.get("screen_resolution", "Browser / flexibel"),
+            "screens": deepcopy(template.get("screens", [])),
+            "rotation": deepcopy(template.get("rotation", {"enabled": True, "transition": "fade"})),
+            "ticker": deepcopy(template.get("ticker", {
+                "enabled": True,
+                "position": "bottom",
+                "speed": "normal",
+                "entities": [],
+                "messages": [],
+            })),
+            "theme": template.get("theme", DEFAULT_THEME),
+            "font": template.get("font", "roboto"),
+            "created_at": datetime.utcnow().isoformat(),
+            "is_virtual": True,
+            "virtual_device": True,
+        }
+        devices[device_id] = device
+        await self.async_save()
+        return deepcopy(device)
+

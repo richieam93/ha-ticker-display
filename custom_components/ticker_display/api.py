@@ -82,6 +82,7 @@ class TickerDisplayAPI:
 
         # Config API
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
+        app.router.add_post(f"{API_BASE}/api/config/device/virtual", self._config_virtual_device_create)
         app.router.add_get(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_get)
         app.router.add_post(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_save)
         app.router.add_get(f"{API_BASE}/api/config/templates", self._config_templates)
@@ -877,8 +878,27 @@ class TickerDisplayAPI:
             item = dict(config)
             item["online"] = self.coordinator.is_device_online(did)
             item["connected"] = self.ws.is_device_connected(did)
+            item["display_url"] = f"{API_BASE}/{did}"
+            item["preview_url"] = f"{API_BASE}/preview/{did}"
             result.append(item)
         return web.json_response(result)
+
+    async def _config_virtual_device_create(self, request):
+        data = await request.json()
+        name = data.get("name")
+        template_device_id = data.get("template_device_id") or data.get("copy_from")
+        device = await self.store.async_create_virtual_device(name, template_device_id)
+        did = device.get("id")
+        return web.json_response({
+            "status": "ok",
+            "device": {
+                **device,
+                "online": False,
+                "connected": False,
+                "display_url": f"{API_BASE}/{did}",
+                "preview_url": f"{API_BASE}/preview/{did}",
+            },
+        })
 
     async def _config_device_get(self, request):
         config = self.store.get_device(request.match_info["device_id"])
