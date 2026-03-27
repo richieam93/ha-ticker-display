@@ -854,175 +854,46 @@ class ScreenManager {
     this._renderExtraEntityList(widget, config);
   }
 
-  _controlDisplayOptions(config = {}) {
-    const cfg = config?.config || {};
-    return {
-      layout: cfg.control_layout || "card",
-      showIcon: cfg.control_show_icon !== false,
-      showName: cfg.control_show_name !== false && cfg.show_name !== false,
-      showValue: cfg.control_show_value !== false,
-      showSub: cfg.control_show_sub !== false,
-      showMeter: cfg.control_show_meter !== false,
-      showStatusChip: cfg.control_show_status_chip !== false,
-      showToggleBadge: cfg.control_show_toggle_badge !== false && config?.toggle_badge !== false,
-      showPopupColors: cfg.control_show_popup_colors !== false,
-      showPopupEffects: cfg.control_show_popup_effects !== false,
-      showPopupPositionPresets: cfg.control_show_popup_position_presets !== false,
-      showPopupTilt: cfg.control_show_popup_tilt !== false,
-      showPopupModes: cfg.control_show_popup_modes !== false,
-      showPopupPresets: cfg.control_show_popup_presets !== false,
-      showPopupFanModes: cfg.control_show_popup_fan_modes !== false,
-    };
-  }
-
-  _controlIconTint(attrs = {}) {
-    const rgb = Utils.safeArray(attrs?.rgb_color || []);
-    if (rgb.length >= 3) {
-      return `background:linear-gradient(135deg, rgba(${rgb[0]},${rgb[1]},${rgb[2]},.42), rgba(126,87,194,.18)); box-shadow:0 12px 24px rgba(0,0,0,.22), 0 0 0 1px rgba(${rgb[0]},${rgb[1]},${rgb[2]},.24) inset;`;
-    }
-    return "";
-  }
-
-  _controlSummary(config, state, name, icon) {
-    const entityId = config?.entity_id || config?.tap_target_entity || "";
-    const domain = String(entityId || "").split(".")[0] || "switch";
-    const attrs = state?.attributes || {};
-    const rawState = String(state?.state || "off");
-    const active = Utils.isTruthyState(rawState) || rawState === "open" || rawState === "opening" || rawState === "playing";
-    const friendly = Utils.text(name || attrs.friendly_name || entityId || domain || "Widget");
-    const summary = {
-      domain,
-      entityId,
-      name: friendly,
-      icon: icon || this._defaultIconForType(config?.type),
-      active,
-      value: Utils.text(state?.state || "—"),
-      sub: Utils.text(attrs.friendly_name || domain),
-      meter: active ? 100 : 0,
-      chip: active ? "Aktiv" : "Aus",
-      chipClass: active ? "on" : "off",
-      cover: "",
-      iconStyle: "",
-    };
-
-    if (domain === "media_player") {
-      const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
-      summary.cover = attrs.entity_picture || "";
-      summary.value = Utils.text(attrs.media_title || state?.state || "—");
-      summary.sub = Utils.text(attrs.media_artist || attrs.source || attrs.friendly_name || "");
-      summary.meter = progress;
-      summary.chip = `🔊 ${Math.round(Number(attrs.volume_level || 0) * 100)}%`;
-      summary.chipClass = summary.active ? "on" : "off";
-      return summary;
-    }
-
-    if (domain === "light") {
-      const brightness = attrs.brightness == null ? (active ? 100 : 0) : Math.round((Number(attrs.brightness || 0) / 255) * 100);
-      summary.value = active ? `${brightness}%` : "Aus";
-      summary.sub = Utils.text(attrs.effect || attrs.color_mode || attrs.supported_color_modes?.[0] || "Licht");
-      summary.meter = Math.max(0, Math.min(100, brightness));
-      summary.chip = active ? "Licht an" : "Aus";
-      summary.chipClass = active ? "on" : "off";
-      summary.iconStyle = this._controlIconTint(attrs);
-      return summary;
-    }
-
-    if (domain === "climate") {
-      const currentTemp = attrs.current_temperature ?? "—";
-      const targetTemp = attrs.temperature ?? attrs.target_temp_high ?? attrs.target_temp_low ?? "—";
-      const mode = Utils.text(state?.state || attrs.hvac_mode || "—");
-      summary.value = `${Utils.text(currentTemp)}°C`;
-      summary.sub = `Soll ${Utils.text(targetTemp)}°C · ${mode}`;
-      summary.meter = Number.isFinite(Number(targetTemp)) ? Math.max(0, Math.min(100, (Number(targetTemp) / 30) * 100)) : 0;
-      summary.chip = mode;
-      summary.chipClass = String(mode).toLowerCase() === "off" ? "off" : "on";
-      return summary;
-    }
-
-    if (domain === "cover") {
-      const pos = attrs.current_position ?? attrs.position;
-      const pct = Number.isFinite(Number(pos)) ? Math.max(0, Math.min(100, Number(pos))) : 0;
-      const stateText = Utils.text(state?.state || (pct > 0 ? "open" : "closed"));
-      summary.value = Number.isFinite(Number(pos)) ? `${pct}%` : stateText;
-      summary.sub = stateText;
-      summary.meter = pct;
-      summary.chip = pct > 10 ? "Offen" : "Zu";
-      summary.chipClass = pct > 10 ? "on" : "off";
-      return summary;
-    }
-
-    if (domain === "fan") {
-      const pct = Number.isFinite(Number(attrs.percentage)) ? Math.max(0, Math.min(100, Number(attrs.percentage))) : (active ? 100 : 0);
-      summary.value = active ? `${pct}%` : "Aus";
-      summary.sub = Utils.text(attrs.preset_mode || rawState || "Lüfter");
-      summary.meter = pct;
-      summary.chip = active ? "Läuft" : "Aus";
-      summary.chipClass = active ? "on" : "off";
-      return summary;
-    }
-
-    if (domain === "valve") {
-      summary.value = active ? "Offen" : "Zu";
-      summary.sub = Utils.text(rawState || "Ventil");
-      summary.meter = active ? 100 : 0;
-      summary.chip = active ? "Open" : "Closed";
-      summary.chipClass = active ? "on" : "off";
-      return summary;
-    }
-
-    summary.value = active ? "Ein" : "Aus";
-    summary.sub = `${Utils.text(attrs.friendly_name || domain)} · ${Utils.text(rawState)}`;
-    summary.meter = active ? 100 : 0;
-    summary.chip = active ? "ON" : "OFF";
-    summary.chipClass = active ? "on" : "off";
-    return summary;
-  }
-
-  _controlIconMarkup(summary) {
-    if (summary.cover) return `<img class="td-control-icon td-control-cover ${summary.active ? "active" : ""}" src="${summary.cover}" alt="Cover">`;
-    return `<div class="td-control-icon ${summary.active ? "active" : ""}" ${summary.iconStyle ? `style="${summary.iconStyle}"` : ""}>${summary.icon || "🎛️"}</div>`;
-  }
-
-  _renderSmartHomeControlWidget(widget, config, state, name, icon) {
-    const opts = this._controlDisplayOptions(config);
-    const summary = this._controlSummary(config, state, name, icon);
-    widget.classList.remove("widget-media-modern");
-    widget.classList.add("widget-control-card");
-    widget.classList.toggle("widget-control-compact", opts.layout === "compact");
-
-    const iconMarkup = opts.showIcon ? this._controlIconMarkup(summary) : "";
-    const nameMarkup = opts.showName && summary.name ? `<div class="w-name">${summary.name}</div>` : "";
-    const valueMarkup = opts.showValue ? `<div class="td-control-value">${summary.value}</div>` : "";
-    const subMarkup = opts.showSub && summary.sub ? `<div class="td-control-sub">${summary.sub}</div>` : "";
-    const chipMarkup = opts.showStatusChip ? `<div class="td-control-chip ${summary.chipClass}">${summary.chip}</div>` : "";
-    const meterMarkup = opts.showMeter ? `<div class="td-control-meter ${opts.layout === "compact" ? "compact" : ""}"><span style="width:${Math.max(0, Math.min(100, summary.meter || 0))}%"></span></div>` : "";
-
-    if (opts.layout === "compact") {
-      widget.innerHTML = `<div class="td-control-shell compact"><div class="td-control-compact-core">${iconMarkup}<div class="td-control-compact-meta">${nameMarkup}${valueMarkup}${chipMarkup || (!opts.showSub ? `<div class="td-control-sub">Popup / Details</div>` : subMarkup)}${opts.showSub && subMarkup && !chipMarkup ? subMarkup : ""}</div></div>${meterMarkup}</div>`;
-    } else {
-      widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top">${iconMarkup}<div class="td-control-main">${nameMarkup}${valueMarkup}${subMarkup}</div>${chipMarkup}</div>${meterMarkup}</div>`;
-    }
-    this._renderExtraEntityList(widget, config);
-  }
-
   _renderMediaPlayerControlWidget(widget, config, state, name, icon) {
-    this._renderSmartHomeControlWidget(widget, config, state, name, icon || "🎵");
+    this._renderMediaPlayerWidget(widget, config, state, name, icon || "🎵");
   }
 
   _renderSwitchControlWidget(widget, config, state, name, icon) {
-    this._renderSmartHomeControlWidget(widget, config, state, name, icon || "🎚️");
+    const attrs = state?.attributes || {};
+    const rawState = String(state?.state || "off");
+    const isOn = Utils.isTruthyState(rawState);
+    const domain = String(config.entity_id || "").split(".")[0] || "switch";
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon ${isOn ? "active" : ""}">${icon || "🎚️"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${isOn ? "Ein" : "Aus"}</div><div class="td-control-sub">${Utils.text(attrs.friendly_name || domain)} · ${Utils.text(rawState)}</div></div><div class="td-control-chip ${isOn ? "on" : "off"}">${isOn ? "ON" : "OFF"}</div></div></div>`;
   }
 
   _renderLightControlWidget(widget, config, state, name, icon) {
-    this._renderSmartHomeControlWidget(widget, config, state, name, icon || "💡");
+    const attrs = state?.attributes || {};
+    const rawState = String(state?.state || "off");
+    const isOn = Utils.isTruthyState(rawState);
+    const brightness = attrs.brightness == null ? (isOn ? 100 : 0) : Math.round((Number(attrs.brightness || 0) / 255) * 100);
+    const colorMode = Utils.text(attrs.color_mode || attrs.supported_color_modes?.[0] || "Licht");
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon ${isOn ? "active" : ""}">${icon || "💡"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${isOn ? `${brightness}%` : "Aus"}</div><div class="td-control-sub">${colorMode}</div></div><div class="td-control-chip ${isOn ? "on" : "off"}">${isOn ? "Licht an" : "Aus"}</div></div><div class="td-control-meter"><span style="width:${Math.max(0, Math.min(100, brightness))}%"></span></div></div>`;
   }
 
   _renderClimateControlWidget(widget, config, state, name, icon) {
-    this._renderSmartHomeControlWidget(widget, config, state, name, icon || "🌡️");
+    const attrs = state?.attributes || {};
+    const currentTemp = attrs.current_temperature ?? "—";
+    const targetTemp = attrs.temperature ?? attrs.target_temp_high ?? "—";
+    const mode = Utils.text(state?.state || attrs.hvac_mode || "—");
+    const meterValue = Number.isFinite(Number(targetTemp)) ? Math.max(0, Math.min(100, (Number(targetTemp) / 30) * 100)) : 0;
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon active">${icon || "🌡️"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${Utils.text(currentTemp)}°C</div><div class="td-control-sub">Soll ${Utils.text(targetTemp)}°C · ${mode}</div></div><div class="td-control-chip on">${mode}</div></div><div class="td-control-meter"><span style="width:${meterValue}%"></span></div></div>`;
   }
 
   _renderCoverControlWidget(widget, config, state, name, icon) {
-    this._renderSmartHomeControlWidget(widget, config, state, name, icon || "🪟");
+    const attrs = state?.attributes || {};
+    const pos = attrs.current_position ?? attrs.position;
+    const pct = Number.isFinite(Number(pos)) ? Math.max(0, Math.min(100, Number(pos))) : 0;
+    const stateText = Utils.text(state?.state || (pct > 0 ? "open" : "closed"));
+    widget.classList.add("widget-control-card");
+    widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top"><div class="td-control-icon active">${icon || "🪟"}</div><div class="td-control-main">${name ? `<div class="w-name">${name}</div>` : ""}<div class="td-control-value">${Number.isFinite(Number(pos)) ? `${pct}%` : stateText}</div><div class="td-control-sub">${stateText}</div></div><div class="td-control-chip ${pct > 10 ? "on" : "off"}">${pct > 10 ? "Offen" : "Zu"}</div></div><div class="td-control-meter"><span style="width:${pct}%"></span></div></div>`;
   }
 
   _renderGaugeWidget(widget, config, value, unit, name) {
@@ -1435,10 +1306,9 @@ class ScreenManager {
     const defaultToggleTypes = new Set(["switch-control", "light-control"]);
     const defaultPopupTypes = new Set(["media-player-control", "climate-control", "cover-control"]);
     if (defaultToggleTypes.has(config.type)) {
-      const compactPopup = (config?.config?.control_layout || "card") === "compact";
       return {
         ...config,
-        tap_action: compactPopup ? "popup" : "toggle",
+        tap_action: "toggle",
         tap_target_entity: config.tap_target_entity || config.entity_id || "",
         toggle_badge: config.toggle_badge ?? true,
       };
@@ -1490,7 +1360,7 @@ class ScreenManager {
   }
 
   _syncWidgetToggleBadge(widget, config) {
-    if ((config?.tap_action || "none") !== "toggle" || config?.toggle_badge === false || config?.config?.control_show_toggle_badge === false) { const ex = widget.querySelector(".widget-toggle-badge"); if (ex) ex.remove(); return; }
+    if ((config?.tap_action || "none") !== "toggle" || config?.toggle_badge === false) { const ex = widget.querySelector(".widget-toggle-badge"); if (ex) ex.remove(); return; }
     const entityId = config.tap_target_entity || config.entity_id;
     if (!entityId) return;
     const st = this.app?.entityStates?.[entityId] || {};
@@ -1565,147 +1435,72 @@ class ScreenManager {
     const btn = document.createElement("button"); btn.className = `popup-control-btn ${active ? "active" : ""}`; btn.textContent = label; btn.onclick = onClick; body.appendChild(btn);
   }
 
-
-  _popupAppendSection(host, title, className = "popup-controls popup-controls-sub") {
-    const heading = document.createElement("div");
-    heading.className = "popup-section-title";
-    heading.textContent = title;
-    host.appendChild(heading);
-    const row = document.createElement("div");
-    row.className = className;
-    host.appendChild(row);
-    return row;
-  }
-
-  _renderPopupColorButton(body, label, tone, onClick) {
-    const btn = document.createElement("button");
-    btn.className = "popup-color-chip";
-    btn.innerHTML = `<span class="popup-color-swatch" style="background:${tone}"></span><span>${label}</span>`;
-    btn.onclick = onClick;
-    body.appendChild(btn);
-  }
-
   _openWidgetPopup(config) {
-    const overlay = this._widgetPopupOverlay();
-    const body = overlay.querySelector(".widget-popup-body");
+    const overlay = this._widgetPopupOverlay(); const body = overlay.querySelector(".widget-popup-body");
     const close = () => this._closeWidgetPopup();
     overlay.querySelector(".widget-popup-close").onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
-
     const entityId = config.tap_target_entity || config.entity_id || "";
     const st = this.app.entityStates[entityId] || {};
-    const attrs = st.attributes || {};
     const domain = String(entityId || "").split(".")[0];
     const kind = config.tap_popup_kind || (config.type === "weather" || domain === "weather" ? "weather" : config.type === "camera" ? "camera" : config.type === "image" ? "image" : domain);
-    const options = this._controlDisplayOptions(config);
     let html = "";
 
     if (kind === "weather") html = this._popupWeatherMarkup(config, st);
     else if (kind === "camera") html = this._popupCameraMarkup(config);
     else if (kind === "image") html = this._popupImageMarkup(config);
     else if (domain === "media_player") {
-      const cover = attrs.entity_picture || "";
-      const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
-      html = `<div class="popup-hero popup-media"><div class="popup-media-art-wrap">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}</div><div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-value">${Utils.text(attrs.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(attrs.media_artist || attrs.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-mini-row"><span>Status</span><strong>${Utils.text(st.state || "—")}</strong></div><div class="popup-controls"></div></div></div>`;
+      const cover = st.attributes?.entity_picture || "";
+      const progress = Number(st.attributes?.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(st.attributes?.media_position || 0) / Number(st.attributes?.media_duration || 1)) * 100))) : 0;
+      html = `<div class="popup-hero popup-media">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}<div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-value">${Utils.text(st.attributes?.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(st.attributes?.media_artist || st.attributes?.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-controls"></div></div></div>`;
     } else if (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan") {
-      const summary = this._controlSummary(config, st, this._popupFriendlyName(config, st), config.icon || this._defaultIconForType(config.type));
-      html = `<div class="popup-hero popup-control popup-light"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">${domain === "light" ? (summary.active ? "💡" : "🔅") : (summary.active ? "🟢" : "⚪")}</div><div class="popup-big-value">${Utils.text(summary.value || "—")}</div><div class="popup-subtitle">${Utils.text(summary.sub || st.state || "—")}</div>${domain === "light" || domain === "fan" ? `<div class="popup-meter"><span style="width:${summary.meter || 0}%"></span></div><div class="popup-mini-row"><span>${domain === "light" ? "Helligkeit" : "Leistung"}</span><strong>${Math.round(summary.meter || 0)}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
+      const isOn = Utils.isTruthyState(st.state); const bri = Number(st.attributes?.brightness ?? 0); const briPct = bri ? Math.round((bri / 255) * 100) : 0;
+      html = `<div class="popup-hero popup-control popup-light"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOn ? "🟢" : "🔴"}</div><div class="popup-big-value">${isOn ? "Ein" : "Aus"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div>${domain === "light" ? `<div class="popup-meter"><span style="width:${briPct}%"></span></div><div class="popup-mini-row"><span>Helligkeit</span><strong>${briPct}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
     } else if (domain === "cover") {
-      const pos = attrs.current_position ?? attrs.position;
-      const pct = pos == null ? 0 : Math.max(0, Math.min(100, Math.round(Number(pos))));
-      const tilt = attrs.current_tilt_position;
-      html = `<div class="popup-hero popup-control popup-cover"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">🪟</div><div class="popup-big-value">${pos == null ? Utils.text(st.state || "—") : `${pct}<span>%</span>`}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-meter"><span style="width:${pct}%"></span></div><div class="popup-mini-row"><span>Position</span><strong>${pct}%</strong></div>${tilt != null ? `<div class="popup-mini-row"><span>Lamellen</span><strong>${Math.max(0, Math.min(100, Math.round(Number(tilt))))}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
+      const pos = st.attributes?.current_position; const pct = pos == null ? 0 : Math.max(0, Math.min(100, Math.round(Number(pos))));
+      html = `<div class="popup-hero popup-control popup-cover"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🪟</div><div class="popup-big-value">${pos == null ? Utils.text(st.state || "—") : `${pct}<span>%</span>`}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-meter"><span style="width:${pct}%"></span></div><div class="popup-controls"></div></div>`;
     } else if (domain === "valve") {
       const isOpen = Utils.isTruthyState(st.state) || String(st.state || '').toLowerCase() === 'open';
-      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">${isOpen ? "💧" : "🚫"}</div><div class="popup-big-value">${isOpen ? "Offen" : "Zu"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
+      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">${isOpen ? "💧" : "🚫"}</div><div class="popup-big-value">${isOpen ? "Offen" : "Zu"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
     } else if (domain === "climate") {
-      const hvacModes = Utils.safeArray(attrs.hvac_modes);
-      html = `<div class="popup-hero popup-control popup-climate"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(attrs.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(attrs.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-mini-row"><span>Modus</span><strong>${Utils.text(st.state || "—")}</strong></div>${options.showPopupModes && hvacModes.length ? `<div class="popup-mode-row">${hvacModes.map(m => `<span class="popup-mode-chip ${String(st.state) === String(m) ? 'active' : ''}">${Utils.text(m)}</span>`).join("")}</div>` : ``}<div class="popup-controls"></div></div>`;
+      const hvacModes = Utils.safeArray(st.attributes?.hvac_modes);
+      html = `<div class="popup-hero popup-control popup-climate"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(st.attributes?.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(st.attributes?.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-mini-row"><span>Modus</span><strong>${Utils.text(st.state || "—")}</strong></div>${hvacModes.length ? `<div class="popup-mode-row">${hvacModes.map(m => `<span class="popup-mode-chip ${String(st.state) === String(m) ? 'active' : ''}">${Utils.text(m)}</span>`).join("")}</div>` : ``}<div class="popup-controls"></div></div>`;
     } else {
-      html = `<div class="popup-hero"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId || this._widgetName(config, "Widget"))}</div><div class="popup-big-value">${Utils.formatStateWithUnit(st.state ?? "—", attrs.unit_of_measurement || "", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</div><div class="popup-subtitle">${Utils.text(st.state ?? "—")}</div></div>`;
+      html = `<div class="popup-hero"><div class="popup-eyebrow">${Utils.text(st.attributes?.friendly_name || entityId || this._widgetName(config, "Widget"))}</div><div class="popup-big-value">${Utils.formatStateWithUnit(st.state ?? "—", st.attributes?.unit_of_measurement || "", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</div><div class="popup-subtitle">${Utils.text(st.state ?? "—")}</div></div>`;
     }
 
     body.innerHTML = html;
-    const hero = body.firstElementChild || body;
     const controls = body.querySelector(".popup-controls");
 
     if (controls && domain === "media_player") {
-      this._renderPopupControlButton(controls, "⏮", false, async () => { await this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⏯", false, async () => { await this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⏭", false, async () => { await this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "−", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) }); });
-      this._renderPopupControlButton(controls, "+", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) }); });
+      this._renderPopupControlButton(controls, "⏮", false, () => this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }));
+      this._renderPopupControlButton(controls, "⏯", false, () => this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }));
+      this._renderPopupControlButton(controls, "⏭", false, () => this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }));
+      this._renderPopupControlButton(controls, "−", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(st.attributes?.volume_level ?? 0) - 0.1) }); });
+      this._renderPopupControlButton(controls, "+", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(st.attributes?.volume_level ?? 0) + 0.1) }); });
     } else if (controls && (domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
       this._renderPopupControlButton(controls, "Ein/Aus", false, async () => { await this._invokeToggleAction(entityId, 'toggle'); close(); });
-      if (domain === "fan") {
-        const fanRow = this._popupAppendSection(hero, "Lüfterstufen");
-        [25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(fanRow, `${pct}%`, Number(attrs.percentage || 0) === pct, async () => { await this.app.callEntityService('fan', 'set_percentage', { entity_id: entityId, percentage: pct }); close(); }));
-      }
     } else if (controls && domain === "light") {
-      const currentBri = Math.round((Number(attrs.brightness ?? (Utils.isTruthyState(st.state) ? 255 : 0)) / 255) * 100);
       this._renderPopupControlButton(controls, "Ein", Utils.isTruthyState(st.state), async () => { await this._invokeToggleAction(entityId, 'on'); close(); });
       this._renderPopupControlButton(controls, "Aus", !Utils.isTruthyState(st.state), async () => { await this._invokeToggleAction(entityId, 'off'); close(); });
-      this._renderPopupControlButton(controls, "− Helligkeit", false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: Math.max(1, currentBri - 15) }); close(); });
-      this._renderPopupControlButton(controls, "+ Helligkeit", false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: Math.min(100, currentBri + 15) }); close(); });
-      if (options.showPopupPositionPresets) {
-        const briRow = this._popupAppendSection(hero, "Helligkeits-Presets");
-        [10, 25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(briRow, `${pct}%`, currentBri === pct, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: pct }); close(); }));
-      }
-      if (options.showPopupColors) {
-        const colorRow = this._popupAppendSection(hero, "Farben", "popup-color-row");
-        [
-          ["Warm", "linear-gradient(135deg,#ffb74d,#ff7043)", () => this.app.callEntityAction(entityId, 'set_color_temp', { color_temp_kelvin: 2200 })],
-          ["Neutral", "linear-gradient(135deg,#fff8e1,#cfd8dc)", () => this.app.callEntityAction(entityId, 'set_color_temp', { color_temp_kelvin: 4000 })],
-          ["Kalt", "linear-gradient(135deg,#e3f2fd,#90caf9)", () => this.app.callEntityAction(entityId, 'set_color_temp', { color_temp_kelvin: 6500 })],
-          ["Rot", "#ef5350", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [239, 83, 80] })],
-          ["Grün", "#66bb6a", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [102, 187, 106] })],
-          ["Blau", "#42a5f5", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [66, 165, 245] })],
-          ["Lila", "#ab47bc", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [171, 71, 188] })],
-        ].forEach(([label, tone, action]) => this._renderPopupColorButton(colorRow, label, tone, async () => { await action(); close(); }));
-      }
-      if (options.showPopupEffects && Utils.safeArray(attrs.effect_list).length) {
-        const fxRow = this._popupAppendSection(hero, "Effekte");
-        Utils.safeArray(attrs.effect_list).slice(0, 10).forEach((effect) => this._renderPopupControlButton(fxRow, String(effect), String(attrs.effect) === String(effect), async () => { await this.app.callEntityAction(entityId, 'set_effect', { effect }); close(); }));
-      }
+      this._renderPopupControlButton(controls, "− Helligkeit", false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: Math.max(1, Math.round((Number(st.attributes?.brightness ?? 128) / 255) * 100) - 15) }); close(); });
+      this._renderPopupControlButton(controls, "+ Helligkeit", false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: Math.min(100, Math.round((Number(st.attributes?.brightness ?? 128) / 255) * 100) + 15) }); close(); });
+      [25, 50, 100].forEach(pct => this._renderPopupControlButton(controls, `${pct}%`, false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: pct }); close(); }));
     } else if (controls && domain === "cover") {
-      const currentPos = Math.max(0, Math.min(100, Math.round(Number(attrs.current_position ?? attrs.position ?? 0))));
       this._renderPopupControlButton(controls, "Öffnen", false, async () => { await this.app.callEntityService("cover", "open_cover", { entity_id: entityId }); close(); });
       this._renderPopupControlButton(controls, "Stopp", false, async () => { await this.app.callEntityService("cover", "stop_cover", { entity_id: entityId }); });
       this._renderPopupControlButton(controls, "Schließen", false, async () => { await this.app.callEntityService("cover", "close_cover", { entity_id: entityId }); close(); });
-      if (options.showPopupPositionPresets) {
-        const posRow = this._popupAppendSection(hero, "Positionen");
-        [0, 25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(posRow, `${pct}%`, currentPos === pct, async () => { await this.app.callEntityService('cover', 'set_cover_position', { entity_id: entityId, position: pct }); close(); }));
-      }
-      if (options.showPopupTilt && (attrs.current_tilt_position != null || attrs.tilt_position != null)) {
-        const currentTilt = Math.max(0, Math.min(100, Math.round(Number(attrs.current_tilt_position ?? attrs.tilt_position ?? 0))));
-        const tiltRow = this._popupAppendSection(hero, "Lamellen / Tilt");
-        this._renderPopupControlButton(tiltRow, "Auf", false, async () => { await this.app.callEntityService('cover', 'open_cover_tilt', { entity_id: entityId }); close(); });
-        this._renderPopupControlButton(tiltRow, "Stopp", false, async () => { await this.app.callEntityService('cover', 'stop_cover_tilt', { entity_id: entityId }); });
-        this._renderPopupControlButton(tiltRow, "Zu", false, async () => { await this.app.callEntityService('cover', 'close_cover_tilt', { entity_id: entityId }); close(); });
-        [0, 50, 100].forEach((pct) => this._renderPopupControlButton(tiltRow, `${pct}%`, currentTilt === pct, async () => { await this.app.callEntityService('cover', 'set_cover_tilt_position', { entity_id: entityId, tilt_position: pct }); close(); }));
-      }
+      [0, 25, 50, 75, 100].forEach(pct => this._renderPopupControlButton(controls, `${pct}%`, false, async () => { await this.app.callEntityService('cover', 'set_cover_position', { entity_id: entityId, position: pct }); close(); }));
     } else if (controls && domain === "climate") {
-      this._renderPopupControlButton(controls, "−1°", false, async () => { await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: Number(attrs.temperature ?? 20) - 1 }); close(); });
-      this._renderPopupControlButton(controls, "+1°", false, async () => { await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: Number(attrs.temperature ?? 20) + 1 }); close(); });
-      if (options.showPopupModes) {
-        const modeRow = this._popupAppendSection(hero, "HVAC-Modi");
-        Utils.safeArray(attrs.hvac_modes).slice(0, 8).forEach((mode) => this._renderPopupControlButton(modeRow, String(mode), String(st.state) === String(mode), async () => { await this.app.callEntityAction(entityId, 'set_hvac_mode', { hvac_mode: mode }); close(); }));
-      }
-      if (options.showPopupPresets && Utils.safeArray(attrs.preset_modes).length) {
-        const presetRow = this._popupAppendSection(hero, "Preset-Modi");
-        Utils.safeArray(attrs.preset_modes).slice(0, 8).forEach((mode) => this._renderPopupControlButton(presetRow, String(mode), String(attrs.preset_mode) === String(mode), async () => { await this.app.callEntityAction(entityId, 'set_preset_mode', { preset_mode: mode }); close(); }));
-      }
-      if (options.showPopupFanModes && Utils.safeArray(attrs.fan_modes).length) {
-        const fanModeRow = this._popupAppendSection(hero, "Lüfter-Modi");
-        Utils.safeArray(attrs.fan_modes).slice(0, 8).forEach((mode) => this._renderPopupControlButton(fanModeRow, String(mode), String(attrs.fan_mode) === String(mode), async () => { await this.app.callEntityAction(entityId, 'set_fan_mode', { fan_mode: mode }); close(); }));
-      }
+      this._renderPopupControlButton(controls, "−1°", false, async () => { await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: Number(st.attributes?.temperature ?? 20) - 1 }); close(); });
+      this._renderPopupControlButton(controls, "+1°", false, async () => { await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: Number(st.attributes?.temperature ?? 20) + 1 }); close(); });
+      Utils.safeArray(st.attributes?.hvac_modes).slice(0, 6).forEach(mode => this._renderPopupControlButton(controls, String(mode), String(st.state) === String(mode), async () => { await this.app.callEntityService('climate', 'set_hvac_mode', { entity_id: entityId, hvac_mode: mode }); close(); }));
     }
 
     overlay.hidden = false;
     const secs = Number(config.tap_autoclose || 0);
     if (secs > 0) { clearTimeout(this._popupTimer); this._popupTimer = setTimeout(close, secs * 1000); }
   }
-
 
   async _toggleWidgetEntity(widget, config) {
     const entityId = config.tap_target_entity || config.entity_id;

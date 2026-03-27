@@ -146,21 +146,6 @@ class TickerDisplayAPI:
             "last_updated": getattr(state, "last_updated", None).isoformat() if getattr(state, "last_updated", None) else None,
         }
 
-    def _history_value(self, raw_state):
-        if raw_state in ("unavailable", "unknown", "", None, "None"):
-            return None
-        try:
-            val = float(raw_state)
-        except (ValueError, TypeError):
-            text = str(raw_state).strip().lower()
-            if text in {"on", "open", "opening", "home", "detected", "playing", "true", "heat", "cool", "armed_away", "armed_home", "armed_night"}:
-                return 1.0
-            if text in {"off", "closed", "closing", "not_home", "idle", "false", "disarmed", "unlocked"}:
-                return 0.0
-            return None
-        if not __import__("math").isfinite(val):
-            return None
-        return val
 
     def _absolute_url(self, request, path: str) -> str:
         if not path:
@@ -381,18 +366,31 @@ class TickerDisplayAPI:
                 entity_id, start_time, end_time
             )
 
-            # Numerische und digitale Datenpunkte extrahieren
+            # Numerische Datenpunkte extrahieren
             data_points = []
             for state in states:
-                val = self._history_value(getattr(state, "state", None))
-                if val is None:
+                # Ungültige States filtern
+                if state.state in (
+                    "unavailable",
+                    "unknown",
+                    "",
+                    None,
+                    "None",
+                ):
                     continue
-                last_changed = getattr(state, "last_changed", None) or getattr(state, "last_updated", None)
-                if not last_changed:
+
+                try:
+                    val = float(state.state)
+                except (ValueError, TypeError):
                     continue
+
+                # NaN / Infinity filtern
+                if not __import__("math").isfinite(val):
+                    continue
+
                 data_points.append(
                     {
-                        "x": last_changed.isoformat(),
+                        "x": state.last_changed.isoformat(),
                         "y": round(val, 4),
                     }
                 )
@@ -704,8 +702,15 @@ class TickerDisplayAPI:
         actions = []
         features = []
 
-        if domain in {"switch", "fan", "input_boolean", "valve"}:
+        if domain in {"switch", "input_boolean", "valve"}:
             actions = ["toggle", "on", "off"]
+        elif domain == "fan":
+            actions = ["toggle", "on", "off"]
+            if attrs.get("percentage_step") is not None or attrs.get("percentage") is not None:
+                actions.append("set_percentage")
+            if attrs.get("preset_modes"):
+                actions.append("set_preset_mode")
+            features = ["percentage", "percentage_step", "preset_mode", "preset_modes"]
         elif domain == "light":
             actions = ["toggle", "on", "off", "set_brightness_pct", "set_rgb_color", "set_color_temp"]
             if attrs.get("effect_list"):
@@ -717,6 +722,9 @@ class TickerDisplayAPI:
         elif domain == "cover":
             actions = ["open", "stop", "close", "set_position"]
             features = ["current_position"]
+            if attrs.get("current_tilt_position") is not None or attrs.get("tilt_position") is not None:
+                actions.extend(["open_tilt", "stop_tilt", "close_tilt", "set_tilt_position"])
+                features.append("current_tilt_position")
         elif domain == "media_player":
             actions = ["toggle", "play", "pause", "next", "previous", "stop", "volume_up", "volume_down", "volume_set"]
             features = ["media_title", "media_artist", "entity_picture", "volume_level"]
@@ -862,6 +870,20 @@ class TickerDisplayAPI:
                 return web.json_response({"error": "set_position only supported for cover"}, status=400)
             service_domain, service = "cover", "set_cover_position"
             payload["position"] = int(extra.get("position", data.get("position", 0)))
+        elif action == "set_tilt_position":
+            if domain != "cover":
+                return web.json_response({"error": "set_tilt_position only supported for cover"}, status=400)
+            service_domain, service = "cover", "set_cover_tilt_position"
+            payload["tilt_position"] = int(extra.get("tilt_position", data.get("tilt_position", 0)))
+        elif action in {"open_tilt", "close_tilt", "stop_tilt"}:
+            if domain != "cover":
+                return web.json_response({"error": f"{action} only supported for cover"}, status=400)
+            service_domain = "cover"
+            service = {
+                "open_tilt": "open_cover_tilt",
+                "close_tilt": "close_cover_tilt",
+                "stop_tilt": "stop_cover_tilt",
+            }[action]
         elif action in {"set_brightness", "set_brightness_pct"}:
             if domain != "light":
                 return web.json_response({"error": "set_brightness_pct only supported for light"}, status=400)
@@ -888,15 +910,24 @@ class TickerDisplayAPI:
             service_domain, service = "climate", "set_hvac_mode"
             payload["hvac_mode"] = str(extra.get("hvac_mode", data.get("hvac_mode", attrs.get("hvac_mode", "heat"))))
         elif action == "set_preset_mode":
-            if domain != "climate":
-                return web.json_response({"error": "set_preset_mode only supported for climate"}, status=400)
-            service_domain, service = "climate", "set_preset_mode"
-            payload["preset_mode"] = str(extra.get("preset_mode", data.get("preset_mode", attrs.get("preset_mode", "none"))))
+            if domain == "climate":
+                service_domain, service = "climate", "set_preset_mode"
+                payload["preset_mode"] = str(extra.get("preset_mode", data.get("preset_mode", attrs.get("preset_mode", "none"))))
+            elif domain == "fan":
+                service_domain, service = "fan", "set_preset_mode"
+                payload["preset_mode"] = str(extra.get("preset_mode", data.get("preset_mode", attrs.get("preset_mode", "auto"))))
+            else:
+                return web.json_response({"error": "set_preset_mode only supported for climate/fan"}, status=400)
         elif action == "set_fan_mode":
             if domain != "climate":
                 return web.json_response({"error": "set_fan_mode only supported for climate"}, status=400)
             service_domain, service = "climate", "set_fan_mode"
             payload["fan_mode"] = str(extra.get("fan_mode", data.get("fan_mode", attrs.get("fan_mode", "auto"))))
+        elif action == "set_percentage":
+            if domain != "fan":
+                return web.json_response({"error": "set_percentage only supported for fan"}, status=400)
+            service_domain, service = "fan", "set_percentage"
+            payload["percentage"] = int(extra.get("percentage", data.get("percentage", attrs.get("percentage", 0))))
         elif action in {"arm_home", "arm_away", "disarm", "arm_night", "arm_vacation"}:
             if domain != "alarm_control_panel":
                 return web.json_response({"error": f"{action} only supported for alarm_control_panel"}, status=400)

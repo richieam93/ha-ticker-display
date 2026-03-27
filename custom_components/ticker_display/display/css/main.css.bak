@@ -917,37 +917,6 @@ body {
 .widget-cover-control .td-control-meter span {
   display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, var(--td-accent), rgba(255,255,255,.95)); box-shadow:0 0 14px rgba(64,196,255,.35);
 }
-.widget-switch-control .td-control-cover,
-.widget-light-control .td-control-cover,
-.widget-climate-control .td-control-cover,
-.widget-cover-control .td-control-cover,
-.widget-media-player-control .td-control-cover {
-  object-fit:cover; padding:0; overflow:hidden;
-}
-.widget-control-compact .td-control-shell {
-  justify-content:center; gap:10px;
-}
-.widget-control-compact .td-control-compact-core {
-  display:flex; align-items:center; justify-content:center; gap:12px; min-width:0; width:100%;
-}
-.widget-control-compact .td-control-compact-meta {
-  min-width:0; flex:1; display:flex; flex-direction:column; gap:4px;
-}
-.widget-control-compact .td-control-icon {
-  width:54px; height:54px; border-radius:18px;
-}
-.widget-control-compact .td-control-value {
-  font-size:20px;
-}
-.widget-control-compact .td-control-sub {
-  font-size:11px;
-}
-.widget-control-compact .td-control-meter.compact {
-  height:6px;
-}
-.widget-control-compact .td-control-chip {
-  align-self:flex-start;
-}
 
 .widget-popup-overlay { position:fixed; inset:0; z-index:2600; background:rgba(3,6,12,.72); display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(10px); }
 .widget-popup-panel { position:relative; width:min(1100px,94vw); min-height:min(70vh,760px); border-radius:28px; background:linear-gradient(180deg, rgba(16,20,28,.98), rgba(10,14,20,.96)); border:1px solid rgba(255,255,255,.1); box-shadow:0 30px 80px rgba(0,0,0,.45); overflow:hidden; }
@@ -972,14 +941,8 @@ body {
 .popup-media-cover.placeholder { display:flex; align-items:center; justify-content:center; font-size:88px; }
 .popup-media-info { display:flex; flex-direction:column; gap:14px; }
 .popup-controls { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
-.popup-controls-sub { width:min(760px,96%); }
 .popup-control-btn { border:none; border-radius:16px; padding:14px 18px; background:rgba(255,255,255,.12); color:#fff; font-size:18px; font-weight:700; cursor:pointer; }
 .popup-control-btn.active, .popup-control-btn:hover { background:rgba(64,196,255,.22); }
-.popup-section-title { margin-top:18px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.58); }
-.popup-color-row { display:flex; flex-wrap:wrap; gap:10px; width:min(760px,96%); margin-top:8px; }
-.popup-color-chip { border:none; border-radius:14px; padding:10px 14px; background:rgba(255,255,255,.1); color:#fff; display:inline-flex; align-items:center; gap:10px; font-size:14px; font-weight:600; cursor:pointer; }
-.popup-color-chip:hover { background:rgba(64,196,255,.18); }
-.popup-color-swatch { width:18px; height:18px; border-radius:999px; box-shadow:0 0 0 2px rgba(255,255,255,.18) inset, 0 4px 12px rgba(0,0,0,.28); }
 .popup-meter { width:min(420px,85%); height:12px; border-radius:999px; background:rgba(255,255,255,.10); overflow:hidden; margin:12px 0 8px; }
 .popup-meter > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, rgba(64,196,255,.85), rgba(126,87,194,.95)); }
 .popup-mini-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:min(420px,85%); color:rgba(255,255,255,.82); font-size:16px; margin-bottom:6px; }

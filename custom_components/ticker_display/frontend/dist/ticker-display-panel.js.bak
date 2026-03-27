@@ -350,21 +350,6 @@ function tdCreateWidget(type, col, row, settings = {}) {
       extra_value_decimals: 1,
       trim_trailing_zeros: false,
       show_name: true,
-      control_layout: "card",
-      control_show_icon: true,
-      control_show_name: true,
-      control_show_value: true,
-      control_show_sub: true,
-      control_show_meter: true,
-      control_show_status_chip: true,
-      control_show_toggle_badge: true,
-      control_show_popup_colors: true,
-      control_show_popup_effects: true,
-      control_show_popup_position_presets: true,
-      control_show_popup_tilt: true,
-      control_show_popup_modes: true,
-      control_show_popup_presets: true,
-      control_show_popup_fan_modes: true,
     },
   };
 }
@@ -389,24 +374,6 @@ function tdNormalizeWidgetRuntime(widget = {}) {
   }
   if (!w.tap_action) w.tap_action = tdDefaultTapActionForWidget(w.type);
   if (["switch-control", "light-control"].includes(w.type) && w.toggle_badge == null) w.toggle_badge = true;
-  if (["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(w.type)) {
-    if (w.config.control_layout == null) w.config.control_layout = "card";
-    if (w.config.control_show_icon == null) w.config.control_show_icon = true;
-    if (w.config.control_show_name == null) w.config.control_show_name = w.config.show_name !== false;
-    if (w.config.control_show_value == null) w.config.control_show_value = true;
-    if (w.config.control_show_sub == null) w.config.control_show_sub = true;
-    if (w.config.control_show_meter == null) w.config.control_show_meter = w.type !== "switch-control";
-    if (w.config.control_show_status_chip == null) w.config.control_show_status_chip = w.type !== "media-player-control";
-    if (w.config.control_show_toggle_badge == null) w.config.control_show_toggle_badge = true;
-    if (w.config.control_show_popup_colors == null) w.config.control_show_popup_colors = true;
-    if (w.config.control_show_popup_effects == null) w.config.control_show_popup_effects = true;
-    if (w.config.control_show_popup_position_presets == null) w.config.control_show_popup_position_presets = true;
-    if (w.config.control_show_popup_tilt == null) w.config.control_show_popup_tilt = true;
-    if (w.config.control_show_popup_modes == null) w.config.control_show_popup_modes = true;
-    if (w.config.control_show_popup_presets == null) w.config.control_show_popup_presets = true;
-    if (w.config.control_show_popup_fan_modes == null) w.config.control_show_popup_fan_modes = true;
-    if (w.config.control_layout === "compact" && (!w.tap_action || ["none", "toggle"].includes(w.tap_action))) w.tap_action = "popup";
-  }
   if (["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"].includes(w.type)) {
     if (w.config.metric_graph == null) w.config.metric_graph = true;
     if (w.config.metric_graph_hours == null && w.config.hours != null) w.config.metric_graph_hours = w.config.hours;
@@ -2388,8 +2355,6 @@ class TdScreenEditor extends LitElement {
     this._toolsOpen = false;
     this._dragState = null;
     this._resizeState = null;
-    this._metricPreviewCache = {};
-    this._metricPreviewInflight = {};
     this._keyHandler = null;
   }
 
@@ -2811,42 +2776,6 @@ class TdScreenEditor extends LitElement {
         top: 22px; height: 2px;
         background: linear-gradient(90deg, rgba(255,255,255,.0), rgba(255,193,7,.85) 30%, rgba(76,175,80,.85) 75%, rgba(255,255,255,.0));
         transform: rotate(7deg);
-      }
-      .wb .pv-chart-live::before,
-      .wb .pv-chart-live::after {
-        display: none;
-      }
-      .wb .pv-chart-svg {
-        width: 100%; height: 100%; display: block;
-      }
-      .wb .pv-chart-grid {
-        fill: rgba(255,255,255,.18);
-      }
-      .wb .pv-chart-fill {
-        fill: rgba(64,196,255,.18);
-      }
-      .wb .pv-chart-line {
-        fill: none; stroke: rgba(64,196,255,.95); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round;
-      }
-      .wb .pv-chart-dot {
-        fill: rgba(126,87,194,.98); stroke: rgba(255,255,255,.9); stroke-width: 1.2;
-      }
-      .wb .pv-control-compact {
-        align-items: center; justify-content: center;
-      }
-      .wb .pv-compact-shell {
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; text-align: center;
-      }
-      .wb .pv-compact-icon {
-        width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-size: 22px;
-        background: linear-gradient(135deg, rgba(64,196,255,.22), rgba(126,87,194,.18)); box-shadow: 0 8px 18px rgba(0,0,0,.2); overflow: hidden;
-      }
-      .wb .pv-compact-icon img {
-        width: 100%; height: 100%; object-fit: cover;
-      }
-      .wb .pv-compact-chip {
-        padding: 4px 10px; border-radius: 999px; font-size: 9px; font-weight: 700; letter-spacing: .04em;
-        background: rgba(255,255,255,.12); color: rgba(255,255,255,.82);
       }
       .wb .pv-media-cover {
         width: 50px; height: 50px; border-radius: 12px; flex-shrink: 0;
@@ -3422,80 +3351,6 @@ class TdScreenEditor extends LitElement {
     return Number.isFinite(n) ? n : fallback;
   }
 
-
-  _editorMetricPreviewKey(w) {
-    const entityId = w?.entity_id || "";
-    const hours = Number(w?.config?.metric_graph_hours || w?.config?.hours || this.globalSettings?.default_chart_hours || 24);
-    const points = Math.max(8, Math.min(32, Number(w?.config?.metric_graph_points || 18)));
-    return `${entityId}|${hours}|${points}`;
-  }
-
-  _editorMetricPreviewPoints(raw) {
-    const arr = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw?.[0]) ? raw[0] : (Array.isArray(raw) ? raw : []));
-    return (arr || []).map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
-      if (entry.y != null) {
-        const y = Number(entry.y);
-        return Number.isFinite(y) ? { x: entry.x || entry.last_changed || entry.last_updated || "", y } : null;
-      }
-      const y = Number(String(entry.state ?? "").replace(",", "."));
-      return Number.isFinite(y) ? { x: entry.last_changed || entry.last_updated || "", y } : null;
-    }).filter(Boolean);
-  }
-
-  async _fetchEditorMetricPreview(w) {
-    const entityId = w?.entity_id || "";
-    if (!entityId) return;
-    const key = this._editorMetricPreviewKey(w);
-    const cached = this._metricPreviewCache?.[key];
-    if (this._metricPreviewInflight?.[key]) return;
-    if (cached?.t && Date.now() - cached.t < 60000) return;
-    const hours = Number(w?.config?.metric_graph_hours || w?.config?.hours || this.globalSettings?.default_chart_hours || 24);
-    this._metricPreviewInflight[key] = true;
-    try {
-      const resp = await fetch(`${API}/api/history/${encodeURIComponent(entityId)}?hours=${encodeURIComponent(hours)}`, { credentials: "same-origin" });
-      const raw = resp.ok ? await resp.json() : { data: [] };
-      const pts = this._editorMetricPreviewPoints(raw).slice(-Math.max(8, Math.min(32, Number(w?.config?.metric_graph_points || 18))));
-      this._metricPreviewCache = { ...(this._metricPreviewCache || {}), [key]: { t: Date.now(), data: pts } };
-    } catch (err) {
-      this._metricPreviewCache = { ...(this._metricPreviewCache || {}), [key]: { t: Date.now(), data: [] } };
-      console.warn("metric preview history failed", entityId, err);
-    } finally {
-      delete this._metricPreviewInflight[key];
-      this.requestUpdate();
-    }
-  }
-
-  _editorMetricPreviewSvg(w) {
-    if (w?.config?.metric_graph === false) return "";
-    const key = this._editorMetricPreviewKey(w);
-    const cached = this._metricPreviewCache?.[key];
-    if (!cached && w?.entity_id) this._fetchEditorMetricPreview(w);
-    const values = (cached?.data || []).map((entry) => Number(entry?.y)).filter((value) => Number.isFinite(value));
-    const width = 180;
-    const height = 42;
-    const pad = 4;
-    if (!values.length) {
-      return `<svg class="pv-chart-svg is-placeholder" viewBox="0 0 ${width} ${height}" aria-hidden="true"><rect class="pv-chart-grid" x="${pad}" y="12" width="${width - (pad * 2)}" height="2" rx="2"></rect><rect class="pv-chart-grid" x="${pad}" y="26" width="${Math.round((width - (pad * 2)) * 0.72)}" height="2" rx="2"></rect></svg>`;
-    }
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = (max - min) || 1;
-    const coords = values.map((value, index) => {
-      const x = pad + ((width - (pad * 2)) * (index / Math.max(1, values.length - 1)));
-      const y = (height - pad) - (((value - min) / span) * (height - (pad * 2)));
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    const fill = [`${pad},${height - pad}`, ...coords, `${width - pad},${height - pad}`].join(" ");
-    const [lastX, lastY] = coords[coords.length - 1].split(",");
-    return `<svg class="pv-chart-svg" viewBox="0 0 ${width} ${height}" aria-hidden="true"><polygon class="pv-chart-fill" points="${fill}"></polygon><polyline class="pv-chart-line" points="${coords.join(" ")}"></polyline><circle class="pv-chart-dot" cx="${lastX}" cy="${lastY}" r="2.8"></circle></svg>`;
-  }
-
-  _renderEditorMetricChart(w) {
-    if (w?.config?.metric_graph === false) return html``;
-    return html`<div class="pv-chart-lines pv-chart-live" .innerHTML=${this._editorMetricPreviewSvg(w)}></div>`;
-  }
-
   _renderEditorWidgetPreview(w, st, value, unit, name, icon, extras = []) {
     const attrs = st?.attributes || {};
     const valText = `${value}${unit ? ` ${unit}` : ""}`;
@@ -3524,88 +3379,62 @@ class TdScreenEditor extends LitElement {
       const min = Number(w.config?.min ?? 0);
       const max = Number(w.config?.max ?? 100);
       const pct = Math.max(0, Math.min(100, ((this._editorWidgetNumeric(value, 0) - min) / Math.max(1, max - min)) * 100));
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div>${this._renderEditorMetricChart(w)}<div class="pv-sub">Gauge ${Math.round(pct)}%</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div><div class="pv-chart-lines"></div><div class="pv-sub">Gauge ${Math.round(pct)}%</div></div>`;
     }
 
     if (w.type === "progress-bar") {
       const min = Number(w.config?.min ?? 0);
       const max = Number(w.config?.max ?? 100);
       const pct = Math.max(0, Math.min(100, ((this._editorWidgetNumeric(value, 0) - min) / Math.max(1, max - min)) * 100));
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div>${this._renderEditorMetricChart(w)}<div class="pv-sub">Fortschritt ${Math.round(pct)}%</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div><div class="pv-chart-lines"></div><div class="pv-sub">Fortschritt ${Math.round(pct)}%</div></div>`;
     }
 
     if (w.type === "status-dot") {
       const isOn = ["on","open","home","playing","true","1","heat","cool"].includes(String(value).toLowerCase());
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-dot ${isOn ? "on" : "off"}"></span></div><div class="pv-value">${isOn ? "Aktiv" : "Inaktiv"}</div>${this._renderEditorMetricChart(w)}<div class="pv-sub">${String(value || "—")}</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-dot ${isOn ? "on" : "off"}"></span></div><div class="pv-value">${isOn ? "Aktiv" : "Inaktiv"}</div><div class="pv-chart-lines"></div><div class="pv-sub">${String(value || "—")}</div></div>`;
     }
 
     if (w.type === "trend-arrow") {
       const numeric = this._editorWidgetNumeric(value, 0);
       const direction = numeric > 0 ? "up" : numeric < 0 ? "down" : "flat";
       const arrow = direction === "up" ? "▲" : direction === "down" ? "▼" : "▶";
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-trend ${direction}">${arrow} Trend</div>${this._renderEditorMetricChart(w)}</div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-trend ${direction}">${arrow} Trend</div><div class="pv-chart-lines"></div></div>`;
     }
 
     if (w.type === "simple-value" || w.type === "icon-value") {
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div>${this._renderEditorMetricChart(w)}<div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-chart-lines"></div><div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div></div>`;
     }
 
     if (w.type === "media-player-control") {
-      const compact = (w.config?.control_layout || "card") === "compact";
-      const showIcon = w.config?.control_show_icon !== false;
-      const showName = w.config?.control_show_name !== false;
-      const showValue = w.config?.control_show_value !== false;
-      const showSub = w.config?.control_show_sub !== false;
-      const showMeter = w.config?.control_show_meter !== false;
-      const showChip = w.config?.control_show_status_chip !== false;
       const cover = attrs.entity_picture || "";
       const title = attrs.media_title || value || "—";
       const artist = attrs.media_artist || attrs.source || attrs.friendly_name || "";
-      const vol = Math.round(Number(attrs.volume_level || 0) * 100);
-      if (compact) {
-        return html`<div class="pv pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">🔊 ${vol}%</div>` : html`<div class="pv-sub">Popup / Details</div>`}</div></div>`;
-      }
-      return html`<div class="pv"><div class="pv-split">${showIcon ? html`<div class="pv-media-cover">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}<div style="min-width:0;flex:1">${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showSub ? html`<div class="pv-sub">${artist}</div>` : ""}${showChip ? html`<div class="pv-sub">🔊 ${vol}%</div>` : ""}</div></div>${showMeter ? html`<div class="pv-meter"><span style="width:${vol}%"></span></div>` : ""}</div>`;
+      return html`<div class="pv"><div class="pv-split"><div class="pv-media-cover">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div><div style="min-width:0;flex:1"><div class="pv-title">${fallbackTitle}</div><div class="pv-value">${title}</div><div class="pv-sub">${artist}</div></div></div><div class="pv-meter"><span style="width:${Math.round(Number(attrs.volume_level || 0) * 100)}%"></span></div></div>`;
     }
 
     if (w.type === "switch-control" || w.type === "light-control" || w.type === "climate-control" || w.type === "cover-control") {
-      const compact = (w.config?.control_layout || "card") === "compact";
-      const showIcon = w.config?.control_show_icon !== false;
-      const showName = w.config?.control_show_name !== false;
-      const showValue = w.config?.control_show_value !== false;
-      const showSub = w.config?.control_show_sub !== false;
-      const showMeter = w.config?.control_show_meter !== false;
-      const showChip = w.config?.control_show_status_chip !== false;
       let main = valText;
       let sub = attrs.friendly_name || w.entity_id || "";
       let pct = 0;
-      let chip = String(value || "—");
       if (w.type === "light-control") {
         pct = attrs.brightness == null ? 0 : Math.round((Number(attrs.brightness || 0) / 255) * 100);
         main = (String(value).toLowerCase() === "on") ? `${pct || 100}%` : "Aus";
         sub = attrs.color_mode || "Licht";
-        chip = String(value).toLowerCase() === "on" ? "Licht an" : "Aus";
       } else if (w.type === "climate-control") {
         main = `${attrs.current_temperature ?? "—"}°C`;
         sub = `Soll ${attrs.temperature ?? "—"}°C · ${value || "—"}`;
         pct = Number.isFinite(Number(attrs.temperature)) ? Math.max(0, Math.min(100, (Number(attrs.temperature) / 30) * 100)) : 0;
-        chip = String(value || "Klima");
       } else if (w.type === "cover-control") {
         pct = Number(attrs.current_position ?? 0);
         main = Number.isFinite(pct) ? `${pct}%` : String(value || "—");
         sub = String(value || "Rollladen");
-        chip = pct > 10 ? "Offen" : "Zu";
       } else {
         const on = ["on","open","home","playing","true","1"].includes(String(value).toLowerCase());
         main = on ? "Ein" : "Aus";
         pct = on ? 100 : 0;
         sub = String(value || "Schalter");
-        chip = on ? "ON" : "OFF";
       }
-      if (compact) {
-        return html`<div class="pv pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${icon}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">${chip}</div>` : html`<div class="pv-sub">Popup / Details</div>`}</div></div>`;
-      }
-      return html`<div class="pv"><div class="pv-head">${showName ? html`<span class="pv-title">${fallbackTitle}</span>` : html`<span></span>`}${showIcon ? html`<span class="pv-icon">${icon}</span>` : ""}</div>${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showMeter ? html`<div class="pv-meter"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>` : ""}${showSub ? html`<div class="pv-sub">${sub}</div>` : ""}${showChip ? html`<div class="pv-sub">${chip}</div>` : ""}</div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${main}</div><div class="pv-meter"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div><div class="pv-sub">${sub}</div></div>`;
     }
 
     return html`
@@ -4942,114 +4771,28 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
   // Smart-Home Control Widgets
   if (["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(w.type)) {
     const defaultAction = tdDefaultTapActionForWidget(w.type) || "popup";
-    const compact = (w.config?.control_layout || "card") === "compact";
     parts.push(html`
       <div class="pg4">Steuerung</div>
-      <div class="pf2-row">
-        <div class="pf2">
-          <label>Layout</label>
-          <select .value=${w.config?.control_layout || "card"}
-                  @change=${(e) => this._setWidgetConfig("control_layout", e.target.value)}>
-            <option value="card">Karte</option>
-            <option value="compact">Kompakt / Symbol</option>
-          </select>
-        </div>
-        <div class="pf2">
-          <label>Standardaktion</label>
-          <select .value=${w.tap_action || (compact ? "popup" : defaultAction)}
-                  @change=${(e) => this._setWidget("tap_action", e.target.value)}>
-            <option value="none">Keine</option>
-            <option value="toggle">Toggle</option>
-            <option value="popup">Popup</option>
-            <option value="expand">Expand</option>
-          </select>
-        </div>
+      <div class="pf2">
+        <label>Standardaktion</label>
+        <select .value=${w.tap_action || defaultAction}
+                @change=${(e) => this._setWidget("tap_action", e.target.value)}>
+          <option value="none">Keine</option>
+          <option value="toggle">Toggle</option>
+          <option value="popup">Popup</option>
+          <option value="expand">Expand</option>
+        </select>
       </div>
-
-      <div class="pf2-hint">Kompakt eignet sich für genau ein Gerät: kleines Symbol im Widget, beim Tippen öffnet sich das große Steuer-Popup.</div>
-
-      <div class="tog-grid">
-        ${[
-          ["control_show_icon", "Icon", true],
-          ["control_show_name", "Name", true],
-          ["control_show_value", "Wert", true],
-          ["control_show_sub", "Untertitel", true],
-          ["control_show_meter", "Balken", w.type !== "switch-control"],
-          ["control_show_status_chip", "Status-Chip", w.type !== "media-player-control"],
-        ].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox"
-                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-
       ${["switch-control", "light-control"].includes(w.type) ? html`
         <label class="tog">
           <input type="checkbox"
-                 .checked=${w.toggle_badge !== false && w.config?.control_show_toggle_badge !== false}
-                 @change=${(e) => {
-                   this._setWidget("toggle_badge", e.target.checked);
-                   this._setWidgetConfig("control_show_toggle_badge", e.target.checked);
-                 }}>
+                 .checked=${w.toggle_badge !== false}
+                 @change=${(e) => this._setWidget("toggle_badge", e.target.checked)}>
           <span>Status-Badge anzeigen</span>
         </label>
-      ` : ""}
-
-      ${w.type === "light-control" ? html`
-        <div class="pg4">Licht-Popup</div>
-        <div class="tog-grid">
-          ${[
-            ["control_show_popup_colors", "Farben", true],
-            ["control_show_popup_effects", "Effekte", true],
-            ["control_show_popup_position_presets", "Helligkeits-Presets", true],
-          ].map(([key, label, defaultVal]) => html`
-            <label class="tog">
-              <input type="checkbox"
-                     .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                     @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-              <span>${label}</span>
-            </label>
-          `)}
-        </div>
-      ` : ""}
-
-      ${w.type === "cover-control" ? html`
-        <div class="pg4">Cover-Popup</div>
-        <div class="tog-grid">
-          ${[
-            ["control_show_popup_position_presets", "Positions-Presets", true],
-            ["control_show_popup_tilt", "Lamellen / Tilt", true],
-          ].map(([key, label, defaultVal]) => html`
-            <label class="tog">
-              <input type="checkbox"
-                     .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                     @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-              <span>${label}</span>
-            </label>
-          `)}
-        </div>
-      ` : ""}
-
-      ${w.type === "climate-control" ? html`
-        <div class="pg4">Klima-Popup</div>
-        <div class="tog-grid">
-          ${[
-            ["control_show_popup_modes", "HVAC-Modi", true],
-            ["control_show_popup_presets", "Preset-Modi", true],
-            ["control_show_popup_fan_modes", "Lüfter-Modi", true],
-          ].map(([key, label, defaultVal]) => html`
-            <label class="tog">
-              <input type="checkbox"
-                     .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                     @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-              <span>${label}</span>
-            </label>
-          `)}
-        </div>
-      ` : ""}
+      ` : html`
+        <div class="pf2-hint">Dieses Widget ist für eine direkte Steuerung per Popup vorbereitet.</div>
+      `}
     `);
   }
 
@@ -5420,7 +5163,6 @@ TdScreenEditor.prototype._renderScreenTickerConfig = function () {
 TdScreenEditor.prototype._setScreen = function (key, value) {
   this._pushUndo();
   this._cfg = { ...this._cfg, [key]: value };
-  this.requestUpdate();
 };
 
 TdScreenEditor.prototype._setWidget = function (key, value) {
@@ -5442,7 +5184,6 @@ TdScreenEditor.prototype._setWidget = function (key, value) {
 
   ws[this._sel] = next;
   this._cfg = { ...this._cfg, widgets: ws };
-  this.requestUpdate();
 };
 
 TdScreenEditor.prototype._setWidgetConfig = function (key, value) {
@@ -5457,13 +5198,8 @@ TdScreenEditor.prototype._setWidgetConfig = function (key, value) {
         .filter(Boolean)
     )];
   }
-  const next = { ...w, config: { ...(w.config || {}), [key]: finalValue } };
-  if (key === "control_layout" && finalValue === "compact" && ["switch-control", "light-control", "climate-control", "cover-control", "media-player-control"].includes(next.type) && (!next.tap_action || ["none", "toggle"].includes(next.tap_action))) {
-    next.tap_action = "popup";
-  }
-  ws[this._sel] = next;
+  ws[this._sel] = { ...w, config: { ...(w.config || {}), [key]: finalValue } };
   this._cfg = { ...this._cfg, widgets: ws };
-  this.requestUpdate();
 };
 
 TdScreenEditor.prototype._setEntityMeta = function (entityId, patch) {
@@ -5476,7 +5212,6 @@ TdScreenEditor.prototype._setEntityMeta = function (entityId, patch) {
   cfg.entity_meta = meta;
   ws[this._sel] = { ...w, config: cfg };
   this._cfg = { ...this._cfg, widgets: ws };
-  this.requestUpdate();
 };
 
 TdScreenEditor.prototype._deleteWidget = function () {
@@ -5487,7 +5222,6 @@ TdScreenEditor.prototype._deleteWidget = function () {
   this._cfg = { ...this._cfg, widgets: ws };
   this._sel = -1;
   this._selMulti = [];
-  this.requestUpdate();
 };
 
 TdScreenEditor.prototype._applyWidgetJson = function (jsonStr) {
