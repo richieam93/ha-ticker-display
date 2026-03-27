@@ -57,7 +57,8 @@ const TD_CAMERA_SOURCES = [
 ];
 
 const TD_WIDGET_TYPE_ICONS = {
-  "entity-control": "🎛️", "shutter-card": "🪟", "media-card": "🎵", "light-card": "💡", "climate-card": "🌡️", "alarm-card": "🛡️", "person-card": "👤",
+  "simple-value": "🔢", "icon-value": "ℹ️", "trend-arrow": "📈",
+  "status-dot": "🟢", "gauge": "🎯", "progress-bar": "📊",
   "camera": "📹", "image": "🖼️", "clock": "🕐", "weather": "🌦️",
   "countdown": "⏱️", "button": "🔘", "color-block": "🟦",
   "qr-code": "🔳",
@@ -94,13 +95,12 @@ const TD_SCREEN_TYPE_LABELS = {
 };
 
 const TD_WIDGET_TYPES_ALL = [
-  { v: "entity-control",   l: "Steuerkarte"        },
-  { v: "light-card",       l: "Licht-Karte"        },
-  { v: "shutter-card",     l: "Rollladen-Karte"    },
-  { v: "media-card",       l: "Media Player"       },
-  { v: "climate-card",     l: "Klima-Karte"        },
-  { v: "alarm-card",       l: "Alarm-Karte"        },
-  { v: "person-card",      l: "Personen-Karte"     },
+  { v: "simple-value",    l: "Einfacher Wert"     },
+  { v: "gauge",            l: "Gauge"              },
+  { v: "progress-bar",     l: "Fortschrittsbalken" },
+  { v: "status-dot",       l: "Status Punkt"       },
+  { v: "icon-value",       l: "Icon+Wert"          },
+  { v: "trend-arrow",      l: "Trend Pfeil"        },
   ...TD_CHART_WIDGETS.map(([v, , l]) => ({ v, l })),
   { v: "camera",           l: "Kamera"             },
   { v: "clock",            l: "Uhr"                },
@@ -118,26 +118,6 @@ const TD_NO_MULTI_ENTITY = new Set([
 const TD_NO_VALUE_FORMAT = new Set([
   "camera", "weather", "clock", "countdown", "qr-code", "button", "color-block", "image",
 ]);
-
-
-const TD_WIDGET_TYPE_GROUPS = [
-  { label: "Steuerung & Medien", items: ["entity-control", "light-card", "shutter-card", "media-card", "climate-card", "alarm-card", "person-card"] },
-  { label: "Graphen & Charts", items: TD_CHART_WIDGETS.map(([t]) => t) },
-  { label: "Medien & Kamera", items: ["camera", "image"] },
-  { label: "Uhr, Wetter & Info", items: ["clock", "weather", "countdown"] },
-  { label: "Sonstige", items: ["color-block", "button"] },
-];
-
-function tdRenderWidgetTypeOptions(htmlRef) {
-  return TD_WIDGET_TYPE_GROUPS.map((group) => htmlRef`
-    <optgroup label=${group.label}>
-      ${group.items.map((key) => {
-        const item = TD_WIDGET_TYPES_ALL.find((x) => x.v === key);
-        return item ? htmlRef`<option value=${item.v}>${TD_WIDGET_TYPE_ICONS[item.v] || "•"} ${item.l}</option>` : "";
-      })}
-    </optgroup>
-  `);
-}
 
 /* ══════════════════════════════════════════════════════════
    UTILITY FUNCTIONS
@@ -300,78 +280,9 @@ function tdFindEntitiesForPreset(hass, kind = "blank") {
   };
 }
 
-function tdNormalizeLegacyWidgetConfig(widget = {}) {
-  const w = deepClone(widget || {});
-  const type = String(w.type || "");
-  const entityId = String(w.entity_id || "");
-  const domain = entityId.includes(".") ? entityId.split(".", 1)[0] : "";
-  const cfg = { ...(w.config || {}) };
-
-  if (cfg.mini_chart_fill === undefined) cfg.mini_chart_fill = false;
-  if (cfg.show_progress_bar === undefined) cfg.show_progress_bar = false;
-
-  if (["simple-value", "icon-value", "trend-arrow", "status-dot"].includes(type)) {
-    w.type = domain === "media_player" ? "media-card" : (domain ? "entity-control" : "mini-graph");
-  } else if (["gauge", "progress-bar"].includes(type)) {
-    w.type = domain && !["sensor", "number", "input_number"].includes(domain) ? "entity-control" : "bullet-chart";
-  }
-
-  switch (w.type) {
-    case "shutter-card":
-      cfg.show_position_bar = cfg.show_position_bar === true;
-      cfg.show_presets = cfg.show_presets !== false;
-      cfg.show_name = cfg.show_name !== false;
-      cfg.compact = cfg.compact !== false;
-      break;
-    case "entity-control":
-      cfg.show_progress_bar = cfg.show_progress_bar === true;
-      cfg.compact = cfg.compact !== false;
-      cfg.show_state_icon = cfg.show_state_icon !== false;
-      cfg.control_style = cfg.control_style || "auto";
-      break;
-    case "media-card":
-      cfg.show_cover = cfg.show_cover !== false;
-      cfg.show_volume = cfg.show_volume !== false;
-      cfg.show_progress_bar = cfg.show_progress_bar === true;
-      cfg.media_layout = cfg.media_layout || "card";
-      break;
-    case "light-card":
-      cfg.show_progress_bar = cfg.show_progress_bar === true;
-      cfg.show_brightness_buttons = cfg.show_brightness_buttons !== false;
-      cfg.show_color_presets = cfg.show_color_presets !== false;
-      cfg.show_color_temp = cfg.show_color_temp !== false;
-      cfg.compact = cfg.compact !== false;
-      cfg.mini_chart = cfg.mini_chart !== false;
-      break;
-    case "climate-card":
-      cfg.show_progress_bar = cfg.show_progress_bar === true;
-      cfg.show_modes = cfg.show_modes !== false;
-      cfg.show_presets = cfg.show_presets !== false;
-      cfg.compact = cfg.compact !== false;
-      break;
-    case "alarm-card":
-      cfg.show_changed_by = cfg.show_changed_by !== false;
-      cfg.show_quick_actions = cfg.show_quick_actions !== false;
-      cfg.compact = cfg.compact !== false;
-      break;
-    case "person-card":
-      cfg.show_avatar = cfg.show_avatar !== false;
-      cfg.show_coordinates = cfg.show_coordinates === true;
-      cfg.show_last_changed = cfg.show_last_changed !== false;
-      cfg.compact = cfg.compact !== false;
-      break;
-    default:
-      break;
-  }
-
-  w.config = cfg;
-  return w;
-}
-
 function tdHydrateScreenPresetEntities(screen, hass) {
   const sc = deepClone(screen || {});
   const found = tdFindEntitiesForPreset(hass, sc.type || "dashboard");
-  sc.widgets = (sc.widgets || []).map((w) => tdNormalizeLegacyWidgetConfig(w));
   (sc.widgets || []).forEach((w) => {
     if (w.type === "weather" && !w.entity_id)
       w.entity_id = found.weather[0]?.entity_id || "";
@@ -380,18 +291,17 @@ function tdHydrateScreenPresetEntities(screen, hass) {
       w.entity_id = id;
       w.config = { ...(w.config || {}), camera_entity: id };
     }
-    if (w.type === "shutter-card" && !w.entity_id) {
-      w.entity_id = found.covers[0]?.entity_id || "";
-    }
-    if (w.type === "entity-control" && !w.entity_id) {
-      const preferred = [found.lights[0], found.covers[0], found.binary[0], found.media[0], found.climate[0], found.persons[0], found.sensors[0]].find(Boolean);
-      w.entity_id = preferred?.entity_id || "";
-    }
-    if (w.type === "climate-card" && !w.entity_id) w.entity_id = found.climate[0]?.entity_id || "";
-    if (w.type === "alarm-card" && !w.entity_id) w.entity_id = getAllEntities(hass, "alarm_control_panel")[0]?.entity_id || "";
-    if (w.type === "person-card" && !w.entity_id) w.entity_id = found.persons[0]?.entity_id || "";
-    if (w.type === "media-card" && !w.entity_id) {
-      w.entity_id = found.media[0]?.entity_id || "";
+    if (
+      ["simple-value", "icon-value", "trend-arrow", "gauge", "progress-bar", "status-dot"].includes(w.type) &&
+      !w.entity_id
+    ) {
+      const list = (w.name && /temp/i.test(w.name))
+        ? found.temp
+        : (found.numeric.length ? found.numeric : found.sensors);
+      w.entity_id = list[0]?.entity_id || found.sensors[0]?.entity_id || "";
+      if ((w.config?.entities || []).length) {
+        w.config = { ...(w.config || {}), entities: list.slice(1, 5).map((e) => e.entity_id) };
+      }
     }
     if (TD_CHART_TYPES.has(w.type)) {
       const list = found.power.length
@@ -437,7 +347,7 @@ function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
         widgets: [
           mk("weather", 0, 0, { colspan: 2, rowspan: 2, name: "Wetter" }),
           mk("clock",   2, 0, { name: "Uhr" }),
-          mk("mini-graph", 2, 1, { name: "Temperatur", config: { chart_use_history: true, hours: 24 } }),
+          mk("simple-value", 2, 1, { name: "Temperatur" }),
         ],
       };
     case "camera":
@@ -465,10 +375,10 @@ function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
         name: `Energie ${index + 1}`,
         widgets: [
           mk("comparison-chart", 0, 0, { colspan: 2, name: "Energie" }),
-          mk("bullet-chart",    2, 0, { name: "Batterie", config: { min: 0, max: 100, chart_use_history: true } }),
-          mk("radial-gauge-advanced",           0, 1, { name: "Solar", config: { max: 100 } }),
-          mk("mini-graph",    1, 1, { name: "Verbrauch", config: { chart_use_history: true, hours: 24 } }),
-          mk("comparison-chart",     2, 1, { name: "Trend", config: { chart_use_history: true, hours: 24 } }),
+          mk("progress-bar",    2, 0, { name: "Batterie" }),
+          mk("gauge",           0, 1, { name: "Solar" }),
+          mk("simple-value",    1, 1, { name: "Verbrauch" }),
+          mk("trend-arrow",     2, 1, { name: "Trend" }),
         ],
       };
     case "security":
@@ -476,9 +386,9 @@ function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
         ...base,
         name: `Sicherheit ${index + 1}`,
         widgets: [
-          mk("alarm-card", 0, 0, { name: "Alarm", icon: "🛡️", config: { compact: true, show_quick_actions: true } }),
+          mk("status-dot", 0, 0, { name: "Alarm", icon: "🛡️" }),
           mk("camera",     1, 0, { colspan: 2, rowspan: 2, name: "Kamera" }),
-          mk("entity-control", 0, 1, { name: "Kontakte", icon: "🚪", config: { control_style: "status", compact: true } }),
+          mk("status-dot", 0, 1, { name: "Kontakte", icon: "🚪" }),
         ],
       };
     default:
@@ -1339,7 +1249,6 @@ customElements.define("td-sound-picker", TdSoundPicker);
    DEVICE LIST
    ══════════════════════════════════════════════════════════ */
 
-
 class TdDeviceList extends LitElement {
   static get properties() {
     return {
@@ -1347,9 +1256,6 @@ class TdDeviceList extends LitElement {
       devices: { type: Array },
       _filter: { type: String },
       _sortBy: { type: String },
-      _showVirtualForm: { type: Boolean },
-      _virtualName: { type: String },
-      _virtualSourceId: { type: String },
     };
   }
 
@@ -1357,9 +1263,6 @@ class TdDeviceList extends LitElement {
     super();
     this._filter = "";
     this._sortBy = "name";
-    this._showVirtualForm = false;
-    this._virtualName = "";
-    this._virtualSourceId = "";
   }
 
   static get styles() {
@@ -1375,10 +1278,9 @@ class TdDeviceList extends LitElement {
 
       .filter-bar {
         display: flex; gap: 8px; margin-bottom: 16px; align-items: center;
-        flex-wrap: wrap;
       }
       .filter-bar input {
-        flex: 1; max-width: 320px; min-width: 180px; padding: 8px 12px;
+        flex: 1; max-width: 320px; padding: 8px 12px;
         border: 1px solid var(--divider-color); border-radius: 8px;
         background: var(--primary-background-color);
         color: var(--primary-text-color); font-size: 13px;
@@ -1410,39 +1312,6 @@ class TdDeviceList extends LitElement {
         border-color: rgba(255,255,255,.08);
       }
 
-      .virtual-card {
-        margin-bottom: 16px;
-        border: 1px solid rgba(33,150,243,.18);
-        background: linear-gradient(180deg, rgba(33,150,243,.08), rgba(255,255,255,.02));
-      }
-      .virtual-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
-        margin-top: 14px;
-      }
-      .virtual-hint {
-        color: var(--secondary-text-color);
-        font-size: 12px;
-        line-height: 1.5;
-        margin-top: 10px;
-      }
-      .f {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .f label { font-size: 12px; color: var(--secondary-text-color); }
-      .f input, .f select {
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 1px solid var(--divider-color);
-        background: var(--primary-background-color);
-        color: var(--primary-text-color);
-        font-size: 13px;
-      }
-      .virtual-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top: 14px; }
-
       .ch {
         display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
       }
@@ -1457,12 +1326,6 @@ class TdDeviceList extends LitElement {
         font-size: 11px; color: var(--secondary-text-color);
         font-family: monospace; display: block; margin-top: 2px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-      .meta-row { display:flex; flex-wrap:wrap; gap:6px; margin-top: 6px; }
-      .meta-chip {
-        display:inline-flex; align-items:center; gap:4px; padding:3px 8px;
-        border-radius: 999px; font-size: 11px; color: var(--secondary-text-color);
-        background: rgba(255,255,255,.06);
       }
 
       .sb {
@@ -1535,42 +1398,9 @@ class TdDeviceList extends LitElement {
       <div class="hdr">
         <h2>📱 Meine Geräte</h2>
         <div class="hdr-actions">
-          <button class="ab" @click=${() => this._toggleVirtualForm()}>
-            ${this._showVirtualForm ? "✖️ Abbrechen" : "➕ Virtuelles Gerät"}
-          </button>
           <button class="ab" @click=${() => this._emit("refresh", {})}>🔄 Aktualisieren</button>
         </div>
       </div>
-
-      ${this._showVirtualForm ? html`
-        <div class="card virtual-card">
-          <div class="rc-title" style="font-size:18px;font-weight:600">🌐 Virtuelles Gerät anlegen</div>
-          <div class="virtual-hint">Erstellt ein Browser-Gerät ohne APK. Den erzeugten Display-Link kannst du auf Windows, Mac, Tablet oder Handy direkt im Browser öffnen.</div>
-          <div class="virtual-grid">
-            <div class="f">
-              <label>Name</label>
-              <input
-                .value=${this._virtualName}
-                placeholder="z. B. Wohnzimmer Browser"
-                @input=${(e) => this._virtualName = e.target.value}>
-            </div>
-            <div class="f">
-              <label>Vorlage</label>
-              <select .value=${this._virtualSourceId} @change=${(e) => this._virtualSourceId = e.target.value}>
-                <option value="">Leeres virtuelles Gerät</option>
-                ${(this.devices || []).map((d) => html`
-                  <option value=${d.id}>${d.name || d.id}${d.virtual ? " · virtuell" : " · physisch"}</option>
-                `)}
-              </select>
-            </div>
-          </div>
-          <div class="virtual-hint">Wenn du eine Vorlage auswählst, werden Screens, Widgets, Rotation, Ticker, Theme und Schrift direkt übernommen.</div>
-          <div class="virtual-actions">
-            <button class="ab p" @click=${() => this._submitVirtualDevice()}>✅ Erstellen & Link kopieren</button>
-            <button class="ab" @click=${() => this._toggleVirtualForm(false)}>Schließen</button>
-          </div>
-        </div>
-      ` : ""}
 
       ${this.devices.length > 0 ? html`
         <div class="filter-bar">
@@ -1595,7 +1425,7 @@ class TdDeviceList extends LitElement {
           <div class="ei">📱</div>
           <p class="title">Noch keine Geräte registriert</p>
           <p>Installiere die Ticker Display App auf einem Tablet oder Smartphone<br>
-             oder erstelle hier direkt ein virtuelles Browser-Gerät.</p>
+             und öffne die Display-URL, um das Gerät automatisch zu registrieren.</p>
         </div>
       ` : ""}
 
@@ -1613,24 +1443,10 @@ class TdDeviceList extends LitElement {
     `;
   }
 
-  _toggleVirtualForm(force = null) {
-    this._showVirtualForm = force === null ? !this._showVirtualForm : Boolean(force);
-    if (this._showVirtualForm && !this._virtualName) {
-      this._virtualName = `Virtuelles Gerät ${(this.devices?.length || 0) + 1}`;
-    }
-  }
-
-  _submitVirtualDevice() {
-    this._emit("create-virtual-device", {
-      name: (this._virtualName || "").trim(),
-      sourceDeviceId: this._virtualSourceId || "",
-    });
-    this._toggleVirtualForm(false);
-    this._virtualSourceId = "";
-  }
-
   _getFilteredDevices() {
     let list = [...(this.devices || [])];
+
+    // Filter
     const q = (this._filter || "").toLowerCase().trim();
     if (q) {
       list = list.filter((d) =>
@@ -1639,6 +1455,8 @@ class TdDeviceList extends LitElement {
         (d.model || "").toLowerCase().includes(q)
       );
     }
+
+    // Sort
     list.sort((a, b) => {
       switch (this._sortBy) {
         case "status":
@@ -1649,6 +1467,7 @@ class TdDeviceList extends LitElement {
           return (a.name || a.id || "").localeCompare(b.name || b.id || "", "de");
       }
     });
+
     return list;
   }
 
@@ -1660,14 +1479,10 @@ class TdDeviceList extends LitElement {
     return html`
       <div class="card">
         <div class="ch">
-          <div class="ci">${d.virtual ? "🌐" : (on ? "📱" : "📴")}</div>
+          <div class="ci">${on ? "📱" : "📴"}</div>
           <div class="cn">
             ${d.name || d.id}
             <span class="did">${d.id}</span>
-            <div class="meta-row">
-              ${d.virtual ? html`<span class="meta-chip">Virtuell</span>` : ""}
-              ${d.template_source_device_id ? html`<span class="meta-chip">Vorlage: ${d.template_source_device_id}</span>` : ""}
-            </div>
           </div>
           <span class="sb ${on ? "on" : "off"}">
             <span class="sd"></span>${on ? "Online" : "Offline"}
@@ -1676,7 +1491,7 @@ class TdDeviceList extends LitElement {
 
         <div class="di">
           <span>Modell:</span><span class="v">${d.model || "—"}</span>
-          <span>System:</span><span class="v">${d.android_version || "—"}</span>
+          <span>Android:</span><span class="v">${d.android_version || "—"}</span>
           <span>Auflösung:</span><span class="v">${d.screen_resolution || "—"}</span>
           <span>Screens:</span><span class="v">${screenCount} (${widgetCount} Widgets)</span>
           <span>Theme:</span><span class="v">${d.theme || "dark"}</span>
@@ -1693,12 +1508,25 @@ class TdDeviceList extends LitElement {
         ` : ""}
 
         <div class="da" style="margin-top:12px">
-          <button class="ab p" @click=${() => this._emit("edit-device", { deviceId: d.id })}>🧱 Editor</button>
-          <button class="ab" @click=${() => this._emit("copy-device-link", { deviceId: d.id })} title="Display-Link kopieren">🔗</button>
-          <button class="ab" @click=${() => this._emit("preview-device", { deviceId: d.id })} title="Vorschau öffnen">👁️</button>
-          <button class="ab" @click=${() => this._emit("reload-device", { deviceId: d.id })} title="Seite neu laden">🔄</button>
-          <button class="ab" @click=${() => this._emit("identify-device", { deviceId: d.id })} title="Gerät identifizieren">💡</button>
-          <button class="ab danger" @click=${() => this._emit("delete-device", { deviceId: d.id })} title="Gerät löschen">🗑️</button>
+          <button class="ab p" @click=${() => this._emit("edit-device", { deviceId: d.id })}>
+            🧱 Editor
+          </button>
+          <button class="ab" @click=${() => this._emit("preview-device", { deviceId: d.id })}
+                  title="Vorschau öffnen">
+            👁️
+          </button>
+          <button class="ab" @click=${() => this._emit("reload-device", { deviceId: d.id })}
+                  title="Seite neu laden">
+            🔄
+          </button>
+          <button class="ab" @click=${() => this._emit("identify-device", { deviceId: d.id })}
+                  title="Gerät identifizieren">
+            💡
+          </button>
+          <button class="ab danger" @click=${() => this._emit("delete-device", { deviceId: d.id })}
+                  title="Gerät löschen">
+            🗑️
+          </button>
         </div>
       </div>
     `;
@@ -1709,7 +1537,6 @@ class TdDeviceList extends LitElement {
   }
 }
 customElements.define("td-device-list", TdDeviceList);
-
 
 /* ══════════════════════════════════════════════════════════
    DEVICE EDITOR
@@ -2400,7 +2227,7 @@ class TdScreenEditor extends LitElement {
 
   updated(changed) {
     if (changed.has("screenConfig") && this.screenConfig) {
-      this._cfg = tdHydrateScreenPresetEntities(deepClone(this.screenConfig), this.hass);
+      this._cfg = deepClone(this.screenConfig);
     }
   }
 
@@ -2424,8 +2251,8 @@ class TdScreenEditor extends LitElement {
       this._doRedo();
       return;
     }
-    // Delete = Delete selected (Backspace intentionally disabled to avoid accidental widget deletion while editing fields)
-    if (e.key === "Delete" && this._sel >= 0) {
+    // Delete / Backspace = Delete selected
+    if ((e.key === "Delete" || e.key === "Backspace") && this._sel >= 0) {
       e.preventDefault();
       this._deleteSelected();
       return;
@@ -3051,25 +2878,13 @@ class TdScreenEditor extends LitElement {
       }));
 
     const raw = [
-      { name: "📁 Favoriten & Schnellzugriff", items: [
-        { type: "alarm-card",    icon: "🛡️", label: "Alarm-Karte", desc: "Armen, disarmen und Status schön anzeigen" },
-        { type: "climate-card",  icon: "🌡️", label: "Klima-Karte", desc: "Ist/Soll, Modi und Presets direkt bedienen" },
-        { type: "entity-control", icon: "🎛️", label: "Steuerkarte", desc: "Schalter, Klima, Status und Ventile" },
-        { type: "light-card",    icon: "💡", label: "Licht-Karte", desc: "Licht mit Farbe, Helligkeit und Warm/Kalt" },
-        { type: "media-card",    icon: "🎵", label: "Media Player", desc: "Titel, Cover, Lautstärke und Transport" },
-        { type: "person-card",   icon: "👤", label: "Personen-Karte", desc: "Avatar, Zuhause/Unterwegs und Quelle" },
-        { type: "shutter-card",  icon: "🪟", label: "Rollladen-Karte", desc: "Große Positionsanzeige mit Preset-Tasten" },
-        { type: "camera",        icon: "📹", label: "Kamera", desc: "Snapshot, Proxy oder Stream" },
-        { type: "weather",       icon: "🌦️", label: "Wetter", desc: "Wetter-Entity mit Übersicht" },
-      ]},
-      { name: "📁 Steuerung & Medien", items: [
-        { type: "alarm-card",    icon: "🛡️", label: "Alarm-Karte", desc: "Status, Home/Away und Deaktivieren" },
-        { type: "climate-card",  icon: "🌡️", label: "Klima-Karte", desc: "Temperatur, Modi, Presets und Feuchte" },
-        { type: "entity-control", icon: "🎛️", label: "Steuerkarte", desc: "Universelle Karte für Status und Schalten" },
-        { type: "light-card",    icon: "💡", label: "Licht-Karte", desc: "Farbe, Helligkeit und Warm/Kalt direkt am Widget" },
-        { type: "media-card",    icon: "🎵", label: "Media Player", desc: "Modernes Medien-Widget mit Cover und Controls" },
-        { type: "person-card",   icon: "👤", label: "Personen-Karte", desc: "Avatar, Quelle, Zuhause/Unterwegs" },
-        { type: "shutter-card",  icon: "🪟", label: "Rollladen-Karte", desc: "Position, Offen/Zu, Öffnen/Stop/Schließen" },
+      { name: "📁 Werte & Status", items: [
+        { type: "simple-value",  icon: "🔢", label: "Wert",       desc: "Klassische Zahl oder Sensorwert" },
+        { type: "icon-value",    icon: "ℹ️", label: "Icon+Wert",  desc: "Wert mit Symbol und Titel" },
+        { type: "trend-arrow",   icon: "📈", label: "Trend",      desc: "Tendenz nach oben oder unten" },
+        { type: "status-dot",    icon: "🟢", label: "Status",     desc: "Kompakter Zustand mit Farbe" },
+        { type: "gauge",         icon: "🎯", label: "Gauge",      desc: "Runder Füllstand / Prozentwert" },
+        { type: "progress-bar",  icon: "📊", label: "Fortschritt",desc: "Horizontaler Fortschrittsbalken" },
       ]},
       { name: "📁 Graphen & Charts", items:
         TD_CHART_WIDGETS.map(([t, i, l]) => ({ type: t, icon: i, label: l, desc: "Chart.js Widget" }))
@@ -3084,24 +2899,24 @@ class TdScreenEditor extends LitElement {
         { type: "countdown", icon: "⏱️", label: "Countdown", desc: "Ereignis oder Zielzeit" },
       ]},
       { name: "📁 HA Presets", items: [
+        { type: "preset-energy",  icon: "⚡", label: "Energie",  desc: "Leistungs- oder Energiesensor" },
         { type: "preset-person",  icon: "👤", label: "Personen", desc: "Anwesenheit und Status" },
-        { type: "preset-doors",   icon: "🚪", label: "Türen/Fenster", desc: "Kontakte und Öffnungsstatus" },
-        { type: "preset-light",   icon: "💡", label: "Licht", desc: "Schalten, Farbe und Helligkeit" },
-        { type: "preset-cover",   icon: "🪟", label: "Rollladen",desc: "Position und Preset-Tasten" },
-        { type: "preset-climate", icon: "🌡️", label: "Klima", desc: "Thermostat / Temperatur" },
-        { type: "preset-media",   icon: "🎵", label: "Medien", desc: "Titel, Cover und Wiedergabe" },
-        { type: "preset-alarm",   icon: "🛡️", label: "Alarm", desc: "Sicherheitsstatus" },
+        { type: "preset-doors",   icon: "🚪", label: "Türen",    desc: "Öffnungssensoren" },
         { type: "preset-battery", icon: "🔋", label: "Batterie", desc: "Akkustand" },
+        { type: "preset-media",   icon: "🎵", label: "Medien",   desc: "Titel und Wiedergabe" },
+        { type: "preset-climate", icon: "🌡️", label: "Klima",    desc: "Thermostat / Temperatur" },
+        { type: "preset-light",   icon: "💡", label: "Licht",    desc: "Lichtstatus und Helligkeit" },
+        { type: "preset-alarm",   icon: "🛡️", label: "Alarm",    desc: "Sicherheitsstatus" },
+        { type: "preset-cover",   icon: "🪟", label: "Rollladen",desc: "Cover-Position" },
+        { type: "preset-vacuum",  icon: "🧹", label: "Sauger",   desc: "Roboterstatus" },
         { type: "preset-network", icon: "📶", label: "Netzwerk", desc: "WLAN, Ping, Router" },
-        { type: "preset-energy",  icon: "⚡", label: "Energie", desc: "Leistung, Energie, PV" },
-        { type: "preset-vacuum",  icon: "🧹", label: "Sauger", desc: "Roboterstatus" },
       ]},
       { name: "📁 Screen-Vorlagen", items: [
         { type: "ha-template-home",     icon: "🏠", label: "Home",       desc: "Wetter, Uhr, Status" },
         { type: "ha-template-energy",   icon: "⚡", label: "Energie",    desc: "Verbrauchsübersicht" },
         { type: "ha-template-security", icon: "🚨", label: "Sicherheit", desc: "Kontakte, Alarm" },
         { type: "ha-template-family",   icon: "👨‍👩‍👧", label: "Familie",  desc: "Personen, Kalender" },
-        { type: "ha-template-media",    icon: "📺", label: "Medien",     desc: "Player, Netzwerk, Rollladen" },
+        { type: "ha-template-media",    icon: "📺", label: "Medien",     desc: "Player und Cover" },
       ]},
       ...(userTemplates.length ? [{ name: "📁 Meine Vorlagen", items: userTemplates }] : []),
       { name: "📁 Sonstige", items: [
@@ -3627,17 +3442,17 @@ class TdScreenEditor extends LitElement {
 
   _applyPreset(type) {
     const presetMap = {
-      "preset-energy":  { widget: "comparison-chart", domain: "sensor", match: ["power","energy","verbrauch","leistung"], config: { chart_use_history: true, hours: 24 } },
-      "preset-person":  { widget: "person-card",     domain: "person", match: ["person"], config: { compact: true, show_avatar: true, show_last_changed: true } },
-      "preset-doors":   { widget: "entity-control",   domain: "binary_sensor", match: ["door","window","fenster","tuer"], config: { control_style: "status", compact: true } },
-      "preset-battery": { widget: "bullet-chart",     domain: "sensor", match: ["battery","akku"], config: { chart_use_history: true, min: 0, max: 100 } },
-      "preset-media":   { widget: "media-card",       domain: "media_player", match: ["media_player"], config: { show_cover: true, show_volume: true } },
-      "preset-climate": { widget: "climate-card",    domain: "climate", match: ["climate","thermostat"], config: { show_progress_bar: false, show_modes: true, show_presets: true } },
-      "preset-light":   { widget: "light-card",      domain: "light", match: ["light","licht"], config: { show_progress_bar: false, show_color_presets: true, show_color_temp: true } },
-      "preset-alarm":   { widget: "alarm-card",      domain: "alarm_control_panel", match: ["alarm"], config: { show_quick_actions: true, show_changed_by: true } },
-      "preset-cover":   { widget: "shutter-card",    domain: "cover", match: ["cover","rollladen","jalousie","raffstore"], config: { show_position_bar: false, show_presets: true } },
-      "preset-vacuum":  { widget: "entity-control",   domain: "vacuum", match: ["vacuum","staubsauger"], config: { control_style: "status" } },
-      "preset-network": { widget: "mini-graph",       domain: "sensor", match: ["wifi","ping","router"], config: { chart_use_history: true, hours: 24 } },
+      "preset-energy":  { widget: "comparison-chart", domain: "sensor",    match: ["power","energy","verbrauch","leistung"] },
+      "preset-person":  { widget: "status-dot",       domain: "person",    match: ["person"] },
+      "preset-doors":   { widget: "status-dot",       domain: "binary_sensor", match: ["door","window","fenster","tuer"] },
+      "preset-battery": { widget: "progress-bar",     domain: "sensor",    match: ["battery","akku"] },
+      "preset-media":   { widget: "icon-value",       domain: "media_player",  match: ["media_player"] },
+      "preset-climate": { widget: "simple-value",     domain: "climate",   match: ["climate","thermostat"] },
+      "preset-light":   { widget: "status-dot",       domain: "light",     match: ["light","licht"] },
+      "preset-alarm":   { widget: "status-dot",       domain: "alarm_control_panel", match: ["alarm"] },
+      "preset-cover":   { widget: "progress-bar",     domain: "cover",     match: ["cover","rollladen"] },
+      "preset-vacuum":  { widget: "icon-value",       domain: "vacuum",    match: ["vacuum","staubsauger"] },
+      "preset-network": { widget: "status-dot",       domain: "sensor",    match: ["wifi","ping","router"] },
     };
 
     const spec = presetMap[type];
@@ -3653,8 +3468,7 @@ class TdScreenEditor extends LitElement {
     const w = tdCreateWidget(spec.widget, c, r, this.globalSettings || {});
     w.entity_id = hit?.entity_id || "";
     w.name = hit?.friendly_name || spec.widget;
-    w.config = { ...(w.config || {}), ...(spec.config || {}) };
-    if (["preset-energy", "preset-network"].includes(type)) {
+    if (["preset-energy", "preset-doors", "preset-media", "preset-light", "preset-network"].includes(type)) {
       w.config = { ...(w.config || {}), entities: entities.slice(0, 6).map((e) => e.entity_id) };
     }
     if (type === "preset-energy") w.colspan = 2;
@@ -3675,29 +3489,28 @@ class TdScreenEditor extends LitElement {
       "ha-template-home": [
         mk("weather", 0, 0, { colspan: 2, rowspan: 2, name: "Wetter" }),
         mk("clock", 2, 0, { name: "Uhr" }),
-        mk("light-card", 2, 1, { name: "Licht", config: { compact: true, show_progress_bar: false, show_color_presets: true } }),
-        mk("climate-card", 0, 2, { name: "Klima", config: { compact: true, show_modes: true } }),
+        mk("trend-arrow", 2, 1, { name: "Trend" }),
       ],
       "ha-template-energy": [
-        mk("comparison-chart", 0, 0, { colspan: 2, name: "Energie", config: { chart_use_history: true, hours: 24 } }),
-        mk("bullet-chart", 2, 0, { name: "Batterie", config: { min: 0, max: 100, chart_use_history: true } }),
-        mk("mini-graph", 2, 1, { name: "Verbrauch", config: { chart_use_history: true, hours: 24 } }),
+        mk("comparison-chart", 0, 0, { colspan: 2, name: "Energie" }),
+        mk("progress-bar", 2, 0, { name: "Batterie" }),
+        mk("simple-value", 2, 1, { name: "Verbrauch" }),
       ],
       "ha-template-security": [
-        mk("alarm-card", 0, 0, { name: "Alarm", icon: "🛡️", config: { compact: true, show_quick_actions: true } }),
+        mk("status-dot", 0, 0, { name: "Alarm", icon: "🛡️" }),
         mk("camera", 1, 0, { colspan: 2, rowspan: 2, name: "Kamera" }),
-        mk("entity-control", 0, 1, { name: "Kontakte", icon: "🚪", config: { control_style: "status", compact: true } }),
+        mk("status-dot", 0, 1, { name: "Kontakte", icon: "🚪" }),
       ],
       "ha-template-family": [
-        mk("person-card", 0, 0, { name: "Person 1", icon: "👤", config: { compact: true, show_avatar: true } }),
-        mk("person-card", 1, 0, { name: "Person 2", icon: "👤", config: { compact: true, show_avatar: true } }),
+        mk("status-dot", 0, 0, { name: "Person 1", icon: "👤" }),
+        mk("status-dot", 1, 0, { name: "Person 2", icon: "👤" }),
         mk("countdown", 2, 0, { name: "Nächster Termin" }),
         mk("weather", 0, 1, { colspan: 2, name: "Wetter" }),
       ],
       "ha-template-media": [
-        mk("media-card", 0, 0, { colspan: 2, rowspan: 2, name: "Medien", icon: "🎵", config: { show_cover: true, show_volume: true } }),
-        mk("mini-graph", 2, 0, { name: "Netzwerk", config: { chart_use_history: true, hours: 24 } }),
-        mk("shutter-card", 2, 1, { name: "Rollladen", config: { show_position_bar: false, show_presets: true } }),
+        mk("icon-value", 0, 0, { colspan: 2, name: "Medien", icon: "🎵" }),
+        mk("image", 2, 0, { rowspan: 2, name: "Cover" }),
+        mk("progress-bar", 0, 1, { colspan: 2, name: "Lautstärke" }),
       ],
     };
 
@@ -4000,9 +3813,9 @@ TdScreenEditor.prototype._renderPropsGeneral = function (w) {
     <div class="pg4">Grundeinstellungen</div>
     <div class="pf2">
       <label>Widget-Typ</label>
-      <select .value=${tdNormalizeLegacyWidgetConfig(w).type || "entity-control"}
+      <select .value=${w.type || "simple-value"}
               @change=${(e) => this._setWidget("type", e.target.value)}>
-        ${tdRenderWidgetTypeOptions(html)}
+        ${TD_WIDGET_TYPES_ALL.map((t) => html`<option value=${t.v}>${t.l}</option>`)}
       </select>
     </div>
 
@@ -4446,168 +4259,8 @@ TdScreenEditor.prototype._renderGroupConfig = function (w) {
 TdScreenEditor.prototype._renderTypeSpecific = function (w) {
   const parts = [];
 
-  // Steuerkarte
-  if (w.type === "entity-control") {
-    parts.push(html`
-      <div class="pg4">Steuerkarte</div>
-      <div class="pf2-row">
-        <div class="pf2">
-          <label>Darstellung</label>
-          <select .value=${w.config?.control_style || "auto"}
-                  @change=${(e) => this._setWidgetConfig("control_style", e.target.value)}>
-            <option value="auto">Automatisch</option>
-            <option value="switch">Schalter</option>
-            <option value="light">Licht</option>
-            <option value="cover">Rollladen / Cover</option>
-            <option value="status">Status</option>
-            <option value="climate">Klima</option>
-          </select>
-        </div>
-        <div class="pf2">
-          <label>Icon</label>
-          <input type="text" .value=${w.icon || ""}
-                 placeholder="z. B. 💡"
-                 @input=${(e) => this._setWidget("icon", e.target.value)}>
-        </div>
-      </div>
-      <div class="tog-grid">
-        ${[
-          ["compact", "Kompakt", true],
-          ["show_state_icon", "Status-Icon", true],
-          ["show_progress_bar", "Balken anzeigen", false],
-          ["show_name", "Titel anzeigen", true],
-        ].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox"
-                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-    `);
-  }
-
-  // Rollladen-Karte
-  if (w.type === "shutter-card") {
-    parts.push(html`
-      <div class="pg4">Rollladen-Karte</div>
-      <div class="pf2-row">
-        <div class="pf2">
-          <label>Icon</label>
-          <input type="text" .value=${w.icon || "🪟"}
-                 @input=${(e) => this._setWidget("icon", e.target.value)}>
-        </div>
-        <div class="pf2">
-          <label>Preset-Stufen</label>
-          <input type="text" .value=${w.config?.preset_positions?.join(", ") || "0, 25, 50, 75, 100"}
-                 placeholder="0, 25, 50, 75, 100"
-                 @change=${(e) => this._setWidgetConfig("preset_positions", String(e.target.value || "").split(",").map(v => Number(String(v).trim())).filter(v => Number.isFinite(v)).map(v => Math.max(0, Math.min(100, v))))}>
-        </div>
-      </div>
-      <div class="tog-grid">
-        ${[
-          ["compact", "Kompakt", true],
-          ["show_position_bar", "Positionsbalken", false],
-          ["show_presets", "Preset-Tasten", true],
-          ["show_name", "Titel anzeigen", true],
-        ].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox"
-                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-    `);
-  }
-
-  // Media Player
-  if (w.type === "media-card") {
-    parts.push(html`
-      <div class="pg4">Media Player</div>
-      <div class="pf2-row">
-        <div class="pf2">
-          <label>Layout</label>
-          <select .value=${w.config?.media_layout || "card"}
-                  @change=${(e) => this._setWidgetConfig("media_layout", e.target.value)}>
-            <option value="card">Card</option>
-            <option value="compact">Kompakt</option>
-          </select>
-        </div>
-        <div class="pf2">
-          <label>Icon</label>
-          <input type="text" .value=${w.icon || "🎵"}
-                 @input=${(e) => this._setWidget("icon", e.target.value)}>
-        </div>
-      </div>
-      <div class="tog-grid">
-        ${[
-          ["show_cover", "Cover anzeigen", true],
-          ["show_volume", "Lautstärke anzeigen", true],
-          ["show_progress_bar", "Fortschritt anzeigen", false],
-          ["show_name", "Titel anzeigen", true],
-        ].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox"
-                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-    `);
-  }
-
-  // Klima-Karte
-  if (w.type === "climate-card") {
-    parts.push(html`
-      <div class="pg4">Klima-Karte</div>
-      <div class="tog-grid">
-        ${[["compact", "Kompakt", true],["show_progress_bar", "Temperaturbalken", false],["show_modes", "Modi anzeigen", true],["show_presets", "Preset-Modi", true],["show_name", "Titel anzeigen", true]].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox" .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal} @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-    `);
-  }
-
-  // Alarm-Karte
-  if (w.type === "alarm-card") {
-    parts.push(html`
-      <div class="pg4">Alarm-Karte</div>
-      <div class="tog-grid">
-        ${[["compact", "Kompakt", true],["show_quick_actions", "Quick-Aktionen", true],["show_changed_by", "Geändert von", true],["show_name", "Titel anzeigen", true]].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox" .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal} @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-    `);
-  }
-
-  // Personen-Karte
-  if (w.type === "person-card") {
-    parts.push(html`
-      <div class="pg4">Personen-Karte</div>
-      <div class="tog-grid">
-        ${[["compact", "Kompakt", true],["show_avatar", "Avatar", true],["show_coordinates", "Koordinaten", false],["show_last_changed", "Letzte Änderung", true],["show_name", "Titel anzeigen", true]].map(([key, label, defaultVal]) => html`
-          <label class="tog">
-            <input type="checkbox" .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal} @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-            <span>${label}</span>
-          </label>
-        `)}
-      </div>
-    `);
-  }
-
   // Gauge
   if (w.type === "gauge") {
-
     parts.push(html`
       <div class="pg4">Gauge</div>
       <div class="pf2-row">
@@ -5194,12 +4847,6 @@ TdScreenEditor.prototype._applyWidgetJson = function (jsonStr) {
 TdScreenEditor.prototype._domainForType = function (type) {
   if (type === "camera") return "camera";
   if (type === "weather") return "weather";
-  if (type === "shutter-card") return "cover";
-  if (type === "media-card") return "media_player";
-  if (type === "light-card") return "light";
-  if (type === "climate-card") return "climate";
-  if (type === "alarm-card") return "alarm_control_panel";
-  if (type === "person-card") return "person";
   return "";
 };
 
@@ -8467,8 +8114,6 @@ class TickerDisplayPanel extends LitElement {
         @preview-device=${(e) => window.open(`${API}/preview/${e.detail.deviceId}`, "_blank")}
         @reload-device=${(e) => this.hass.callService("ticker_display", "reload_page", { device: e.detail.deviceId })}
         @identify-device=${(e) => this.hass.callService("ticker_display", "identify_device", { device: e.detail.deviceId })}
-        @copy-device-link=${(e) => this._copyDeviceLink(e.detail.deviceId)}
-        @create-virtual-device=${(e) => this._createVirtualDevice(e.detail)}
         @delete-device=${(e) => this._deleteDevice(e.detail.deviceId)}
         @refresh=${() => this._loadAll()}>
       </td-device-list>
@@ -8723,43 +8368,6 @@ TickerDisplayPanel.prototype._deleteDevice = async function (deviceId) {
   } catch (e) {
     console.error("Delete device failed:", e);
     this._toast("❌ Löschen fehlgeschlagen", "error");
-  }
-};
-
-
-TickerDisplayPanel.prototype._absoluteDisplayUrl = function (deviceId) {
-  return new URL(`${API}/${deviceId}`, window.location.origin).toString();
-};
-
-TickerDisplayPanel.prototype._copyDeviceLink = async function (deviceId) {
-  try {
-    await copyToClipboard(this._absoluteDisplayUrl(deviceId));
-    this._toast("🔗 Display-Link kopiert", "success");
-  } catch (e) {
-    console.error("Copy device link failed:", e);
-    this._toast("❌ Link kopieren fehlgeschlagen", "error");
-  }
-};
-
-TickerDisplayPanel.prototype._createVirtualDevice = async function (detail = {}) {
-  try {
-    const resp = await this._post("/api/config/device/virtual", {
-      name: detail.name || "",
-      source_device_id: detail.sourceDeviceId || "",
-    });
-    await this._loadAll();
-    const deviceId = resp?.device_id;
-    if (deviceId) {
-      await copyToClipboard(this._absoluteDisplayUrl(deviceId));
-      this._toast("🌐 Virtuelles Gerät erstellt · Link kopiert", "success");
-      this._devId = deviceId;
-      this._page = "device-editor";
-    } else {
-      this._toast("🌐 Virtuelles Gerät erstellt", "success");
-    }
-  } catch (e) {
-    console.error("Create virtual device failed:", e);
-    this._toast("❌ Virtuelles Gerät erstellen fehlgeschlagen", "error");
   }
 };
 
@@ -9240,7 +8848,7 @@ TickerDisplayPanel.prototype._checkDeviceHealth = function () {
       // Widgets without entity
       for (const w of (s.widgets || [])) {
         if (
-          ["entity-control", "media-card"].includes(w.type) &&
+          ["simple-value", "icon-value", "gauge", "progress-bar", "trend-arrow", "status-dot"].includes(w.type) &&
           !w.entity_id
         ) {
           issues.push({

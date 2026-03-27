@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from datetime import datetime, timezone
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -83,30 +82,12 @@ class TickerDisplayStore:
             _LOGGER.info("Device metadata updated: %s", device_id)
             return
 
-        devices[device_id] = self._default_device_payload(device_id, device_info)
-        await self.async_save()
-        _LOGGER.info("Device registered: %s", device_id)
-
-    async def async_update_device(self, device_id: str, config: dict):
-        if device_id in self._data.get("devices", {}):
-            self._data["devices"][device_id].update(config)
-            await self.async_save()
-
-    async def async_remove_device(self, device_id: str):
-        self._data.get("devices", {}).pop(device_id, None)
-        await self.async_save()
-
-
-
-
-    def _default_device_payload(self, device_id: str, device_info: dict | None = None) -> dict:
-        info = device_info or {}
-        return {
+        devices[device_id] = {
             "id": device_id,
-            "name": info.get("name", device_id),
-            "model": info.get("model", "Unknown"),
-            "android_version": info.get("android_version", ""),
-            "screen_resolution": info.get("screen_resolution", ""),
+            "name": device_info.get("name", device_id),
+            "model": device_info.get("model", "Unknown"),
+            "android_version": device_info.get("android_version", ""),
+            "screen_resolution": device_info.get("screen_resolution", ""),
             "screens": [],
             "rotation": {"enabled": True, "transition": "fade"},
             "ticker": {
@@ -120,51 +101,18 @@ class TickerDisplayStore:
             "font": "roboto",
             "created_at": None,
         }
-
-    def _next_virtual_device_id(self) -> str:
-        devices = self._data.setdefault("devices", {})
-        idx = 1
-        while True:
-            candidate = f"virtual_browser_{idx:03d}"
-            if candidate not in devices:
-                return candidate
-            idx += 1
-
-    async def async_create_virtual_device(
-        self,
-        *,
-        name: str | None = None,
-        source_device_id: str | None = None,
-    ) -> dict:
-        device_id = self._next_virtual_device_id()
-        source = self.get_device(source_device_id) if source_device_id else None
-
-        if source:
-            payload = deepcopy(source)
-            payload.update({
-                "id": device_id,
-                "name": name or f"{source.get('name', source_device_id)} (Virtuell)",
-                "model": "Virtual Browser",
-                "android_version": "Web",
-                "screen_resolution": source.get("screen_resolution", ""),
-            })
-        else:
-            payload = self._default_device_payload(
-                device_id,
-                {
-                    "name": name or f"Virtuelles Gerät {len(self.get_devices()) + 1}",
-                    "model": "Virtual Browser",
-                    "android_version": "Web",
-                    "screen_resolution": "Browser",
-                },
-            )
-
-        payload["virtual"] = True
-        payload["template_source_device_id"] = source_device_id
-        payload["created_at"] = datetime.now(timezone.utc).isoformat()
-        self._data.setdefault("devices", {})[device_id] = payload
         await self.async_save()
-        return deepcopy(payload)
+        _LOGGER.info("Device registered: %s", device_id)
+
+    async def async_update_device(self, device_id: str, config: dict):
+        if device_id in self._data.get("devices", {}):
+            self._data["devices"][device_id].update(config)
+            await self.async_save()
+
+    async def async_remove_device(self, device_id: str):
+        self._data.get("devices", {}).pop(device_id, None)
+        await self.async_save()
+
     # ── TEMPLATES ──
     def get_templates(self) -> dict:
         return self._data.get("templates", {})
