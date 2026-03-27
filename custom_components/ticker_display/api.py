@@ -146,6 +146,21 @@ class TickerDisplayAPI:
             "last_updated": getattr(state, "last_updated", None).isoformat() if getattr(state, "last_updated", None) else None,
         }
 
+    def _history_value(self, raw_state):
+        if raw_state in ("unavailable", "unknown", "", None, "None"):
+            return None
+        try:
+            val = float(raw_state)
+        except (ValueError, TypeError):
+            text = str(raw_state).strip().lower()
+            if text in {"on", "open", "opening", "home", "detected", "playing", "true", "heat", "cool", "armed_away", "armed_home", "armed_night"}:
+                return 1.0
+            if text in {"off", "closed", "closing", "not_home", "idle", "false", "disarmed", "unlocked"}:
+                return 0.0
+            return None
+        if not __import__("math").isfinite(val):
+            return None
+        return val
 
     def _absolute_url(self, request, path: str) -> str:
         if not path:
@@ -366,31 +381,18 @@ class TickerDisplayAPI:
                 entity_id, start_time, end_time
             )
 
-            # Numerische Datenpunkte extrahieren
+            # Numerische und digitale Datenpunkte extrahieren
             data_points = []
             for state in states:
-                # Ungültige States filtern
-                if state.state in (
-                    "unavailable",
-                    "unknown",
-                    "",
-                    None,
-                    "None",
-                ):
+                val = self._history_value(getattr(state, "state", None))
+                if val is None:
                     continue
-
-                try:
-                    val = float(state.state)
-                except (ValueError, TypeError):
+                last_changed = getattr(state, "last_changed", None) or getattr(state, "last_updated", None)
+                if not last_changed:
                     continue
-
-                # NaN / Infinity filtern
-                if not __import__("math").isfinite(val):
-                    continue
-
                 data_points.append(
                     {
-                        "x": state.last_changed.isoformat(),
+                        "x": last_changed.isoformat(),
                         "y": round(val, 4),
                     }
                 )

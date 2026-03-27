@@ -251,6 +251,129 @@ function lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
 }
 
+function tdNormalizeAlpha(value, fallback = 1) {
+  const num = Number.parseFloat(value);
+  return Number.isFinite(num) ? Math.max(0, Math.min(1, num)) : fallback;
+}
+
+function tdColorWithAlpha(color, alpha = 1) {
+  const input = String(color || "").trim();
+  if (!input) return "";
+  const a = tdNormalizeAlpha(alpha, 1);
+  let m = input.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\)$/i);
+  if (m) {
+    const r = Math.max(0, Math.min(255, Number(m[1])));
+    const g = Math.max(0, Math.min(255, Number(m[2])));
+    const b = Math.max(0, Math.min(255, Number(m[3])));
+    const baseAlpha = m[4] != null ? tdNormalizeAlpha(m[4], 1) : 1;
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, baseAlpha * a))})`;
+  }
+  m = input.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (m) {
+    const hex = m[1];
+    if (hex.length === 3 || hex.length === 4) {
+      const r = parseInt(hex[0] + hex[0], 16);
+      const g = parseInt(hex[1] + hex[1], 16);
+      const b = parseInt(hex[2] + hex[2], 16);
+      const baseAlpha = hex.length === 4 ? parseInt(hex[3] + hex[3], 16) / 255 : 1;
+      return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, baseAlpha * a))})`;
+    }
+    if (hex.length === 6 || hex.length === 8) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const baseAlpha = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
+      return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, baseAlpha * a))})`;
+    }
+  }
+  return input;
+}
+
+function tdPreviewSparklineSvg(value = 0, type = "simple-value") {
+  const base = Number.parseFloat(String(value).replace(',', '.'));
+  const v = Number.isFinite(base) ? base : 0;
+  const deltas = [-0.35, -0.18, -0.08, 0.04, 0.12, 0.2];
+  const samples = deltas.map((delta, idx) => {
+    let current = v * (1 + delta);
+    if (!Number.isFinite(current)) current = idx;
+    if (type === "status-dot") current = idx % 2 === 0 ? 0 : 1;
+    if (type === "trend-arrow") current = v + (idx - 2.5) * Math.max(0.4, Math.abs(v || 1) * 0.06);
+    return current;
+  });
+  const min = Math.min(...samples);
+  const max = Math.max(...samples);
+  const range = Math.max(0.0001, max - min);
+  const width = 180;
+  const height = 40;
+  const coords = samples.map((sample, idx) => {
+    const x = 4 + ((width - 8) * (idx / Math.max(1, samples.length - 1)));
+    const y = (height - 4) - (((sample - min) / range) * (height - 8));
+    return [Number(x.toFixed(2)), Number(y.toFixed(2))];
+  });
+  const path = coords.map(([x, y], idx) => `${idx === 0 ? 'M' : 'L'}${x} ${y}`).join(' ');
+  const fill = `${path} L ${coords[coords.length - 1][0]} ${height - 2} L ${coords[0][0]} ${height - 2} Z`;
+  const last = coords[coords.length - 1];
+  return html`<div class="pv-mini-graph"><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="pv-mini-fill" d="${fill}"></path><path class="pv-mini-line" d="${path}"></path><circle class="pv-mini-dot" cx="${last[0]}" cy="${last[1]}" r="2.8"></circle></svg></div>`;
+}
+
+function tdCanonicalizeWidgetPayload(widget = {}) {
+  const w = deepClone(widget || {});
+  if (!w.config) w.config = {};
+  const backgroundColor = w.background_color ?? w.bgColor;
+  const backgroundOpacity = w.opacity ?? w.bgOpacity;
+  const textColor = w.text_color ?? w.textColor;
+  const fontSize = w.font_size ?? w.fontSize;
+  const borderRadius = w.border_radius ?? w.borderRadius;
+  if (backgroundColor !== undefined) {
+    w.background_color = backgroundColor;
+    w.bgColor = backgroundColor;
+  }
+  if (backgroundOpacity !== undefined && backgroundOpacity !== "") {
+    const alpha = tdNormalizeAlpha(backgroundOpacity, 1);
+    w.opacity = alpha;
+    w.bgOpacity = alpha;
+  }
+  if (textColor !== undefined) {
+    w.text_color = textColor;
+    w.textColor = textColor;
+  }
+  if (fontSize !== undefined && fontSize !== "") {
+    const size = Number(fontSize) || 0;
+    w.font_size = size || fontSize;
+    w.fontSize = size || fontSize;
+  }
+  if (borderRadius !== undefined && borderRadius !== "") {
+    const radius = Number(borderRadius) || 0;
+    w.border_radius = radius || borderRadius;
+    w.borderRadius = radius || borderRadius;
+  }
+  if (w.blur !== undefined && w.blur !== "") w.blur = Number(w.blur) || 0;
+  if (w.type === "camera" && !w.entity_id && w.config?.camera_entity) w.entity_id = w.config.camera_entity;
+  if (w.type === "image") {
+    const imageUrl = w.image_url || w.imageUrl || "";
+    if (imageUrl) {
+      w.image_url = imageUrl;
+      w.imageUrl = imageUrl;
+    }
+  }
+  if (["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"].includes(w.type)) {
+    w.config = {
+      chart_use_history: true,
+      hours: 24,
+      chart_max_points: 24,
+      mini_graph_enabled: true,
+      ...(w.config || {}),
+    };
+  }
+  return w;
+}
+
+function tdCanonicalizeScreenPayload(screen = {}) {
+  const sc = deepClone(screen || {});
+  sc.widgets = (sc.widgets || []).map((w) => tdCanonicalizeWidgetPayload(w));
+  return sc;
+}
+
 /* ══════════════════════════════════════════════════════════
    DEFAULT SETTINGS & FACTORY FUNCTIONS
    ══════════════════════════════════════════════════════════ */
@@ -283,6 +406,7 @@ function tdCreateWidget(type, col, row, settings = {}) {
   const tapAction = tdDefaultTapActionForWidget(type);
   const isChart = TD_CHART_TYPES.has(type);
   const isToggleWidget = ["switch-control", "light-control"].includes(type);
+  const isValueStatus = ["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"].includes(type);
   return {
     id: uniqueId("w"),
     type,
@@ -308,6 +432,7 @@ function tdCreateWidget(type, col, row, settings = {}) {
       chart_use_history: true,
       chart_animation: d.default_chart_widget_animations !== false,
       chart_max_points: 48,
+      mini_graph_enabled: isValueStatus,
       value_decimals: 1,
       extra_value_decimals: 1,
       trim_trailing_zeros: false,
@@ -2296,7 +2421,7 @@ class TdScreenEditor extends LitElement {
 
   updated(changed) {
     if (changed.has("screenConfig") && this.screenConfig) {
-      this._cfg = deepClone(this.screenConfig);
+      this._cfg = tdCanonicalizeScreenPayload(this.screenConfig);
     }
   }
 
@@ -2679,25 +2804,18 @@ class TdScreenEditor extends LitElement {
         display: grid; place-items: center; height: 100%;
         font-size: 28px; opacity: .34;
       }
-      .wb .pv-chart-lines {
+      .wb .pv-mini-graph {
         width: 100%; height: 42px; border-radius: 10px;
         background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
         position: relative; overflow: hidden;
       }
-      .wb .pv-chart-lines::before,
-      .wb .pv-chart-lines::after {
-        content: ""; position: absolute; left: 6px; right: 6px; border-radius: 999px;
+      .wb .pv-mini-graph svg { width: 100%; height: 100%; display: block; }
+      .wb .pv-mini-fill { fill: rgba(64,196,255,.16); }
+      .wb .pv-mini-line {
+        fill: none; stroke: rgba(125,211,252,.94); stroke-width: 2.2;
+        stroke-linecap: round; stroke-linejoin: round;
       }
-      .wb .pv-chart-lines::before {
-        top: 11px; height: 2px;
-        background: linear-gradient(90deg, rgba(64,196,255,.0), rgba(64,196,255,.95) 25%, rgba(126,87,194,.95) 70%, rgba(255,255,255,.0));
-        transform: rotate(-6deg);
-      }
-      .wb .pv-chart-lines::after {
-        top: 22px; height: 2px;
-        background: linear-gradient(90deg, rgba(255,255,255,.0), rgba(255,193,7,.85) 30%, rgba(76,175,80,.85) 75%, rgba(255,255,255,.0));
-        transform: rotate(7deg);
-      }
+      .wb .pv-mini-dot { fill: rgba(255,255,255,.95); stroke: rgba(64,196,255,.94); stroke-width: 1.4; }
       .wb .pv-media-cover {
         width: 50px; height: 50px; border-radius: 12px; flex-shrink: 0;
         background: rgba(255,255,255,.08); display: flex; align-items: center; justify-content: center;
@@ -3217,9 +3335,9 @@ class TdScreenEditor extends LitElement {
       <div class="wb ${isSel ? "sel" : ""} ${isMulti ? "ms" : ""} ${w.locked ? "locked" : ""}"
            style="grid-column:${(w.col || 0) + 1}/span ${w.colspan || 1};
                   grid-row:${(w.row || 0) + 1}/span ${w.rowspan || 1};
-                  background:${w.bgColor || "#1E1E1E"};
+                  background:${tdColorWithAlpha(w.bgColor || w.background_color || "#1E1E1E", w.bgOpacity ?? w.opacity ?? 1) || (w.bgColor || w.background_color || "#1E1E1E")};
                   z-index:${w.z_index || i + 1};
-                  ${w.bgOpacity != null ? `opacity:${Math.max(0.2, Math.min(1, Number(w.bgOpacity) || 1))};` : ""}"
+                  ${Number(w.blur || 0) > 0 ? `backdrop-filter:blur(${Number(w.blur) || 0}px);-webkit-backdrop-filter:blur(${Number(w.blur) || 0}px);` : ""}"
            @click=${(e) => this._onWidgetClick(i, e)}
            @pointerdown=${(e) => this._onWidgetPointerDown(e, i)}
            draggable="${!w.locked ? "true" : "false"}"
@@ -3292,30 +3410,30 @@ class TdScreenEditor extends LitElement {
       const min = Number(w.config?.min ?? 0);
       const max = Number(w.config?.max ?? 100);
       const pct = Math.max(0, Math.min(100, ((this._editorWidgetNumeric(value, 0) - min) / Math.max(1, max - min)) * 100));
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div><div class="pv-sub">Gauge ${Math.round(pct)}%</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div>${tdPreviewSparklineSvg(this._editorWidgetNumeric(value, 0), w.type)}<div class="pv-sub">Gauge ${Math.round(pct)}%</div></div>`;
     }
 
     if (w.type === "progress-bar") {
       const min = Number(w.config?.min ?? 0);
       const max = Number(w.config?.max ?? 100);
       const pct = Math.max(0, Math.min(100, ((this._editorWidgetNumeric(value, 0) - min) / Math.max(1, max - min)) * 100));
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div><div class="pv-sub">Fortschritt ${Math.round(pct)}%</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-meter"><span style="width:${pct}%"></span></div>${tdPreviewSparklineSvg(this._editorWidgetNumeric(value, 0), w.type)}<div class="pv-sub">Fortschritt ${Math.round(pct)}%</div></div>`;
     }
 
     if (w.type === "status-dot") {
       const isOn = ["on","open","home","playing","true","1","heat","cool"].includes(String(value).toLowerCase());
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-dot ${isOn ? "on" : "off"}"></span></div><div class="pv-value">${isOn ? "Aktiv" : "Inaktiv"}</div><div class="pv-sub">${String(value || "—")}</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-dot ${isOn ? "on" : "off"}"></span></div><div class="pv-value">${isOn ? "Aktiv" : "Inaktiv"}</div>${tdPreviewSparklineSvg(isOn ? 1 : 0, w.type)}<div class="pv-sub">${String(value || "—")}</div></div>`;
     }
 
     if (w.type === "trend-arrow") {
       const numeric = this._editorWidgetNumeric(value, 0);
       const direction = numeric > 0 ? "up" : numeric < 0 ? "down" : "flat";
       const arrow = direction === "up" ? "▲" : direction === "down" ? "▼" : "▶";
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-trend ${direction}">${arrow} Trend</div><div class="pv-chart-lines"></div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-trend ${direction}">${arrow} Trend</div>${tdPreviewSparklineSvg(numeric, w.type)}</div>`;
     }
 
     if (w.type === "simple-value" || w.type === "icon-value") {
-      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div><div class="pv-chart-lines"></div><div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div></div>`;
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div>${tdPreviewSparklineSvg(this._editorWidgetNumeric(value, 0), w.type)}<div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div></div>`;
     }
 
     if (w.type === "media-player-control") {
@@ -4588,6 +4706,39 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
                @change=${(e) => this._setWidgetConfig("camera_tap_fullscreen", e.target.checked)}>
         <span>Tap = Vollbild</span>
       </div>
+    `);
+  }
+
+  // Value & Status mini graph
+  if (["simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"].includes(w.type)) {
+    parts.push(html`
+      <div class="pg4">Mini-Grafik</div>
+      <label class="tog">
+        <input type="checkbox"
+               .checked=${w.config?.mini_graph_enabled !== false}
+               @change=${(e) => this._setWidgetConfig("mini_graph_enabled", e.target.checked)}>
+        <span>Mini-Grafik anzeigen</span>
+      </label>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Zeitraum (h)</label>
+          <input type="number" min="1" max="168"
+                 .value=${w.config?.hours || 24}
+                 @change=${(e) => this._setWidgetConfig("hours", +e.target.value)}>
+        </div>
+        <div class="pf2">
+          <label>Max. Punkte</label>
+          <input type="number" min="8" max="72"
+                 .value=${w.config?.chart_max_points || 24}
+                 @change=${(e) => this._setWidgetConfig("chart_max_points", +e.target.value)}>
+        </div>
+      </div>
+      <label class="tog">
+        <input type="checkbox"
+               .checked=${w.config?.chart_use_history !== false}
+               @change=${(e) => this._setWidgetConfig("chart_use_history", e.target.checked)}>
+        <span>Verlauf aus History laden</span>
+      </label>
     `);
   }
 
@@ -8770,7 +8921,7 @@ TickerDisplayPanel.prototype._saveScreen = async function (device, screenConfig)
   if (!device) return;
   try {
     const screens = [...(device.screens || [])];
-    screens[this._scrIdx] = screenConfig;
+    screens[this._scrIdx] = tdCanonicalizeScreenPayload(screenConfig);
     await this._post(`/api/config/device/${this._devId}`, { ...device, screens });
     await this._loadAll();
     this._toast("✅ Screen gespeichert", "success");
@@ -8831,7 +8982,7 @@ TickerDisplayPanel.prototype._saveScreenAsTemplate = async function (device, det
       name: detail.name || screen.name || "Screen Vorlage",
       category: "custom",
       description: `Erstellt aus ${device.name || device.id} – ${screen.name || "Screen"}`,
-      screen_config: deepClone(screen),
+      screen_config: tdCanonicalizeScreenPayload(screen),
       variables: [],
     });
     await this._loadAll();
@@ -8846,7 +8997,7 @@ TickerDisplayPanel.prototype._importScreenTemplate = async function (device, tem
   const tpl = this._templates?.[templateId];
   if (!tpl?.screen_config || !device) return;
   try {
-    const sc = tdHydrateScreenPresetEntities(deepClone(tpl.screen_config), this.hass);
+    const sc = tdHydrateScreenPresetEntities(tdCanonicalizeScreenPayload(tpl.screen_config), this.hass);
     sc.id = uniqueId("screen");
     sc.name = sc.name || tpl.name || `Screen ${(device.screens?.length || 0) + 1}`;
     const screens = [...(device.screens || []), sc];

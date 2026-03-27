@@ -88,6 +88,10 @@ const CHART_WIDGET_TYPES = new Set([
   "radial-gauge-advanced", "bullet-chart"
 ]);
 
+const VALUE_STATUS_WIDGET_TYPES = new Set([
+  "simple-value", "icon-value", "trend-arrow", "status-dot", "gauge", "progress-bar"
+]);
+
 const CHART_TYPE_ICONS = {
   "mini-graph": "📉", "sparkline": "〰️", "line-chart": "📈",
   "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈",
@@ -98,6 +102,51 @@ const CHART_TYPE_ICONS = {
   "energy-flow-mini": "⚡", "comparison-chart": "⚖️",
   "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯"
 };
+
+function tdNormalizeAlpha(value, fallback = 1) {
+  const num = Number.parseFloat(value);
+  return Number.isFinite(num) ? Math.max(0, Math.min(1, num)) : fallback;
+}
+
+function tdTruthyHistoryValue(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (["on", "open", "opening", "home", "detected", "playing", "true", "heat", "cool", "armed_away", "armed_home", "armed_night"].includes(raw)) return 1;
+  if (["off", "closed", "closing", "not_home", "idle", "false", "unlocked", "disarmed"].includes(raw)) return 0;
+  return null;
+}
+
+function tdColorWithAlpha(color, alpha = 1) {
+  const input = String(color || "").trim();
+  if (!input) return "";
+  const a = tdNormalizeAlpha(alpha, 1);
+  let m = input.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\)$/i);
+  if (m) {
+    const r = Math.max(0, Math.min(255, Number(m[1])));
+    const g = Math.max(0, Math.min(255, Number(m[2])));
+    const b = Math.max(0, Math.min(255, Number(m[3])));
+    const baseAlpha = m[4] != null ? tdNormalizeAlpha(m[4], 1) : 1;
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, baseAlpha * a))})`;
+  }
+    m = input.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (m) {
+    const hex = m[1];
+    if (hex.length === 3 || hex.length === 4) {
+      const r = parseInt(hex[0] + hex[0], 16);
+      const g = parseInt(hex[1] + hex[1], 16);
+      const b = parseInt(hex[2] + hex[2], 16);
+      const baseAlpha = hex.length === 4 ? parseInt(hex[3] + hex[3], 16) / 255 : 1;
+      return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, baseAlpha * a))})`;
+    }
+    if (hex.length === 6 || hex.length === 8) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const baseAlpha = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
+      return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, baseAlpha * a))})`;
+    }
+  }
+  return input;
+}
 
 /* ══════════════════════════════════════════════════════════
    DATA MANAGER – FIX: History-Format-Erkennung
@@ -158,7 +207,8 @@ class DataManager {
         const val  = p.y ?? p.value ?? p.state ?? p.v ?? p.val ?? null;
 
         if (val === null || val === undefined) return null;
-        const y = Utils.toNumber(val, null);
+        let y = Utils.toNumber(val, null);
+        if (y === null) y = tdTruthyHistoryValue(val);
         if (y === null) return null;
 
         return { x: time || new Date().toISOString(), y };
@@ -428,17 +478,45 @@ class ScreenManager {
 
   /* ────── FEHLENDE METHODE: _applyCommonWidgetStyle ────── */
   _applyCommonWidgetStyle(widget, config) {
-    if (config.background_color) widget.style.backgroundColor = config.background_color;
-    if (config.background_image) {
-      widget.style.backgroundImage = `url(${config.background_image})`;
-      widget.style.backgroundSize = config.background_size || "cover";
-      widget.style.backgroundPosition = "center";
+    const surfaceColor = config.background_color || config.bgColor || "";
+    const surfaceOpacity = tdNormalizeAlpha(config.bgOpacity ?? config.opacity ?? config.config?.opacity, 1);
+    const borderRadius = config.border_radius ?? config.borderRadius;
+    const blur = Math.max(0, Number(config.blur ?? config.config?.blur ?? 0) || 0);
+    const textColor = config.text_color || config.textColor || "";
+    const fontSize = config.font_size ?? config.fontSize;
+    const backgroundImage = config.background_image || config.backgroundImage || "";
+    const backgroundSize = config.background_size || config.background_image_size || config.backgroundSize || "cover";
+    const borderColor = config.border_color || config.borderColor || "";
+    const borderWidth = config.border_width ?? config.borderWidth;
+    const explicitOpacity = config.style_opacity ?? config.widget_opacity;
+
+    widget.style.backgroundColor = surfaceColor ? tdColorWithAlpha(surfaceColor, surfaceOpacity) : `rgba(30, 30, 30, ${surfaceOpacity})`;
+    if (backgroundImage) {
+      const shade = Math.max(0, Math.min(0.88, 1 - surfaceOpacity));
+      widget.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url(${backgroundImage})`;
+      widget.style.backgroundSize = `100% 100%, ${backgroundSize}`;
+      widget.style.backgroundPosition = "center center, center center";
+      widget.style.backgroundRepeat = "no-repeat, no-repeat";
+      widget.classList.add("widget-has-bg-image");
+    } else {
+      widget.style.backgroundImage = "";
+      widget.style.backgroundSize = "";
+      widget.style.backgroundPosition = "";
+      widget.style.backgroundRepeat = "";
+      widget.classList.remove("widget-has-bg-image");
     }
-    if (config.border_color) widget.style.borderColor = config.border_color;
-    if (config.border_width) { widget.style.borderWidth = `${config.border_width}px`; widget.style.borderStyle = "solid"; }
-    if (config.border_radius) widget.style.borderRadius = `${config.border_radius}px`;
-    if (config.text_color) widget.style.color = config.text_color;
-    if (config.opacity !== undefined && config.opacity !== null) widget.style.opacity = String(config.opacity);
+    if (borderColor) widget.style.borderColor = borderColor;
+    if (borderWidth) { widget.style.borderWidth = `${borderWidth}px`; widget.style.borderStyle = "solid"; }
+    if (borderRadius != null && borderRadius !== "") widget.style.borderRadius = `${borderRadius}px`;
+    if (textColor) widget.style.color = textColor;
+    if (fontSize != null && fontSize !== "") widget.style.fontSize = `${fontSize}px`;
+    if (explicitOpacity !== undefined && explicitOpacity !== null && explicitOpacity !== "") widget.style.opacity = String(tdNormalizeAlpha(explicitOpacity, 1));
+    else widget.style.opacity = "";
+    widget.style.backdropFilter = blur > 0 ? `blur(${blur}px)` : "";
+    widget.style.webkitBackdropFilter = blur > 0 ? `blur(${blur}px)` : "";
+    widget.style.setProperty("--td-widget-blur", `${blur}px`);
+    widget.style.setProperty("--td-widget-bg-opacity", String(surfaceOpacity));
+    widget.classList.toggle("widget-has-translucent-bg", surfaceOpacity < 0.98 || blur > 0 || !!backgroundImage || !!(config.glass || config.config?.glass));
     if (config.css_class) widget.classList.add(...String(config.css_class).split(/\s+/));
     if (config.glass || config.config?.glass) widget.classList.add("widget-glass");
     if (config.glow || config.config?.glow) widget.classList.add("widget-glow");
@@ -492,7 +570,9 @@ class ScreenManager {
 
     if (points.length > 0) return points;
     const now = new Date();
-    const val = Utils.toNumber(fallbackValue, 0);
+    let val = Utils.toNumber(fallbackValue, null);
+    if (val === null) val = tdTruthyHistoryValue(fallbackValue);
+    if (val === null) val = 0;
     return [
       { x: new Date(now.getTime() - 3600000).toISOString(), y: val * 0.95 },
       { x: now.toISOString(), y: val }
@@ -738,6 +818,10 @@ class ScreenManager {
       default: this._renderDefaultWidget(widget, config, value, unit, name, icon); break;
     }
 
+    const isValueStatusWidget = VALUE_STATUS_WIDGET_TYPES.has(config.type);
+    widget.classList.toggle("widget-value-status", isValueStatusWidget);
+    if (isValueStatusWidget) this._attachValueStatusGraphic(widget, config, state);
+
     this._applyCommonWidgetStyle(widget, config);
     widget.classList.toggle("widget-animated", config.animations !== false);
     widget.classList.toggle(`widget-anim-${config.type || "generic"}`, config.animations !== false);
@@ -853,6 +937,69 @@ class ScreenManager {
     widget.classList.add("widget-trend-arrow");
     widget.innerHTML = `<div class="w-icon trend-arrow-icon"><span style="font-size:24px">${icon}</span></div><div class="trend-main"><div><span class="w-value">${Utils.formatValue(state?.state ?? "—", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div><div class="trend-arrow-chip ${direction} trend-chip-animated" style="color:${trendColor}">${arrow} <span class="trend-delta">${Number.isFinite(diff) ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '0.0'}${unit}</span></div></div><div class="w-name">${name || state?.attributes?.friendly_name || config.entity_id || 'Trend'}</div>`;
     this._renderExtraEntityList(widget, config);
+  }
+
+  _valueStatusGraphicEnabled(config) {
+    return VALUE_STATUS_WIDGET_TYPES.has(config?.type) && config?.config?.mini_graph_enabled !== false;
+  }
+
+  _valueStatusGraphicPalette(config, state) {
+    const zoneColor = config?.type === "gauge" ? this._getZoneColor(Utils.toNumber(state?.state, 0), config?.config?.zones) : "";
+    return zoneColor || config?.config?.color || config?.accent_color || config?.text_color || config?.textColor || "var(--td-accent)";
+  }
+
+  _valueStatusGraphicSvg(points, config, state) {
+    const normalized = Utils.safeArray(points).map((p, idx) => ({ x: p?.x ?? idx, y: Utils.toNumber(p?.y, 0) }));
+    const base = normalized.length >= 2 ? normalized : this._normalizePoints([], state?.state);
+    const values = base.map((p) => Utils.toNumber(p.y, 0));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = Math.max(0.0001, max - min);
+    const width = 220;
+    const height = 54;
+    const padX = 4;
+    const padY = 5;
+    const coords = base.map((point, idx) => {
+      const x = padX + ((width - padX * 2) * (idx / Math.max(1, base.length - 1)));
+      const y = (height - padY) - (((Utils.toNumber(point.y, 0) - min) / range) * (height - padY * 2));
+      return [Number(x.toFixed(2)), Number(y.toFixed(2))];
+    });
+    const path = coords.map(([x, y], idx) => `${idx === 0 ? "M" : "L"}${x} ${y}`).join(" ");
+    const fill = `${path} L ${coords[coords.length - 1][0]} ${height - 2} L ${coords[0][0]} ${height - 2} Z`;
+    const last = coords[coords.length - 1];
+    const color = this._valueStatusGraphicPalette(config, state);
+    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="td-mini-graph-fill" d="${fill}" style="fill:${color}"></path><path class="td-mini-graph-line" d="${path}" style="stroke:${color}"></path><circle class="td-mini-graph-dot" cx="${last[0]}" cy="${last[1]}" r="3.2" style="fill:${color}"></circle></svg>`;
+  }
+
+  async _attachValueStatusGraphic(widget, config, state = null) {
+    const container = widget?.querySelector?.('.td-mini-graph');
+    if (!this._valueStatusGraphicEnabled(config)) {
+      if (container) container.remove();
+      return;
+    }
+    const entityId = config?.entity_id;
+    if (!entityId) return;
+    const graphHost = container || document.createElement('div');
+    graphHost.className = 'td-mini-graph';
+    if (!container) {
+      const extra = widget.querySelector('.td-extra-entities');
+      if (extra) widget.insertBefore(graphHost, extra);
+      else widget.appendChild(graphHost);
+    }
+
+    let points = [];
+    if (config?.config?.chart_use_history !== false) {
+      try {
+        const hours = Number(config?.config?.hours || this.app?.globalSettings?.default_chart_hours || 24);
+        const maxPoints = Number(config?.config?.chart_max_points || 24);
+        const history = await this.app.dataManager.fetchHistory(entityId, hours);
+        points = this._chartSamplePoints(this._normalizePoints(history?.data, state?.state), maxPoints);
+      } catch (e) {
+        console.warn('mini graph history failed', entityId, e);
+      }
+    }
+    if (!points.length) points = this._normalizePoints([], state?.state);
+    graphHost.innerHTML = this._valueStatusGraphicSvg(points, config, state || this.app.entityStates[entityId] || {});
   }
 
   _renderCameraWidget(widget, config, name) {
@@ -1210,6 +1357,7 @@ class ScreenManager {
       }
       default: { const wv = element.querySelector(".w-value"); if (wv) wv.textContent = Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false }); }
     }
+    if (VALUE_STATUS_WIDGET_TYPES.has(config.type)) this._attachValueStatusGraphic(element, config, newState || this.app.entityStates[config.entity_id] || {});
     this._updateExtraEntityList(element, config);
     element.classList.remove("value-changed"); void element.offsetWidth; element.classList.add("value-changed");
   }
@@ -1957,12 +2105,13 @@ class TickerDisplayApp {
   }
 
   async callEntityToggle(entityId) {
-    const domain = String(entityId || "").split(".")[0];
-    if (!domain) return false;
-    const serviceDomain = ["switch","light","input_boolean","fan","media_player","valve"].includes(domain) ? domain : "homeassistant";
-    const service = serviceDomain === "media_player" ? "media_play_pause" : serviceDomain === 'valve' ? 'open_valve' : "toggle";
+    if (!entityId) return false;
     try {
-      const resp = await fetch(`/api/services/${serviceDomain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ entity_id: entityId }) });
+      const resp = await fetch(`${this.apiBase}/api/entity/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity_id: entityId }),
+      });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return true;
     } catch (e) { console.warn("toggle failed", entityId, e); return false; }
@@ -1970,7 +2119,11 @@ class TickerDisplayApp {
 
   async callEntityService(domain, service, data = {}) {
     try {
-      const resp = await fetch(`/api/services/${domain}/${service}`, { method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify(data) });
+      const resp = await fetch(`${this.apiBase}/api/entity/service`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain, service, data }),
+      });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return true;
     } catch (e) { console.warn("service call failed", domain, service, data, e); return false; }
