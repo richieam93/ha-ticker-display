@@ -6620,7 +6620,7 @@ class TdAlertEditor extends LitElement {
         icon: "", sound: "", sound_url: "",
         duration: 10, flash_screen: false,
         vibrate: false, persistent: false, require_ack: false, wake_screen: false,
-        color: "", volume: 100, tag: "", source: "", progress_value: 0, progress_text: "",
+        color: "", background_color: "", text_color: "", accent_color: "", card_background_color: "", volume: 100, tag: "", source: "", progress_value: 0, progress_text: "",
         ack_label: "Bestätigen", secondary_label: "", camera_entity_id: "", actions: [],
         tts_message: "", tts_language: "de-DE", tts_url: "",
       };
@@ -6834,29 +6834,71 @@ class TdAlertEditor extends LitElement {
           </div>
         </div>
 
-        <div class="f">
-          <label>TTS von Home Assistant (Audio-URL)</label>
-          <input .value=${c.tts_url || ""}
-                 @input=${(e) => this._set("tts_url", e.target.value)}
-                 placeholder="/api/tts_proxy/... oder volle http(s)-URL">
-          <div style="margin-top:6px;font-size:12px;color:var(--secondary-text-color)">
-            Wenn gesetzt, wird diese Audio-Datei über den Smartphone-Lautsprecher abgespielt. Das ist ideal für Home-Assistant-TTS.
+        <div class="row">
+          <div class="f">
+            <td-color-picker
+              .value=${c.background_color || "rgba(24,88,161,.78)"}
+              label="Alarm-Hintergrund"
+              @value-changed=${(e) => this._set("background_color", e.detail.value)}>
+            </td-color-picker>
+          </div>
+          <div class="f">
+            <td-color-picker
+              .value=${c.text_color || "#ffffff"}
+              label="Alarm-Text"
+              @value-changed=${(e) => this._set("text_color", e.detail.value)}>
+            </td-color-picker>
           </div>
         </div>
         <div class="row">
           <div class="f">
-            <label>TTS-Nachricht (Fallback lokal)</label>
-            <input .value=${c.tts_message || ""}
-                   @input=${(e) => this._set("tts_message", e.target.value)}
-                   placeholder="Optionaler Fallback, wenn keine TTS-URL vorhanden ist">
+            <td-color-picker
+              .value=${c.accent_color || c.color || "#5aa9ff"}
+              label="Alarm-Akzent"
+              @value-changed=${(e) => this._set("accent_color", e.detail.value)}>
+            </td-color-picker>
           </div>
           <div class="f">
-            <label>TTS-Sprache</label>
-            <input .value=${c.tts_language || "de-DE"}
+            <td-color-picker
+              .value=${c.card_background_color || "rgba(17,24,39,.82)"}
+              label="Karten-Hintergrund"
+              @value-changed=${(e) => this._set("card_background_color", e.detail.value)}>
+            </td-color-picker>
+          </div>
+        </div>
+
+        <div class="f">
+          <label>TTS-Nachricht (Home Assistant)</label>
+          <input .value=${c.tts_message || ""}
+                 @input=${(e) => this._set("tts_message", e.target.value)}
+                 placeholder="Text, den Home Assistant als Audio erzeugen soll">
+          <div style="margin-top:6px;font-size:12px;color:var(--secondary-text-color)">
+            Einfach Text eingeben. Die Integration erzeugt automatisch eine Home-Assistant-TTS-Audio-URL und spielt sie auf dem Display ab.
+          </div>
+        </div>
+        <div class="row">
+          <div class="f">
+            <label>TTS-Engine (optional)</label>
+            <input .value=${c.tts_engine_id || ""}
+                   @input=${(e) => this._set("tts_engine_id", e.target.value)}
+                   placeholder="z.B. tts.piper">
+          </div>
+          <div class="f">
+            <label>TTS-Sprache (optional)</label>
+            <input .value=${c.tts_language || ""}
                    @input=${(e) => this._set("tts_language", e.target.value)}
                    placeholder="de-DE">
           </div>
         </div>
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;color:var(--secondary-text-color)">Erweiterte TTS-Optionen</summary>
+          <div class="f" style="margin-top:8px">
+            <label>Manuelle TTS-Audio-URL (optional)</label>
+            <input .value=${c.tts_url || ""}
+                   @input=${(e) => this._set("tts_url", e.target.value)}
+                   placeholder="/api/tts_proxy/... oder volle http(s)-URL">
+          </div>
+        </details>
         <div class="row">
           <div class="f">
             <label>Fortschritt %</label>
@@ -6968,10 +7010,10 @@ class TdAlertEditor extends LitElement {
       <!-- Preview -->
       <div class="sec">
         <h3>👁️ Vorschau</h3>
-        <div class="preview ${c.severity || "info"}">
+        <div class="preview ${c.severity || "info"}" style=${`background:${c.background_color || c.card_background_color || '#121212'};color:${c.text_color || '#ffffff'};border-color:${c.accent_color || c.color || '#5aa9ff'};`}>
           <div class="preview-icon">${c.icon || sevIcons[c.severity] || "ℹ️"}</div>
-          <div class="preview-title">${c.title || "Alert"}</div>
-          <div class="preview-message">${c.message || "Nachricht..."}</div>
+          <div class="preview-title" style=${`color:${c.text_color || '#ffffff'};`}>${c.title || "Alert"}</div>
+          <div class="preview-message" style=${`color:${c.text_color || 'rgba(255,255,255,.78)'};opacity:.86;`}>${c.message || "Nachricht..."}</div>
         </div>
       </div>
 

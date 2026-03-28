@@ -95,15 +95,15 @@
 }
 
 .alert-overlay.severity-info {
-  background: rgba(24, 88, 161, .78);
+  background: var(--td-alert-bg, rgba(24, 88, 161, .78));
 }
 
 .alert-overlay.severity-warning {
-  background: rgba(184, 111, 10, .80);
+  background: var(--td-alert-bg, rgba(184, 111, 10, .80));
 }
 
 .alert-overlay.severity-critical {
-  background: rgba(180, 33, 33, .82);
+  background: var(--td-alert-bg, rgba(180, 33, 33, .82));
   animation: alertFadeIn .28s ease, alertPulseBg 1.6s ease infinite;
 }
 
@@ -112,9 +112,9 @@
   border-radius: 28px;
   padding: 34px 32px;
   text-align: center;
-  color: #fff;
-  background: rgba(0,0,0,.20);
-  border: 1px solid rgba(255,255,255,.12);
+  color: var(--td-alert-text, #fff);
+  background: var(--td-alert-card-bg, rgba(0,0,0,.20));
+  border: 1px solid var(--td-alert-border, rgba(255,255,255,.12));
   box-shadow:
     0 24px 80px rgba(0,0,0,.34),
     inset 0 1px 0 rgba(255,255,255,.12);
@@ -137,7 +137,7 @@
 
 .alert-message {
   font-size: clamp(17px, 2vw, 22px);
-  color: rgba(255,255,255,.92);
+  color: var(--td-alert-text, rgba(255,255,255,.92));
   max-width: 620px;
   margin: 0 auto;
   line-height: 1.45;
@@ -146,7 +146,7 @@
 .alert-timer {
   margin-top: 22px;
   font-size: 13px;
-  color: rgba(255,255,255,.62);
+  color: var(--td-alert-muted, rgba(255,255,255,.62));
   letter-spacing: .03em;
 }
 
@@ -186,9 +186,9 @@
   gap: 14px;
   border-radius: 18px;
   animation: bannerSlideIn .28s ease;
-  color: #fff;
+  color: var(--td-alert-text, #fff);
   font-size: 15px;
-  border: 1px solid rgba(255,255,255,.12);
+  border: 1px solid var(--td-alert-border, rgba(255,255,255,.12));
   box-shadow:
     0 16px 40px rgba(0,0,0,.24),
     inset 0 1px 0 rgba(255,255,255,.08);
@@ -242,8 +242,8 @@
 
 .toast-message {
   max-width: min(420px, 90vw);
-  background: rgba(28,28,30,.94);
-  color: #fff;
+  background: var(--td-alert-card-bg, rgba(28,28,30,.94));
+  color: var(--td-alert-text, #fff);
   padding: 14px 18px;
   border-radius: 16px;
   font-size: 14px;
@@ -669,4 +669,20 @@ body.alert-flash-on::after, .alert-overlay.alert-flash-on::after {
 @keyframes tdAlertFlash {
   from { opacity: .08; }
   to { opacity: .42; }
+}
+
+
+.alert-topline,
+.banner-tag,
+.toast-title {
+  color: var(--td-alert-muted, rgba(255,255,255,.78));
+}
+
+.alert-action-btn.primary {
+  background: var(--td-alert-accent, #5aa9ff);
+  border-color: var(--td-alert-accent, #5aa9ff);
+}
+
+.alert-progress span {
+  background: linear-gradient(90deg, var(--td-alert-accent, #6ea8ff), color-mix(in srgb, var(--td-alert-accent, #6ea8ff) 62%, white));
 }

@@ -270,8 +270,11 @@ class BridgeWrapper {
     if (!url) return;
     if (this._bridge) {
       try {
-        loop ? this._bridge.playSoundLoop(url) : this._bridge.playSound(url);
-        if (volume !== undefined) this._bridge.setVolume(volume);
+        if (this._bridge.playAlertSound) this._bridge.playAlertSound(url, Math.round(volume ?? 100), !!loop);
+        else {
+          loop ? this._bridge.playSoundLoop(url) : this._bridge.playSound(url);
+          if (volume !== undefined) this._bridge.setVolume(volume);
+        }
       } catch (e) {}
       return;
     }
@@ -290,15 +293,7 @@ class BridgeWrapper {
   }
 
   ttsSpeak(text, lang = "de") {
-    if (this._bridge?.ttsSpeak) { try { this._bridge.ttsSpeak(text, lang); } catch (e) {} return; }
-    if (window.speechSynthesis && text) {
-      try {
-        const utter = new SpeechSynthesisUtterance(String(text));
-        if (lang) utter.lang = String(lang);
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utter);
-      } catch (e) {}
-    }
+    console.warn('Local app/browser TTS is disabled; use Home Assistant TTS audio URLs instead.', { text, lang });
   }
 
   setVolume(v) {
@@ -2333,6 +2328,27 @@ class AlertManager {
     return Math.max(0, Math.min(3600, duration));
   }
 
+  _alertPalette(data = {}, severity = "info") {
+    const base = String(data.color || data.accent_color || '').trim() || ({ info: '#2196F3', warning: '#FF9800', critical: '#F44336' }[severity] || '#2196F3');
+    const background = String(data.background_color || '').trim() || Utils.applyAlpha(base, severity === 'critical' ? 0.82 : 0.74);
+    const text = String(data.text_color || '').trim() || '#ffffff';
+    const accent = String(data.accent_color || data.color || '').trim() || base;
+    const muted = Utils.applyAlpha(text, 0.72) || 'rgba(255,255,255,.72)';
+    const cardBg = String(data.card_background_color || '').trim() || Utils.applyAlpha('#111827', 0.76);
+    return { base, background, text, accent, muted, cardBg };
+  }
+
+  _applyAlertTheme(target, data = {}, severity = 'info') {
+    if (!target) return;
+    const palette = this._alertPalette(data, severity);
+    target.style.setProperty('--td-alert-bg', palette.background);
+    target.style.setProperty('--td-alert-text', palette.text);
+    target.style.setProperty('--td-alert-muted', palette.muted);
+    target.style.setProperty('--td-alert-accent', palette.accent);
+    target.style.setProperty('--td-alert-card-bg', palette.cardBg);
+    target.style.setProperty('--td-alert-border', Utils.applyAlpha(palette.accent, 0.38) || 'rgba(255,255,255,.12)');
+  }
+
   _startAttentionEffects(data = {}) {
     const soundUrl = String(data.sound_url || data.soundUrl || '').trim();
     const volume = Utils.clamp(Number(data.volume ?? data.sound_volume ?? 100) || 100, 0, 100);
@@ -2344,8 +2360,6 @@ class AlertManager {
     const ttsUrl = String(data.tts_url || data.tts_audio_url || '').trim();
     if (ttsUrl) {
       this.app?.bridge?.playSound(ttsUrl, volume, false);
-    } else if (data.tts_message) {
-      this.app?.bridge?.ttsSpeak(String(data.tts_message), String(data.tts_language || 'de-DE'));
     }
 
     const shouldFlash = !!data.flash_screen || !!data.blink_screen;
@@ -2429,6 +2443,7 @@ class AlertManager {
     if (!this.overlay) return;
     const sev = data.severity || "info";
     this.overlay.className = `alert-overlay severity-${sev}`;
+    this._applyAlertTheme(this.overlay, data, sev);
     this.overlay.innerHTML = `<div class="alert-card"><div class="alert-topline">${Utils.text(data.source || "Alert")}</div><div class="alert-icon">${data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️"}</div><div class="alert-title">${Utils.text(data.title || "")}</div><div class="alert-message">${Utils.text(data.message || "")}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}${data.duration && !data.require_ack && !data.persistent ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}</div>`;
     this.overlay.hidden = false;
     this._bindAlertActions(this.overlay, data);
@@ -2439,6 +2454,7 @@ class AlertManager {
     if (!this.banner) return;
     const sev = data.severity || "info";
     this.banner.className = `notification-banner severity-${sev}`;
+    this._applyAlertTheme(this.banner, data, sev);
     this.banner.innerHTML = `<div class="banner-icon">${Utils.text(data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️")}</div><div class="banner-main"><div class="banner-title-row"><div class="banner-title">${Utils.text(data.title || data.source || 'Hinweis')}</div>${data.tag ? `<div class="banner-tag">${Utils.text(data.tag)}</div>` : ''}</div><div class="banner-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}</div>${this._actionsMarkup(data)}`;
     this.banner.hidden = false;
     this._bindAlertActions(this.banner, data);
@@ -2449,6 +2465,7 @@ class AlertManager {
     if (!this.overlay) return;
     const sev = data.severity || "info";
     this.overlay.className = `alert-overlay overlay-card-mode severity-${sev}`;
+    this._applyAlertTheme(this.overlay, data, sev);
     this.overlay.innerHTML = `<div class="alert-card alert-card-overlay"><div class="alert-topline">${Utils.text(data.source || 'Overlay')}</div><div class="alert-title">${Utils.text(data.title || '')}</div><div class="alert-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}</div>`;
     this.overlay.hidden = false;
     this._bindAlertActions(this.overlay, data);
@@ -2459,6 +2476,7 @@ class AlertManager {
     if (!this.overlay) return;
     const sev = data.severity || "info";
     this.overlay.className = `alert-overlay split-mode severity-${sev}`;
+    this._applyAlertTheme(this.overlay, data, sev);
     const cam = data.camera_entity_id || data.entity_id || '';
     const camUrl = cam ? `${this.app.apiBase}/api/image/camera/${encodeURIComponent(cam)}` : '';
     this.overlay.innerHTML = `<div class="alert-split-shell"><div class="alert-split-main"><div class="alert-topline">${Utils.text(data.source || 'Split')}</div><div class="alert-title">${Utils.text(data.title || '')}</div><div class="alert-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}</div><div class="alert-split-side">${camUrl ? `<img class="alert-split-camera" src="${camUrl}" alt="Kamera">` : `<div class="alert-split-placeholder">${Utils.text(data.icon || '📣')}</div>`}</div></div>`;
@@ -2473,6 +2491,8 @@ class AlertManager {
 
   _showToast(data) {
     if (!this.toastContainer) return;
+    const sev = data.severity || 'info';
+    this._applyAlertTheme(this.toastContainer, data, sev);
     this.toastContainer.innerHTML = `<div class="toast-message"><div class="toast-title">${Utils.text(data.title || data.source || 'Info')}</div><div>${Utils.text(data.message || '')}</div>${this._actionsMarkup(data)}</div>`;
     this.toastContainer.hidden = false;
     this._bindAlertActions(this.toastContainer, data);
@@ -2566,7 +2586,7 @@ class TickerDisplayApp {
 
   onAudio(data) {
     if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
-    else if (data.action === "tts") this.bridge.ttsSpeak(data.text, data.language, data.volume);
+    else if (data.action === "tts" && data.url) this.bridge.playSound(data.url, data.volume, false);
     else if (data.action === "stop") this.bridge.stopSound();
     else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
   }

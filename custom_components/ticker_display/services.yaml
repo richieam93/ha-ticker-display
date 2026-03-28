@@ -165,12 +165,20 @@ show_alert:
       example: '[{"id":"open_cam","label":"Kamera"}]'
     tts_message:
       name: TTS message
-      description: Optionaler Text, den die Android-App direkt vorliest.
+      description: Text, den Home Assistant als Audio erzeugt und an das Display sendet.
       example: "Achtung. Bewegung an der Haustür."
     tts_language:
       name: TTS language
-      description: Sprachcode fuer die Android-App, z. B. de-DE, de-CH oder en-US.
+      description: Optionaler Sprachcode für die Home-Assistant-TTS-Engine.
       example: "de-DE"
+    tts_engine_id:
+      name: TTS engine
+      description: Optionale TTS-Entity aus Home Assistant, z. B. tts.piper. Ohne Angabe wird die Standard-TTS-Engine verwendet.
+      example: "tts.piper"
+    tts_url:
+      name: TTS audio URL
+      description: Optionaler manueller Override. Normalerweise leer lassen, da die Integration die Audio-URL automatisch erzeugt.
+      example: "/api/tts_proxy/..."
     duration:
       name: Duration
       description: Sekunden bis der Alert automatisch verschwindet und der vorherige Screen wieder sichtbar wird.
@@ -371,7 +379,7 @@ play_sound:
 
 tts_speak:
   name: TTS speak
-  description: Speak text on one or more devices.
+  description: Generate Home-Assistant-TTS audio and play it on one or more devices.
   fields:
     device:
       name: Device
@@ -383,8 +391,12 @@ tts_speak:
       example: "Achtung, die Haustür wurde geöffnet"
     language:
       name: Language
-      description: Language code.
-      example: "de"
+      description: Optional language code for the Home-Assistant-TTS engine.
+      example: "de-DE"
+    tts_engine_id:
+      name: TTS engine
+      description: Optional TTS entity_id, for example tts.piper.
+      example: "tts.piper"
     volume:
       name: Volume
       description: Volume percentage.
