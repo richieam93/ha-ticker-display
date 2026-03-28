@@ -6619,8 +6619,9 @@ class TdAlertEditor extends LitElement {
         severity: "info", mode: "fullscreen",
         icon: "", sound: "", sound_url: "",
         duration: 10, flash_screen: false,
-        vibrate: false, persistent: false,
-        color: "", volume: 100,
+        vibrate: false, persistent: false, require_ack: false, wake_screen: false,
+        color: "", volume: 100, tag: "", source: "", progress_value: 0, progress_text: "",
+        ack_label: "Bestätigen", secondary_label: "", camera_entity_id: "", actions: [],
       };
     }
   }
@@ -6735,7 +6736,10 @@ class TdAlertEditor extends LitElement {
               <option value="fullscreen">Vollbild</option>
               <option value="banner">Banner</option>
               <option value="toast">Toast</option>
+              <option value="overlay">Overlay</option>
+              <option value="split">Split</option>
               <option value="pip">PIP</option>
+              <option value="notification">Notification</option>
             </select>
           </div>
         </div>
@@ -6744,6 +6748,20 @@ class TdAlertEditor extends LitElement {
           <input .value=${c.icon || ""}
                  @input=${(e) => this._set("icon", e.target.value)}
                  placeholder="🔔 oder leer für Standard">
+        </div>
+        <div class="row">
+          <div class="f">
+            <label>Tag</label>
+            <input .value=${c.tag || ""}
+                   @input=${(e) => this._set("tag", e.target.value)}
+                   placeholder="z.B. frontdoor">
+          </div>
+          <div class="f">
+            <label>Quelle</label>
+            <input .value=${c.source || ""}
+                   @input=${(e) => this._set("source", e.target.value)}
+                   placeholder="z.B. Haustür">
+          </div>
         </div>
         <div class="f">
           <label>Titel</label>
@@ -6814,6 +6832,20 @@ class TdAlertEditor extends LitElement {
             </td-color-picker>
           </div>
         </div>
+        <div class="row">
+          <div class="f">
+            <label>Fortschritt %</label>
+            <input type="number" min="0" max="100"
+                   .value=${c.progress_value || 0}
+                   @change=${(e) => this._set("progress_value", +e.target.value)}>
+          </div>
+          <div class="f">
+            <label>Fortschritts-Text</label>
+            <input .value=${c.progress_text || ""}
+                   @input=${(e) => this._set("progress_text", e.target.value)}
+                   placeholder="z.B. 2 von 3 erledigt">
+          </div>
+        </div>
 
         <div class="tog">
           <input type="checkbox" .checked=${c.flash_screen || false}
@@ -6830,7 +6862,46 @@ class TdAlertEditor extends LitElement {
                  @change=${(e) => this._set("persistent", e.target.checked)}>
           <span>Dauerhaft (kein Auto-Close)</span>
         </div>
+        <div class="tog">
+          <input type="checkbox" .checked=${c.require_ack || false}
+                 @change=${(e) => this._set("require_ack", e.target.checked)}>
+          <span>Bestätigung erforderlich</span>
+        </div>
+        <div class="tog">
+          <input type="checkbox" .checked=${c.wake_screen || false}
+                 @change=${(e) => this._set("wake_screen", e.target.checked)}>
+          <span>Display aufwecken</span>
+        </div>
+        <div class="row">
+          <div class="f">
+            <label>Bestätigen-Button</label>
+            <input .value=${c.ack_label || "Bestätigen"}
+                   @input=${(e) => this._set("ack_label", e.target.value)}>
+          </div>
+          <div class="f">
+            <label>Sekundärer Button</label>
+            <input .value=${c.secondary_label || ""}
+                   @input=${(e) => this._set("secondary_label", e.target.value)}
+                   placeholder="optional">
+          </div>
+        </div>
       </div>
+
+      <!-- Camera / split -->
+      ${["pip","split"].includes(c.mode) ? html`
+        <div class="sec">
+          <h3>📷 Kamera / Split</h3>
+          <div class="f">
+            <td-entity-picker
+              .hass=${this.hass}
+              .value=${c.camera_entity_id || c.entity_id || ""}
+              domain="camera"
+              label="Kamera-Entity"
+              @value-changed=${(e) => { this._set("camera_entity_id", e.detail.value); this._set("entity_id", e.detail.value); }}>
+            </td-entity-picker>
+          </div>
+        </div>
+      ` : ""}
 
       <!-- PIP -->
       ${c.mode === "pip" ? html`

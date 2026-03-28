@@ -11,7 +11,7 @@ REGISTERED_SERVICES = [
     "clear_alert", "send_ticker_message", "set_ticker_entities", "clear_ticker",
     "set_screen_power", "set_brightness", "set_theme", "set_volume",
     "play_sound", "tts_speak", "stop_audio", "next_screen", "previous_screen",
-    "goto_screen", "pause_rotation", "resume_rotation", "reload_page", "identify_device",
+    "goto_screen", "pause_rotation", "resume_rotation", "reload_page", "identify_device", "show_alert_template", "show_alert_sequence",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -96,7 +96,25 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         await websocket.send_command(_dev(call), {"type": "alert", "data": {**_data(call), "mode": "toast"}})
 
     async def handle_clear_alert(call):
-        await websocket.send_command(_dev(call), {"type": "command", "command": "clear_alert"})
+        await websocket.send_command(_dev(call), {"type": "command", "command": "clear_alert", "data": _data(call)})
+
+    async def handle_show_alert_template(call):
+        d = _data(call)
+        template_id = d.get("template_id")
+        tmpl = store.get_alert_templates().get(template_id or "")
+        if not tmpl:
+            _LOGGER.error("Alert template not found: %s", template_id)
+            return
+        payload = {**tmpl, **d}
+        await websocket.send_command(_dev(call), {"type": "alert", "data": payload})
+
+    async def handle_show_alert_sequence(call):
+        d = _data(call)
+        alerts = d.get("alerts") or []
+        if not isinstance(alerts, list):
+            _LOGGER.error("alerts must be a list")
+            return
+        await websocket.send_command(_dev(call), {"type": "command", "command": "show_alert_sequence", "data": {"alerts": alerts}})
 
     # ── Ticker commands ──
     async def handle_send_ticker(call):
@@ -175,7 +193,9 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         "show_single_value": handle_show_single_value, "show_clock": handle_show_clock,
         "show_status_board": handle_show_status_board, "show_image": handle_show_image,
         "show_template": handle_show_template,
-        "show_alert": handle_show_alert, "show_notification": handle_show_notification,
+        "show_alert": handle_show_alert, "show_alert_template": handle_show_alert_template,
+        "show_alert_sequence": handle_show_alert_sequence,
+        "show_notification": handle_show_notification,
         "show_toast": handle_show_toast, "clear_alert": handle_clear_alert,
         "send_ticker_message": handle_send_ticker, "set_ticker_entities": handle_set_ticker_entities,
         "clear_ticker": handle_clear_ticker,

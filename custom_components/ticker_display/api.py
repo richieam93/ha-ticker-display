@@ -11,7 +11,7 @@ from pathlib import Path
 from aiohttp import web
 from homeassistant.core import HomeAssistant
 
-from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH
+from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH, SENSOR_KEYS, ALERT_MODES, ALERT_SEVERITIES
 from .media_manager import _safe_filename
 
 _LOGGER = logging.getLogger(__name__)
@@ -221,6 +221,70 @@ class TickerDisplayAPI:
             raise web.HTTPBadRequest(text=json.dumps({"error": "device_groups must be an object"}), content_type="application/json")
         return cleaned
 
+
+    def _sanitize_alert_config(self, data: dict) -> dict:
+        allowed = {
+            "id", "name", "title", "message", "severity", "mode", "icon",
+            "sound", "sound_url", "duration", "flash_screen", "vibrate",
+            "persistent", "color", "volume", "entity_id", "pip_position",
+            "pip_size", "tag", "source", "camera_entity_id", "progress_value",
+            "progress_text", "require_ack", "ack_label", "secondary_label",
+            "secondary_action", "actions", "wake_screen", "tts_message",
+            "tts_language", "buttons_layout"
+        }
+        cleaned = {k: v for k, v in data.items() if k in allowed}
+        cleaned["severity"] = str(cleaned.get("severity") or "info").strip().lower()
+        if cleaned["severity"] not in ALERT_SEVERITIES:
+            cleaned["severity"] = "info"
+        cleaned["mode"] = str(cleaned.get("mode") or "fullscreen").strip().lower()
+        if cleaned["mode"] not in ALERT_MODES:
+            cleaned["mode"] = "fullscreen"
+        cleaned["title"] = str(cleaned.get("title") or "").strip()[:160]
+        cleaned["message"] = str(cleaned.get("message") or "").strip()[:1000]
+        cleaned["name"] = str(cleaned.get("name") or "").strip()[:160]
+        cleaned["icon"] = str(cleaned.get("icon") or "").strip()[:32]
+        cleaned["sound"] = str(cleaned.get("sound") or "").strip()[:120]
+        cleaned["sound_url"] = str(cleaned.get("sound_url") or "").strip()[:1000]
+        cleaned["tag"] = str(cleaned.get("tag") or "").strip()[:120]
+        cleaned["source"] = str(cleaned.get("source") or "").strip()[:160]
+        cleaned["camera_entity_id"] = str(cleaned.get("camera_entity_id") or cleaned.get("entity_id") or "").strip()[:255]
+        cleaned["ack_label"] = str(cleaned.get("ack_label") or "Bestätigen").strip()[:80]
+        cleaned["secondary_label"] = str(cleaned.get("secondary_label") or "Schließen").strip()[:80]
+        cleaned["secondary_action"] = str(cleaned.get("secondary_action") or "dismiss").strip()[:80]
+        cleaned["progress_text"] = str(cleaned.get("progress_text") or "").strip()[:160]
+        cleaned["tts_message"] = str(cleaned.get("tts_message") or "").strip()[:500]
+        cleaned["tts_language"] = str(cleaned.get("tts_language") or "de").strip()[:16]
+        try:
+            cleaned["duration"] = max(0, min(3600, int(cleaned.get("duration") or 0)))
+        except (TypeError, ValueError):
+            cleaned["duration"] = 0
+        try:
+            cleaned["volume"] = max(0, min(100, int(cleaned.get("volume") or 100)))
+        except (TypeError, ValueError):
+            cleaned["volume"] = 100
+        try:
+            cleaned["progress_value"] = max(0, min(100, int(cleaned.get("progress_value") or 0)))
+        except (TypeError, ValueError):
+            cleaned["progress_value"] = 0
+        for key in ["flash_screen", "vibrate", "persistent", "require_ack", "wake_screen"]:
+            cleaned[key] = bool(cleaned.get(key, False))
+        actions = []
+        for idx, action in enumerate(data.get("actions") or []):
+            if not isinstance(action, dict):
+                continue
+            label = str(action.get("label") or "").strip()[:80]
+            if not label:
+                continue
+            actions.append({
+                "id": str(action.get("id") or f"action_{idx+1}").strip()[:80],
+                "label": label,
+                "event": str(action.get("event") or action.get("id") or f"action_{idx+1}").strip()[:80],
+                "style": str(action.get("style") or "default").strip()[:24],
+                "close": bool(action.get("close", True)),
+            })
+        cleaned["actions"] = actions
+        return cleaned
+
     def _absolute_url(self, request, path: str) -> str:
         if not path:
             return f"{request.scheme}://{request.host}"
@@ -234,6 +298,16 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
     # Device API
     # ══════════════════════════════════════════════════════
+
+
+    def _sanitize_heartbeat_data(self, data: dict) -> dict:
+        cleaned = {"device_id": self._clean_identifier(data.get("device_id"), field="device_id")}
+        for key in SENSOR_KEYS:
+            if key in data:
+                cleaned[key] = data.get(key)
+        if "timestamp" in data:
+            cleaned["timestamp"] = data.get("timestamp")
+        return cleaned
 
     async def _device_register(self, request):
         data = await self._parse_json(request)
@@ -254,9 +328,10 @@ class TickerDisplayAPI:
 
     async def _device_heartbeat(self, request):
         data = await self._parse_json(request)
-        device_id = self._clean_identifier(data.get("device_id"), field="device_id")
-        self.coordinator.process_heartbeat(device_id, data)
-        return web.json_response({"status": "ok"})
+        payload = self._sanitize_heartbeat_data(data)
+        device_id = payload["device_id"]
+        self.coordinator.process_heartbeat(device_id, payload)
+        return web.json_response({"status": "ok", "accepted_keys": sorted(payload.keys())})
 
     async def _device_event(self, request):
         data = await self._parse_json(request)
@@ -1327,8 +1402,9 @@ class TickerDisplayAPI:
         return web.json_response(self.store.get_alert_templates())
 
     async def _config_alert_save(self, request):
-        data = await self._parse_json(request)
+        data = self._sanitize_alert_config(await self._parse_json(request))
         aid = self._clean_identifier(data.get("id", f"alert_{int(datetime.now().timestamp())}"), field="id")
+        data["id"] = aid
         await self.store.async_save_alert_template(aid, data)
         return web.json_response({"status": "ok", "id": aid})
 

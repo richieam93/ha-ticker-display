@@ -127,6 +127,84 @@ show_alert:
       name: Sound
       description: Sound-ID oder Alias, z. B. alarm, alarm_critical, notification oder doorbell.
       example: "alarm_critical"
+    template_id:
+      name: Template ID
+      description: Optional gespeicherte Alert-Vorlage als Basis.
+      example: "doorbell"
+    tag:
+      name: Tag
+      description: Freies Kennzeichen für Automationen und gezieltes Schließen.
+      example: "frontdoor"
+    source:
+      name: Source
+      description: Quelle / Bereich des Alerts.
+      example: "Haustür"
+    progress_value:
+      name: Progress
+      description: Optionaler Prozentwert 0-100.
+      example: 65
+    progress_text:
+      name: Progress text
+      description: Text unter dem Fortschritt.
+      example: "2 von 3 geprüft"
+    require_ack:
+      name: Require acknowledge
+      description: Alert erst nach Bestätigung schließen.
+      example: true
+    ack_label:
+      name: Ack label
+      description: Text für Bestätigen-Button.
+      example: "Bestätigen"
+    secondary_label:
+      name: Secondary label
+      description: Zweiter Aktionsbutton.
+      example: "Später"
+    actions:
+      name: Actions
+      description: Liste zusätzlicher Buttons, z. B. [{"id":"open_cam","label":"Kamera"}].
+      example: '[{"id":"open_cam","label":"Kamera"}]'
+
+show_alert_template:
+  name: Show alert template
+  description: Show a saved alert template on one or more devices, with optional overrides.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    template_id:
+      name: Template ID
+      description: Saved alert template ID.
+      example: "doorbell"
+    title:
+      name: Title override
+      description: Optional title override.
+      example: "Haustür"
+    message:
+      name: Message override
+      description: Optional message override.
+      example: "Jemand steht vor der Tür"
+    severity:
+      name: Severity
+      description: info, warning, critical
+      example: "warning"
+    mode:
+      name: Mode
+      description: fullscreen, banner, overlay, toast, pip, split, notification
+      example: "overlay"
+
+show_alert_sequence:
+  name: Show alert sequence
+  description: Show multiple alerts in sequence on one or more devices.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    alerts:
+      name: Alerts
+      description: List of alert payloads.
+      example: '[{"title":"Tür","message":"Jemand da","duration":5},{"title":"Kamera","message":"Garage","mode":"overlay"}]'
 
 show_notification:
   name: Show notification

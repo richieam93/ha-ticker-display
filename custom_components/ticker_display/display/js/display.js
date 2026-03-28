@@ -1114,7 +1114,15 @@ class ScreenManager {
   }
 
   _renderMediaPlayerControlWidget(widget, config, state, name, icon) {
-    this._renderSmartHomeControlWidget(widget, config, state, name, icon || "🎵");
+    const summary = this._controlSummary(config, state, name, icon || "🎵");
+    const attrs = state?.attributes || {};
+    const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
+    widget.classList.remove("widget-media-modern");
+    widget.classList.add("widget-control-card", "widget-media-horizontal");
+    const cover = summary.cover ? `<img class="td-media-side-cover" src="${summary.cover}" alt="Cover">` : `<div class="td-media-side-cover placeholder">${icon || "🎵"}</div>`;
+    widget.innerHTML = `<div class="td-media-side-shell"><div class="td-media-side-art">${cover}</div><div class="td-media-side-main"><div class="td-media-side-top"><div class="td-media-side-text"><div class="td-media-side-name">${summary.name}</div><div class="td-media-side-title">${summary.value}</div><div class="td-media-side-sub">${summary.sub || Utils.text(state?.state || "—")}</div></div><div class="td-media-side-chip">${summary.chip}</div></div><div class="td-media-side-progress"><span style="width:${progress}%"></span></div><div class="td-media-side-actions"><button class="td-control-action ghost" type="button" data-action="prev">⏮</button><button class="td-control-action primary grow" type="button" data-action="playpause">${summary.active ? "Pause" : "Play"}</button><button class="td-control-action ghost" type="button" data-action="next">⏭</button><button class="td-control-action ghost" type="button" data-action="details">Öffnen</button></div></div></div>`;
+    this._bindControlQuickActions(widget, config, state);
+    this._renderExtraEntityList(widget, config);
   }
 
   _renderSwitchControlWidget(widget, config, state, name, icon) {
@@ -1713,7 +1721,7 @@ class ScreenManager {
     else if (domain === "media_player") {
       const cover = attrs.entity_picture || "";
       const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
-      html = `<div class="popup-hero popup-media"><div class="popup-media-art-wrap">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}</div><div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-value">${Utils.text(attrs.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(attrs.media_artist || attrs.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-mini-row"><span>Status</span><strong>${Utils.text(st.state || "—")}</strong></div><div class="popup-controls"></div></div></div>`;
+      html = `<div class="popup-hero popup-media popup-media-landscape"><div class="popup-media-art-wrap">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}</div><div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-value popup-media-big">${Utils.text(attrs.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(attrs.media_artist || attrs.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-mini-grid"><div class="popup-mini-row"><span>Status</span><strong>${Utils.text(st.state || "—")}</strong></div><div class="popup-mini-row"><span>Lautstärke</span><strong>${Math.round(Number(attrs.volume_level || 0) * 100)}%</strong></div></div><div class="popup-controls popup-controls-media"></div></div></div>`;
     } else if (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan") {
       const summary = this._controlSummary(config, st, this._popupFriendlyName(config, st), config.icon || this._defaultIconForType(config.type));
       html = `<div class="popup-hero popup-control popup-light"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">${domain === "light" ? (summary.active ? "💡" : "🔅") : (summary.active ? "🟢" : "⚪")}</div><div class="popup-big-value">${Utils.text(summary.value || "—")}</div><div class="popup-subtitle">${Utils.text(summary.sub || st.state || "—")}</div>${domain === "light" || domain === "fan" ? `<div class="popup-meter"><span style="width:${summary.meter || 0}%"></span></div><div class="popup-mini-row"><span>${domain === "light" ? "Helligkeit" : "Leistung"}</span><strong>${Math.round(summary.meter || 0)}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
@@ -2248,77 +2256,148 @@ class AlertManager {
     this.overlay = document.getElementById("alert-overlay");
     this.banner = document.getElementById("notification-banner");
     this.toastContainer = document.getElementById("toast-container");
-    this.pipContainer = document.getElementById("pip-container");
     this._timers = [];
-    this._pipInterval = null;
+    this._activeTag = null;
   }
 
-  show(data) {
-    const mode = data.mode || "fullscreen";
+  show(data = {}) {
+    this.clearAll();
+    const payload = { ...data };
+    const mode = payload.mode || "fullscreen";
+    this._activeTag = payload.tag || null;
+    this._emit("alert_shown", { tag: payload.tag || "", title: payload.title || "", mode, severity: payload.severity || "info" });
+    if (payload.wake_screen) this.app?.bridge?.setScreenPower?.(true);
+    if (payload.tts_message) this.app?.bridge?.ttsSpeak?.(payload.tts_message, payload.tts_language || "de", payload.volume || 70);
     switch (mode) {
-      case "fullscreen": this._showFullscreen(data); break;
-      case "notification": case "banner": this._showBanner(data); break;
-      case "toast": this._showToast(data); break;
-      case "pip": this._showPip(data); break;
-      default: this._showFullscreen(data);
+      case "banner":
+      case "notification":
+        this._showBanner(payload);
+        break;
+      case "overlay":
+        this._showOverlay(payload);
+        break;
+      case "split":
+        this._showSplit(payload);
+        break;
+      case "toast":
+        this._showToast(payload);
+        break;
+      case "pip":
+        this._showPip(payload);
+        break;
+      default:
+        this._showFullscreen(payload);
     }
-    if (data.sound_url) this.app.bridge.playSound(data.sound_url, data.volume || 100, data.sound_loop || false);
-    if (data.vibrate) this.app.bridge.vibrate(500);
   }
 
-  clearAll() {
-    if (this.overlay) this.overlay.hidden = true;
-    if (this.banner) this.banner.hidden = true;
-    if (this.toastContainer) this.toastContainer.hidden = true;
-    if (this.pipContainer) this.pipContainer.hidden = true;
-    this.app.bridge.stopSound();
-    this._timers.forEach(clearTimeout); this._timers = [];
-    if (this._pipInterval) clearInterval(this._pipInterval); this._pipInterval = null;
+  clearAll(opts = {}) {
+    const tag = opts?.tag || null;
+    if (tag && this._activeTag && tag !== this._activeTag) return;
+    this._timers.forEach(clearTimeout);
+    this._timers = [];
+    if (this.overlay) { this.overlay.hidden = true; this.overlay.innerHTML = ""; }
+    if (this.banner) { this.banner.hidden = true; this.banner.innerHTML = ""; }
+    if (this.toastContainer) { this.toastContainer.hidden = true; this.toastContainer.innerHTML = ""; }
+    if (this._activeTag) this._emit("alert_closed", { tag: this._activeTag, reason: opts?.reason || "clear" });
+    this._activeTag = null;
+  }
+
+  _emit(event, data = {}) {
+    try {
+      this.app?.wsClient?.send({ type: "event", event, data });
+    } catch (e) {
+      console.warn("alert event emit failed", event, e);
+    }
+  }
+
+  _armAutoClose(data) {
+    if (data.persistent || data.require_ack) return;
+    const duration = Math.max(0, Number(data.duration || 0));
+    if (!duration) return;
+    this._timers.push(setTimeout(() => this.clearAll({ reason: "timeout" }), duration * 1000));
+  }
+
+  _actionsMarkup(data) {
+    const buttons = [];
+    if (data.require_ack || data.ack_label) buttons.push({ id: "ack", label: data.ack_label || "Bestätigen", style: "primary", close: true });
+    for (const action of Utils.safeArray(data.actions)) buttons.push(action);
+    if (data.secondary_label) buttons.push({ id: data.secondary_action || "secondary", label: data.secondary_label, style: "ghost", close: true });
+    if (!buttons.length && data.persistent) buttons.push({ id: "dismiss", label: "Schließen", style: "ghost", close: true });
+    if (!buttons.length) return "";
+    return `<div class="alert-actions">${buttons.map((action) => `<button type="button" class="alert-action-btn ${action.style || "ghost"}" data-alert-action="${Utils.text(action.id || action.event || "action")}" data-alert-close="${action.close === false ? "false" : "true"}">${Utils.text(action.label || "Aktion")}</button>`).join("")}</div>`;
+  }
+
+  _progressMarkup(data) {
+    if (data.progress_value == null && !data.progress_text) return "";
+    const pct = Math.max(0, Math.min(100, Number(data.progress_value || 0)));
+    return `<div class="alert-progress-wrap"><div class="alert-progress"><span style="width:${pct}%"></span></div>${data.progress_text ? `<div class="alert-progress-text">${Utils.text(data.progress_text)}</div>` : ""}</div>`;
+  }
+
+  _bindAlertActions(root, data) {
+    root.querySelectorAll('[data-alert-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.getAttribute('data-alert-action') || 'action';
+        const close = btn.getAttribute('data-alert-close') !== 'false';
+        this._emit('alert_action', { tag: data.tag || '', action, title: data.title || '', source: data.source || '' });
+        if (close) this.clearAll({ reason: action });
+      });
+    });
   }
 
   _showFullscreen(data) {
+    if (!this.overlay) return;
     const sev = data.severity || "info";
-    const icons = { info: "ℹ️", warning: "⚠️", critical: "🚨" };
     this.overlay.className = `alert-overlay severity-${sev}`;
-    this.overlay.innerHTML = `<div class="alert-card"><div class="alert-icon">${data.icon || icons[sev] || "ℹ️"}</div><div class="alert-title">${data.title || ""}</div><div class="alert-message">${data.message || ""}</div>${data.duration ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}</div>`;
+    this.overlay.innerHTML = `<div class="alert-card"><div class="alert-topline">${Utils.text(data.source || "Alert")}</div><div class="alert-icon">${data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️"}</div><div class="alert-title">${Utils.text(data.title || "")}</div><div class="alert-message">${Utils.text(data.message || "")}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}${data.duration && !data.require_ack && !data.persistent ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}</div>`;
     this.overlay.hidden = false;
-    if (data.duration && data.duration > 0 && !data.persistent) {
-      this._timers.push(setTimeout(() => { this.overlay.hidden = true; }, data.duration * 1000));
-    }
+    this._bindAlertActions(this.overlay, data);
+    this._armAutoClose(data);
   }
 
   _showBanner(data) {
-    this.banner.style.background = data.color || "var(--td-accent)";
-    this.banner.innerHTML = `<span style="font-size:20px">${data.icon || "ℹ️"}</span><div><div style="font-weight:600">${data.title || ""}</div><div style="font-size:14px;opacity:.9">${data.message || ""}</div></div>`;
+    if (!this.banner) return;
+    const sev = data.severity || "info";
+    this.banner.className = `notification-banner severity-${sev}`;
+    this.banner.innerHTML = `<div class="banner-icon">${Utils.text(data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️")}</div><div class="banner-main"><div class="banner-title-row"><div class="banner-title">${Utils.text(data.title || data.source || 'Hinweis')}</div>${data.tag ? `<div class="banner-tag">${Utils.text(data.tag)}</div>` : ''}</div><div class="banner-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}</div>${this._actionsMarkup(data)}`;
     this.banner.hidden = false;
-    this._timers.push(setTimeout(() => { this.banner.hidden = true; }, (data.duration || 10) * 1000));
+    this._bindAlertActions(this.banner, data);
+    this._armAutoClose(data);
   }
 
-  _showToast(data) {
-    this.toastContainer.innerHTML = `<div class="toast-message">${data.message || ""}</div>`;
-    this.toastContainer.hidden = false;
-    this._timers.push(setTimeout(() => { this.toastContainer.hidden = true; }, (data.duration || 5) * 1000));
+  _showOverlay(data) {
+    if (!this.overlay) return;
+    const sev = data.severity || "info";
+    this.overlay.className = `alert-overlay overlay-card-mode severity-${sev}`;
+    this.overlay.innerHTML = `<div class="alert-card alert-card-overlay"><div class="alert-topline">${Utils.text(data.source || 'Overlay')}</div><div class="alert-title">${Utils.text(data.title || '')}</div><div class="alert-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}</div>`;
+    this.overlay.hidden = false;
+    this._bindAlertActions(this.overlay, data);
+    this._armAutoClose(data);
+  }
+
+  _showSplit(data) {
+    if (!this.overlay) return;
+    const sev = data.severity || "info";
+    this.overlay.className = `alert-overlay split-mode severity-${sev}`;
+    const cam = data.camera_entity_id || data.entity_id || '';
+    const camUrl = cam ? `${this.app.apiBase}/api/image/camera/${encodeURIComponent(cam)}` : '';
+    this.overlay.innerHTML = `<div class="alert-split-shell"><div class="alert-split-main"><div class="alert-topline">${Utils.text(data.source || 'Split')}</div><div class="alert-title">${Utils.text(data.title || '')}</div><div class="alert-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}</div><div class="alert-split-side">${camUrl ? `<img class="alert-split-camera" src="${camUrl}" alt="Kamera">` : `<div class="alert-split-placeholder">${Utils.text(data.icon || '📣')}</div>`}</div></div>`;
+    this.overlay.hidden = false;
+    this._bindAlertActions(this.overlay, data);
+    this._armAutoClose(data);
   }
 
   _showPip(data) {
-    const pos = data.pip_position || "top-right"; const size = data.pip_size || "medium";
-    const eid = data.entity_id || "";
-    this.pipContainer.className = `pip-container ${pos} ${size}`;
-    const img = this.pipContainer.querySelector("#pip-image");
-    if (img) {
-      img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`;
-      this._pipInterval = setInterval(() => { img.src = `${this.app.apiBase}/api/image/camera/${eid}?t=${Date.now()}`; }, (data.refresh_interval || 5) * 1000);
-    }
-    this.pipContainer.hidden = false;
-    if (data.duration && data.duration > 0) {
-      this._timers.push(setTimeout(() => { this.pipContainer.hidden = true; if (this._pipInterval) clearInterval(this._pipInterval); this._pipInterval = null; }, data.duration * 1000));
-    }
+    this._showOverlay({ ...data, source: data.source || 'PIP' });
+  }
+
+  _showToast(data) {
+    if (!this.toastContainer) return;
+    this.toastContainer.innerHTML = `<div class="toast-message"><div class="toast-title">${Utils.text(data.title || data.source || 'Info')}</div><div>${Utils.text(data.message || '')}</div>${this._actionsMarkup(data)}</div>`;
+    this.toastContainer.hidden = false;
+    this._bindAlertActions(this.toastContainer, data);
+    this._armAutoClose(data);
   }
 }
-
-/* ══════════════════════════════════════════════════════════
-   MAIN APP
-   ══════════════════════════════════════════════════════════ */
 
 class TickerDisplayApp {
   constructor() {
@@ -2383,7 +2462,7 @@ class TickerDisplayApp {
   onCommand(cmd, data) {
     const screenCmds = ["show_dashboard", "show_graph", "show_camera", "show_weather", "show_single_value", "show_clock", "show_status_board", "show_image", "show_template"];
     if (screenCmds.includes(cmd)) { this.screenManager.showTemporaryScreen(cmd, data); return; }
-    if (cmd === "clear_alert") this.alertManager.clearAll();
+    if (cmd === "clear_alert") this.alertManager.clearAll(data || {});
     else if (cmd === "set_ticker_entities") this.tickerManager.setEntities(data);
     else if (cmd === "clear_ticker") this.tickerManager.clear();
     else if (cmd === "identify") this._showIdentify();

@@ -40,7 +40,24 @@ class TickerDisplayCoordinator:
             d["proximity_near"] = event_data.get("near", False)
         elif event_type == "screen_changed":
             d["webview_url"] = event_data.get("screen", "")
+        elif event_type == "alert_action":
+            d["last_alert_action"] = event_data.get("action", "")
+            d["last_alert_tag"] = event_data.get("tag", "")
+        elif event_type == "alert_shown":
+            d["active_alert_tag"] = event_data.get("tag", "")
+            d["active_alert_title"] = event_data.get("title", "")
+        elif event_type == "alert_closed":
+            d["active_alert_tag"] = ""
+            d["active_alert_title"] = ""
 
+        self.hass.bus.async_fire(
+            f"ticker_display_{event_type}",
+            {
+                "device_id": device_id,
+                "event_type": event_type,
+                **(event_data or {}),
+            },
+        )
         self._notify_update(device_id)
 
     def get_device_data(self, device_id: str) -> dict:

@@ -32,18 +32,20 @@ SCREEN_TYPES = [
 ]
 
 ALERT_SEVERITIES = ["info", "warning", "critical"]
-ALERT_MODES = ["fullscreen", "banner", "overlay", "toast", "pip", "split"]
+ALERT_MODES = ["fullscreen", "banner", "overlay", "toast", "pip", "split", "notification"]
 TRANSITION_TYPES = ["fade", "slide", "flip", "zoom", "dissolve", "crossfade", "none"]
 BUILTIN_THEMES = ["dark", "light", "high-contrast", "night"]
 SOUND_CATEGORIES = ["alarm", "notification", "chime", "custom"]
 
 SENSOR_KEYS = [
     "battery_level", "battery_charging", "battery_temperature",
-    "wifi_signal", "wifi_ssid", "ip_address",
+    "battery_voltage_mv", "battery_health", "battery_status", "charging_source",
+    "wifi_signal", "wifi_ssid", "wifi_link_speed_mbps", "network_type", "ip_address",
     "light_level", "motion_detected", "proximity_near",
     "ambient_noise_db", "screen_on", "screen_brightness",
-    "memory_free_mb", "cpu_usage", "app_version",
-    "webview_url", "uptime_seconds",
+    "memory_free_mb", "memory_total_mb", "storage_free_mb", "storage_total_mb",
+    "storage_used_percent", "cpu_usage", "volume_percent", "ringer_mode",
+    "app_version", "webview_url", "orientation", "uptime_seconds",
 ]
 
 DEFAULT_SOUNDS = {
