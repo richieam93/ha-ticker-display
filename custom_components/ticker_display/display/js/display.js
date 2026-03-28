@@ -2349,6 +2349,33 @@ class AlertManager {
     target.style.setProperty('--td-alert-border', Utils.applyAlpha(palette.accent, 0.38) || 'rgba(255,255,255,.12)');
   }
 
+
+  async _resolveHaTtsUrl(data = {}) {
+    const message = String(data.tts_message || data.message || '').trim();
+    if (!message) return '';
+    const payload = {
+      message,
+      engine_id: String(data.tts_engine_id || data.engine_id || '').trim() || undefined,
+      language: String(data.tts_language || data.language || '').trim() || undefined,
+      cache: true,
+      options: { preferred_format: 'mp3' },
+    };
+    try {
+      const resp = await fetch('/api/tts_get_url', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) throw new Error(`tts_get_url: ${resp.status}`);
+      const json = await resp.json();
+      return String(json.path || json.url || '').trim();
+    } catch (err) {
+      console.warn('Unable to resolve Home Assistant TTS URL', err, payload);
+      return '';
+    }
+  }
+
   _startAttentionEffects(data = {}) {
     const soundUrl = String(data.sound_url || data.soundUrl || '').trim();
     const volume = Utils.clamp(Number(data.volume ?? data.sound_volume ?? 100) || 100, 0, 100);
@@ -2357,9 +2384,13 @@ class AlertManager {
       this.app?.bridge?.playSound(soundUrl, volume, persistentAttention);
     }
 
-    const ttsUrl = String(data.tts_url || data.tts_audio_url || '').trim();
-    if (ttsUrl) {
-      this.app?.bridge?.playSound(ttsUrl, volume, false);
+    const directTtsUrl = String(data.tts_url || data.tts_audio_url || '').trim();
+    if (directTtsUrl) {
+      this.app?.bridge?.playSound(directTtsUrl, volume, false);
+    } else if (String(data.tts_message || '').trim()) {
+      this._resolveHaTtsUrl(data).then((resolvedUrl) => {
+        if (resolvedUrl) this.app?.bridge?.playSound(resolvedUrl, volume, false);
+      });
     }
 
     const shouldFlash = !!data.flash_screen || !!data.blink_screen;
@@ -2586,7 +2617,19 @@ class TickerDisplayApp {
 
   onAudio(data) {
     if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
-    else if (data.action === "tts" && data.url) this.bridge.playSound(data.url, data.volume, false);
+    else if (data.action === "tts") {
+      if (data.url) {
+        this.bridge.playSound(data.url, data.volume, false);
+      } else if (String(data.message || '').trim()) {
+        this.alertManager?._resolveHaTtsUrl({
+          tts_message: data.message,
+          tts_language: data.language,
+          tts_engine_id: data.engine_id,
+        }).then((resolvedUrl) => {
+          if (resolvedUrl) this.bridge.playSound(resolvedUrl, data.volume, false);
+        });
+      }
+    }
     else if (data.action === "stop") this.bridge.stopSound();
     else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
   }
