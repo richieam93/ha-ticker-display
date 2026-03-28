@@ -48,6 +48,38 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         d.pop("device", None)
         return d
 
+
+
+    async def _apply_ha_tts(payload):
+        """Normalize Home Assistant TTS fields for the display layer.
+
+        The actual /api/tts_get_url resolution is intentionally done in the
+        browser / Android display runtime, because that layer already owns the
+        authenticated session and audio playback path. This helper therefore
+        only prepares and sanitizes the TTS-related fields so service handlers
+        can call it safely.
+        """
+        if not isinstance(payload, dict):
+            return {}
+
+        data = dict(payload)
+        # Normalize aliases used by services, editor and alert templates.
+        message = str(data.get('tts_message') or data.get('message') or '').strip()
+        engine_id = str(data.get('tts_engine_id') or data.get('engine_id') or '').strip()
+        language = str(data.get('tts_language') or data.get('language') or '').strip()
+        tts_url = str(data.get('tts_url') or data.get('tts_audio_url') or '').strip()
+
+        if message:
+            data['tts_message'] = message
+        if engine_id:
+            data['tts_engine_id'] = engine_id
+        if language:
+            data['tts_language'] = language
+        if tts_url:
+            data['tts_url'] = tts_url
+
+        return data
+
     # ── Screen commands ──
     async def _screen_cmd(call, cmd):
         await websocket.send_command(_dev(call), {"type": "command", "command": cmd, "data": _data(call)})
