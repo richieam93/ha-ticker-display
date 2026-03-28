@@ -119,8 +119,14 @@ class TickerDisplayStore:
         _LOGGER.info("Device registered: %s", device_id)
 
     async def async_update_device(self, device_id: str, config: dict):
+        if not isinstance(config, dict):
+            return
         if device_id in self._data.get("devices", {}):
-            self._data["devices"][device_id].update(config)
+            current = self._data["devices"][device_id]
+            merged = deepcopy(current)
+            merged.update(config)
+            merged["id"] = device_id
+            self._data["devices"][device_id] = merged
             await self.async_save()
 
     async def async_remove_device(self, device_id: str):
@@ -216,6 +222,8 @@ class TickerDisplayStore:
         return self._data.get("global_settings", {})
 
     async def async_update_global_settings(self, settings: dict):
+        if not isinstance(settings, dict):
+            return
         self._data.setdefault("global_settings", {}).update(settings)
         await self.async_save()
 

@@ -4,10 +4,22 @@ import logging
 from homeassistant.core import HomeAssistant, ServiceCall
 from .const import DOMAIN
 
+REGISTERED_SERVICES = [
+    "show_dashboard", "show_graph", "show_camera", "show_weather",
+    "show_single_value", "show_clock", "show_status_board", "show_image",
+    "show_template", "show_alert", "show_notification", "show_toast",
+    "clear_alert", "send_ticker_message", "set_ticker_entities", "clear_ticker",
+    "set_screen_power", "set_brightness", "set_theme", "set_volume",
+    "play_sound", "tts_speak", "stop_audio", "next_screen", "previous_screen",
+    "goto_screen", "pause_rotation", "resume_rotation", "reload_page", "identify_device",
+]
+
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_services(hass, store, coordinator, websocket, media_manager):
+    if hass.data.get(f"{DOMAIN}_services_registered"):
+        return
 
     def _dev(call):
         raw = call.data.get("device", "all")

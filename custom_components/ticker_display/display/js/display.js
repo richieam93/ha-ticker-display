@@ -146,15 +146,25 @@ class DataManager {
     this._cache = {};
   }
 
+  async _fetchJson(path, options = {}) {
+    const response = await fetch(`${this.apiBase}${path}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+      ...options,
+    });
+    if (!response.ok) {
+      throw new Error(`${path}: ${response.status}`);
+    }
+    return response.json();
+  }
+
   async fetchHistory(entityId, hours = 24) {
     const key = `h_${entityId}_${hours}`;
     const cached = this._cache[key];
     if (cached && Date.now() - cached.t < 60000) return cached.d;
 
     try {
-      const r = await fetch(`${this.apiBase}/api/history/${entityId}?hours=${hours}`);
-      if (!r.ok) return { entity_id: entityId, data: [] };
-      const raw = await r.json();
+      const raw = await this._fetchJson(`/api/history/${encodeURIComponent(entityId)}?hours=${encodeURIComponent(hours)}`);
 
       let data = [];
 
@@ -205,16 +215,13 @@ class DataManager {
 
   async fetchWeather(entityId) {
     try {
-      const r = await fetch(`${this.apiBase}/api/weather/${entityId}`);
-      return await r.json();
+      return await this._fetchJson(`/api/weather/${encodeURIComponent(entityId)}`);
     } catch (e) { return null; }
   }
 
   async fetchState(entityId) {
     try {
-      const r = await fetch(`${this.apiBase}/api/states/${entityId}`);
-      if (!r.ok) return null;
-      return await r.json();
+      return await this._fetchJson(`/api/states/${encodeURIComponent(entityId)}`);
     } catch (e) { return null; }
   }
 
@@ -983,6 +990,109 @@ class ScreenManager {
     return `<div class="td-control-icon ${summary.active ? "active" : ""}" ${summary.iconStyle ? `style="${summary.iconStyle}"` : ""}>${summary.icon || "🎛️"}</div>`;
   }
 
+  _controlQuickActions(config, state, summary) {
+    const domain = String(config?.entity_id || "").split(".")[0] || "";
+    const attrs = state?.attributes || {};
+    const actions = [];
+    if (domain === "media_player") {
+      actions.push(
+        { key: "prev", label: "⏮", title: "Zurück", style: "ghost" },
+        { key: "playpause", label: summary.active ? "⏸" : "▶", title: "Play / Pause", style: "primary" },
+        { key: "next", label: "⏭", title: "Weiter", style: "ghost" },
+        { key: "vol-down", label: "−", title: "Leiser", style: "ghost" },
+        { key: "vol-up", label: "+", title: "Lauter", style: "ghost" },
+      );
+    } else if (["switch", "input_boolean", "fan", "valve"].includes(domain)) {
+      actions.push(
+        { key: "toggle", label: summary.active ? "Ausschalten" : "Einschalten", title: "Umschalten", style: "primary", grow: true },
+        { key: "details", label: "Details", title: "Details", style: "ghost" },
+      );
+      if (domain === "fan") {
+        [25, 50, 100].forEach((pct) => actions.push({ key: `fan-${pct}`, label: `${pct}%`, title: `${pct}%`, style: Number(attrs.percentage || 0) === pct ? "active" : "ghost" }));
+      }
+    } else if (domain === "light") {
+      actions.push(
+        { key: "toggle", label: summary.active ? "Aus" : "Ein", title: "Licht schalten", style: "primary", grow: true },
+        { key: "brightness-down", label: "−", title: "Dunkler", style: "ghost" },
+        { key: "brightness-up", label: "+", title: "Heller", style: "ghost" },
+        { key: "details", label: "Farben", title: "Popup öffnen", style: "ghost" },
+      );
+    } else if (domain === "cover") {
+      actions.push(
+        { key: "open", label: "Öffnen", title: "Öffnen", style: "ghost" },
+        { key: "stop", label: "Stopp", title: "Stopp", style: "primary" },
+        { key: "close", label: "Schließen", title: "Schließen", style: "ghost" },
+        { key: "details", label: "Position", title: "Positionen", style: "ghost", grow: true },
+      );
+    } else if (domain === "climate") {
+      actions.push(
+        { key: "temp-down", label: "−1°", title: "Temperatur senken", style: "ghost" },
+        { key: "temp-up", label: "+1°", title: "Temperatur erhöhen", style: "primary" },
+        { key: "details", label: "Modi", title: "Modi", style: "ghost", grow: true },
+      );
+    }
+    return actions;
+  }
+
+  _controlQuickActionsMarkup(config, state, summary, compact = false) {
+    const actions = this._controlQuickActions(config, state, summary);
+    if (!actions.length) return compact ? `<div class="td-control-actions compact"><button class="td-control-action ghost grow" data-action="details" type="button">Details</button></div>` : "";
+    const visible = compact ? actions.filter((action, index) => index < 2 || action.key === "details") : actions;
+    return `<div class="td-control-actions ${compact ? "compact" : ""}">${visible.map((action) => `<button class="td-control-action ${action.style || "ghost"} ${action.grow ? "grow" : ""}" type="button" data-action="${action.key}" title="${action.title || action.label}">${action.label}</button>`).join("")}</div>`;
+  }
+
+  async _handleControlQuickAction(config, state, action) {
+    const entityId = config?.entity_id || "";
+    if (!entityId || !action) return;
+    const domain = String(entityId).split(".")[0] || "";
+    const attrs = state?.attributes || {};
+    if (action === "details") { this._openWidgetPopup(config); return; }
+    if (domain === "media_player") {
+      if (action === "prev") return this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId });
+      if (action === "playpause") return this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId });
+      if (action === "next") return this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId });
+      if (action === "vol-down") return this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) });
+      if (action === "vol-up") return this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) });
+    }
+    if (["switch", "input_boolean", "fan", "valve", "light"].includes(domain) && action === "toggle") return this._invokeToggleAction(entityId, "toggle");
+    if (domain === "fan" && action.startsWith("fan-")) {
+      const pct = Number(action.split("-")[1]);
+      if (Number.isFinite(pct)) return this.app.callEntityService("fan", "set_percentage", { entity_id: entityId, percentage: pct });
+    }
+    if (domain === "light") {
+      const currentBri = Math.round((Number(attrs.brightness ?? (Utils.isTruthyState(state?.state) ? 255 : 0)) / 255) * 100);
+      if (action === "brightness-down") return this.app.callEntityService("light", "turn_on", { entity_id: entityId, brightness_pct: Math.max(1, currentBri - 15) });
+      if (action === "brightness-up") return this.app.callEntityService("light", "turn_on", { entity_id: entityId, brightness_pct: Math.min(100, currentBri + 15) });
+    }
+    if (domain === "cover") {
+      if (action === "open") return this.app.callEntityService("cover", "open_cover", { entity_id: entityId });
+      if (action === "stop") return this.app.callEntityService("cover", "stop_cover", { entity_id: entityId });
+      if (action === "close") return this.app.callEntityService("cover", "close_cover", { entity_id: entityId });
+    }
+    if (domain === "climate") {
+      const temperature = Number(attrs.temperature ?? 20);
+      if (action === "temp-down") return this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: temperature - 1 });
+      if (action === "temp-up") return this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: temperature + 1 });
+    }
+  }
+
+  _bindControlQuickActions(widget, config, state) {
+    widget.querySelectorAll(".td-control-action[data-action]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        btn.disabled = true;
+        try {
+          await this._handleControlQuickAction(config, state, btn.dataset.action || "");
+        } catch (err) {
+          console.warn("control quick action failed", config?.entity_id, btn.dataset.action, err);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   _renderSmartHomeControlWidget(widget, config, state, name, icon) {
     const opts = this._controlDisplayOptions(config);
     const summary = this._controlSummary(config, state, name, icon);
@@ -991,17 +1101,19 @@ class ScreenManager {
     widget.classList.toggle("widget-control-compact", opts.layout === "compact");
 
     const iconMarkup = opts.showIcon ? this._controlIconMarkup(summary) : "";
-    const nameMarkup = opts.showName && summary.name ? `<div class="w-name">${summary.name}</div>` : "";
+    const nameMarkup = opts.showName && summary.name ? `<div class="w-name td-control-name">${summary.name}</div>` : "";
     const valueMarkup = opts.showValue ? `<div class="td-control-value">${summary.value}</div>` : "";
     const subMarkup = opts.showSub && summary.sub ? `<div class="td-control-sub">${summary.sub}</div>` : "";
     const chipMarkup = opts.showStatusChip ? `<div class="td-control-chip ${summary.chipClass}">${summary.chip}</div>` : "";
     const meterMarkup = opts.showMeter ? `<div class="td-control-meter ${opts.layout === "compact" ? "compact" : ""}"><span style="width:${Math.max(0, Math.min(100, summary.meter || 0))}%"></span></div>` : "";
+    const actionMarkup = this._controlQuickActionsMarkup(config, state, summary, opts.layout === "compact");
 
     if (opts.layout === "compact") {
-      widget.innerHTML = `<div class="td-control-shell compact"><div class="td-control-compact-core">${iconMarkup}<div class="td-control-compact-meta">${nameMarkup}${valueMarkup}${chipMarkup || (!opts.showSub ? `<div class="td-control-sub">Popup / Details</div>` : subMarkup)}${opts.showSub && subMarkup && !chipMarkup ? subMarkup : ""}</div></div>${meterMarkup}</div>`;
+      widget.innerHTML = `<div class="td-control-shell compact"><div class="td-control-compact-core">${iconMarkup}<div class="td-control-compact-meta">${nameMarkup}${valueMarkup}${chipMarkup || subMarkup || `<div class="td-control-sub">Tippen für Details</div>`}</div></div>${meterMarkup}${actionMarkup}</div>`;
     } else {
-      widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top">${iconMarkup}<div class="td-control-main">${nameMarkup}${valueMarkup}${subMarkup}</div>${chipMarkup}</div>${meterMarkup}</div>`;
+      widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top">${iconMarkup}<div class="td-control-main">${nameMarkup}${valueMarkup}${subMarkup}</div>${chipMarkup}</div>${meterMarkup}${actionMarkup}</div>`;
     }
+    this._bindControlQuickActions(widget, config, state);
     this._renderExtraEntityList(widget, config);
   }
 

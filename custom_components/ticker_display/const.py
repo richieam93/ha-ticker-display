@@ -47,17 +47,17 @@ SENSOR_KEYS = [
 ]
 
 DEFAULT_SOUNDS = {
-    "doorbell": {"name": "Türklingel", "file": "doorbell.mp3", "category": "notification"},
-    "alarm": {"name": "Alarm", "file": "alarm.mp3", "category": "alarm"},
-    "alarm_critical": {"name": "Kritischer Alarm", "file": "alarm_critical.mp3", "category": "alarm"},
-    "notification": {"name": "Benachrichtigung", "file": "notification.mp3", "category": "notification"},
-    "chime": {"name": "Chime", "file": "chime.mp3", "category": "chime"},
-    "success": {"name": "Erfolg", "file": "success.mp3", "category": "notification"},
-    "warning": {"name": "Warnung", "file": "warning.mp3", "category": "alarm"},
-    "error": {"name": "Fehler", "file": "error.mp3", "category": "alarm"},
-    "water_drop": {"name": "Wassertropfen", "file": "water_drop.mp3", "category": "chime"},
-    "ding": {"name": "Ding", "file": "ding.mp3", "category": "chime"},
-    "fanfare": {"name": "Fanfare", "file": "fanfare.mp3", "category": "notification"},
+    "doorbell": {"name": "Türklingel", "file": "doorbell.wav", "category": "notification"},
+    "alarm": {"name": "Alarm", "file": "alarm.wav", "category": "alarm"},
+    "alarm_critical": {"name": "Kritischer Alarm", "file": "alarm_critical.wav", "category": "alarm"},
+    "notification": {"name": "Benachrichtigung", "file": "notification.wav", "category": "notification"},
+    "chime": {"name": "Chime", "file": "chime.wav", "category": "chime"},
+    "success": {"name": "Erfolg", "file": "success.wav", "category": "notification"},
+    "warning": {"name": "Warnung", "file": "warning.wav", "category": "alarm"},
+    "error": {"name": "Fehler", "file": "error.wav", "category": "alarm"},
+    "water_drop": {"name": "Wassertropfen", "file": "water_drop.wav", "category": "chime"},
+    "ding": {"name": "Ding", "file": "ding.wav", "category": "chime"},
+    "fanfare": {"name": "Fanfare", "file": "fanfare.wav", "category": "notification"},
 }
 
 DEFAULT_FONTS = {

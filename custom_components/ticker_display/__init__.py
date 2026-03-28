@@ -15,7 +15,7 @@ from .api import TickerDisplayAPI
 from .const import DOMAIN, PANEL_URL, PLATFORMS
 from .coordinator import TickerDisplayCoordinator
 from .media_manager import MediaManager
-from .services import async_setup_services
+from .services import async_setup_services, async_unload_services
 from .store import TickerDisplayStore
 from .websocket_api import TickerDisplayWebSocket
 
@@ -40,7 +40,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     media_manager = MediaManager(hass)
     await media_manager.async_initialize()
 
-    coordinator = TickerDisplayCoordinator(hass, store)
+    heartbeat_timeout = int(entry.options.get("heartbeat_timeout", 120))
+    coordinator = TickerDisplayCoordinator(hass, store, heartbeat_timeout=heartbeat_timeout)
     websocket = TickerDisplayWebSocket(hass, store, coordinator)
 
     hass.data[DOMAIN][entry.entry_id] = {
@@ -96,6 +97,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 coordinator._unsub_timer()
                 coordinator._unsub_timer = None
 
+        await async_unload_services(hass)
         async_remove_panel(hass, "ticker-display-admin")
 
         if not hass.data.get(DOMAIN):

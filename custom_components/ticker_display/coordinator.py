@@ -10,12 +10,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TickerDisplayCoordinator:
-    def __init__(self, hass: HomeAssistant, store):
+    def __init__(self, hass: HomeAssistant, store, heartbeat_timeout: int = DEFAULT_HEARTBEAT_TIMEOUT):
         self.hass = hass
         self.store = store
         self._device_data: dict[str, dict] = {}
         self._last_heartbeat: dict[str, datetime] = {}
         self._update_callbacks: dict[str, list] = {}
+        self._heartbeat_timeout = heartbeat_timeout
 
         self._unsub_timer = async_track_time_interval(
             hass, self._check_device_timeouts, timedelta(seconds=30)
@@ -49,7 +50,7 @@ class TickerDisplayCoordinator:
         last = self._last_heartbeat.get(device_id)
         if not last:
             return False
-        return (datetime.now() - last).total_seconds() < DEFAULT_HEARTBEAT_TIMEOUT
+        return (datetime.now() - last).total_seconds() < self._heartbeat_timeout
 
     def get_all_online_devices(self) -> list[str]:
         return [did for did in self._device_data if self.is_device_online(did)]
@@ -67,6 +68,6 @@ class TickerDisplayCoordinator:
     def _check_device_timeouts(self, _now=None):
         for device_id in list(self._last_heartbeat.keys()):
             last = self._last_heartbeat[device_id]
-            is_online = (datetime.now() - last).total_seconds() < DEFAULT_HEARTBEAT_TIMEOUT
+            is_online = (datetime.now() - last).total_seconds() < self._heartbeat_timeout
             if not is_online:
                 self._notify_update(device_id)

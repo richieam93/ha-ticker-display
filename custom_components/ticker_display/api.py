@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from aiohttp import web
 from homeassistant.core import HomeAssistant
 
 from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH
+from .media_manager import _safe_filename
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +149,78 @@ class TickerDisplayAPI:
         }
 
 
+    def _error(self, message: str, status: int = 400, **extra):
+        payload = {"error": message}
+        payload.update(extra)
+        return web.json_response(payload, status=status)
+
+    async def _parse_json(self, request, *, require_object: bool = True) -> dict:
+        try:
+            data = await request.json()
+        except Exception as err:
+            raise web.HTTPBadRequest(text=json.dumps({"error": "invalid json", "details": str(err)}), content_type="application/json")
+        if require_object and not isinstance(data, dict):
+            raise web.HTTPBadRequest(text=json.dumps({"error": "json object required"}), content_type="application/json")
+        return data
+
+    def _clean_identifier(self, value: str | None, *, field: str = "id", max_len: int = 128) -> str:
+        cleaned = str(value or "").strip()[:max_len]
+        if not cleaned:
+            raise web.HTTPBadRequest(text=json.dumps({"error": f"{field} required"}), content_type="application/json")
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]+", cleaned):
+            raise web.HTTPBadRequest(text=json.dumps({"error": f"invalid {field}"}), content_type="application/json")
+        return cleaned
+
+    def _clean_entity_id(self, entity_id: str | None) -> str:
+        entity_id = self._clean_identifier(entity_id, field="entity_id", max_len=255)
+        if "." not in entity_id:
+            raise web.HTTPBadRequest(text=json.dumps({"error": "invalid entity_id"}), content_type="application/json")
+        return entity_id
+
+    def _int_query(self, request, name: str, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+        raw = request.query.get(name, default)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text=json.dumps({"error": f"invalid integer for {name}"}), content_type="application/json")
+        if minimum is not None:
+            value = max(minimum, value)
+        if maximum is not None:
+            value = min(maximum, value)
+        return value
+
+    def _sanitize_device_config(self, device_id: str, config: dict) -> dict:
+        allowed = {
+            "name", "model", "android_version", "screen_resolution", "screens",
+            "rotation", "ticker", "theme", "font", "created_at", "virtual",
+            "browser_mode", "source_device_id", "widget_feature_flags"
+        }
+        cleaned = {k: v for k, v in config.items() if k in allowed}
+        cleaned["id"] = device_id
+        if not isinstance(cleaned.get("screens", []), list):
+            raise web.HTTPBadRequest(text=json.dumps({"error": "screens must be a list"}), content_type="application/json")
+        if not isinstance(cleaned.get("rotation", {}), dict):
+            raise web.HTTPBadRequest(text=json.dumps({"error": "rotation must be an object"}), content_type="application/json")
+        if not isinstance(cleaned.get("ticker", {}), dict):
+            raise web.HTTPBadRequest(text=json.dumps({"error": "ticker must be an object"}), content_type="application/json")
+        return cleaned
+
+    def _sanitize_global_settings(self, data: dict) -> dict:
+        allowed = {
+            "default_theme", "default_transition", "default_screen_duration",
+            "default_camera_source", "default_chart_hours",
+            "default_chart_widget_animations", "default_widget_opacity",
+            "default_widget_blur", "default_widget_radius",
+            "default_background_color", "default_ticker_height",
+            "widget_feature_flags", "device_groups"
+        }
+        cleaned = {k: v for k, v in data.items() if k in allowed}
+        if "widget_feature_flags" in cleaned and not isinstance(cleaned["widget_feature_flags"], dict):
+            raise web.HTTPBadRequest(text=json.dumps({"error": "widget_feature_flags must be an object"}), content_type="application/json")
+        if "device_groups" in cleaned and not isinstance(cleaned["device_groups"], dict):
+            raise web.HTTPBadRequest(text=json.dumps({"error": "device_groups must be an object"}), content_type="application/json")
+        return cleaned
+
     def _absolute_url(self, request, path: str) -> str:
         if not path:
             return f"{request.scheme}://{request.host}"
@@ -162,10 +236,8 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
 
     async def _device_register(self, request):
-        data = await request.json()
-        device_id = data.get("device_id")
-        if not device_id:
-            return web.json_response({"error": "device_id required"}, status=400)
+        data = await self._parse_json(request)
+        device_id = self._clean_identifier(data.get("device_id"), field="device_id")
 
         existing = self.store.get_device(device_id)
         await self.store.async_add_device(device_id, data)
@@ -181,16 +253,15 @@ class TickerDisplayAPI:
         )
 
     async def _device_heartbeat(self, request):
-        data = await request.json()
-        device_id = data.get("device_id")
-        if not device_id:
-            return web.json_response({"error": "device_id required"}, status=400)
+        data = await self._parse_json(request)
+        device_id = self._clean_identifier(data.get("device_id"), field="device_id")
         self.coordinator.process_heartbeat(device_id, data)
         return web.json_response({"status": "ok"})
 
     async def _device_event(self, request):
-        data = await request.json()
-        did, evt = data.get("device_id"), data.get("event")
+        data = await self._parse_json(request)
+        did = self._clean_identifier(data.get("device_id"), field="device_id") if data.get("device_id") else ""
+        evt = str(data.get("event") or "").strip()
         if did and evt:
             self.coordinator.process_event(did, evt, data.get("data", {}))
         return web.json_response({"status": "ok"})
@@ -248,9 +319,19 @@ class TickerDisplayAPI:
         return web.json_response(self.media.get_images())
 
     async def _upload_media(self, request):
+        if request.content_length and request.content_length > 25 * 1024 * 1024:
+            return self._error("file too large", status=413)
+
         reader = await request.multipart()
         field = await reader.next()
-        filename, data = field.filename, await field.read()
+        if field is None or not getattr(field, "filename", None):
+            return web.json_response({"error": "file required"}, status=400)
+        filename = _safe_filename(field.filename)
+        data = await field.read(decode=False)
+        if len(data) > 25 * 1024 * 1024:
+            return self._error("file too large", status=413)
+        if not filename:
+            return web.json_response({"error": "invalid filename"}, status=400)
         path = request.path
         if "sound" in path:
             result = await self.media.async_save_sound(filename, data)
@@ -276,7 +357,7 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
 
     async def _camera_proxy(self, request):
-        entity_id = request.match_info["entity_id"]
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
         mode = request.query.get("mode", "auto")
         if mode == "stream":
             mode = "camera_proxy_stream"
@@ -347,8 +428,8 @@ class TickerDisplayAPI:
 
     async def _history(self, request):
         """Fetch history data for an entity."""
-        entity_id = request.match_info["entity_id"]
-        hours = min(int(request.query.get("hours", 24)), 168)  # Max 7 Tage
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
+        hours = self._int_query(request, "hours", 24, minimum=1, maximum=168)  # Max 7 Tage
 
         # ── UTC verwenden (HA arbeitet intern mit UTC) ──
         try:
@@ -634,7 +715,7 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
 
     async def _weather(self, request):
-        entity_id = request.match_info["entity_id"]
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
         state = self.hass.states.get(entity_id)
         if not state:
             return web.json_response({"error": "not found"}, status=404)
@@ -657,7 +738,7 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
 
     async def _states(self, request):
-        entity_id = request.match_info["entity_id"]
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
         state = self.hass.states.get(entity_id)
         if not state:
             return web.json_response({"error": "not found"}, status=404)
@@ -692,7 +773,7 @@ class TickerDisplayAPI:
         return payload
 
     async def _entity_capabilities(self, request):
-        entity_id = request.match_info["entity_id"]
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
         state = self.hass.states.get(entity_id)
         if not state:
             return web.json_response({"error": "not found"}, status=404)
@@ -803,7 +884,7 @@ class TickerDisplayAPI:
         service = data.get("service", "")
         service_data = data.get("data", {}) or {}
         if not domain or not service:
-            return web.json_response({"error": "domain and service required"}, status=400)
+            return self._error("domain and service required")
 
         await self.hass.services.async_call(
             domain,
@@ -821,7 +902,7 @@ class TickerDisplayAPI:
         if not entity_id or "." not in entity_id:
             return web.json_response({"error": "entity_id required"}, status=400)
         if not action:
-            return web.json_response({"error": "action required"}, status=400)
+            return self._error("action required")
 
         domain = entity_id.split(".", 1)[0]
         state = self.hass.states.get(entity_id)
@@ -954,7 +1035,7 @@ class TickerDisplayAPI:
         return web.json_response({"status": "ok", "entity_id": entity_id, "domain": service_domain, "service": service, "action": action, "data": payload})
 
     async def _media_player_state(self, request):
-        entity_id = request.match_info["entity_id"]
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
         state = self.hass.states.get(entity_id)
         if not state or self._state_domain(state) != "media_player":
             return web.json_response({"error": "not found"}, status=404)
@@ -973,7 +1054,7 @@ class TickerDisplayAPI:
         return web.json_response(payload)
 
     async def _media_player_command(self, request):
-        entity_id = request.match_info["entity_id"]
+        entity_id = self._clean_entity_id(request.match_info["entity_id"])
         state = self.hass.states.get(entity_id)
         if not state or self._state_domain(state) != "media_player":
             return web.json_response({"error": "not found"}, status=404)
@@ -981,7 +1062,7 @@ class TickerDisplayAPI:
         data = await request.json()
         action = str(data.get("action", "")).strip().lower()
         if not action:
-            return web.json_response({"error": "action required"}, status=400)
+            return self._error("action required")
 
         mapping = {
             "toggle": ("media_player", "media_play_pause", {"entity_id": entity_id}),
@@ -1048,7 +1129,7 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
 
     async def _entities_list(self, request):
-        domain_filter = request.query.get("domain")
+        domain_filter = (request.query.get("domain") or "").strip() or None
         entities = []
         for s in self.hass.states.async_all(domain_filter):
             a = s.attributes
@@ -1069,8 +1150,10 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
 
     async def _ha_media_items(self, request):
-        kind = request.query.get("kind", "image").lower()
-        limit = max(1, min(int(request.query.get("limit", 300)), 1000))
+        kind = (request.query.get("kind", "image") or "image").lower()
+        if kind not in {"image", "audio"}:
+            return self._error("kind must be image or audio")
+        limit = self._int_query(request, "limit", 300, minimum=1, maximum=1000)
 
         try:
             from homeassistant.components import media_source
@@ -1194,8 +1277,8 @@ class TickerDisplayAPI:
         return web.json_response(config)
 
     async def _config_device_save(self, request):
-        device_id = request.match_info["device_id"]
-        config = await request.json()
+        device_id = self._clean_identifier(request.match_info["device_id"], field="device_id")
+        config = self._sanitize_device_config(device_id, await self._parse_json(request))
         await self.store.async_update_device(device_id, config)
         await self.ws.send_to_device(
             device_id,
@@ -1209,9 +1292,9 @@ class TickerDisplayAPI:
 
 
     async def _config_device_virtual(self, request):
-        data = await request.json()
-        source_device_id = data.get("source_device_id") or None
-        name = (data.get("name") or "").strip() or None
+        data = await self._parse_json(request)
+        source_device_id = self._clean_identifier(data.get("source_device_id"), field="source_device_id") if data.get("source_device_id") else None
+        name = (str(data.get("name") or "").strip()[:120]) or None
         device = await self.store.async_create_virtual_device(
             name=name,
             source_device_id=source_device_id,
@@ -1229,8 +1312,8 @@ class TickerDisplayAPI:
         return web.json_response(self.store.get_templates())
 
     async def _config_template_save(self, request):
-        data = await request.json()
-        tid = data.get("id", f"template_{int(datetime.now().timestamp())}")
+        data = await self._parse_json(request)
+        tid = self._clean_identifier(data.get("id", f"template_{int(datetime.now().timestamp())}"), field="id")
         await self.store.async_save_template(tid, data)
         return web.json_response({"status": "ok", "id": tid})
 
@@ -1244,8 +1327,8 @@ class TickerDisplayAPI:
         return web.json_response(self.store.get_alert_templates())
 
     async def _config_alert_save(self, request):
-        data = await request.json()
-        aid = data.get("id", f"alert_{int(datetime.now().timestamp())}")
+        data = await self._parse_json(request)
+        aid = self._clean_identifier(data.get("id", f"alert_{int(datetime.now().timestamp())}"), field="id")
         await self.store.async_save_alert_template(aid, data)
         return web.json_response({"status": "ok", "id": aid})
 
@@ -1259,8 +1342,8 @@ class TickerDisplayAPI:
         return web.json_response(self.store.get_custom_themes())
 
     async def _config_theme_save(self, request):
-        data = await request.json()
-        tid = data.get("id", f"theme_{int(datetime.now().timestamp())}")
+        data = await self._parse_json(request)
+        tid = self._clean_identifier(data.get("id", f"theme_{int(datetime.now().timestamp())}"), field="id")
         await self.store.async_save_theme(tid, data)
         return web.json_response({"status": "ok", "id": tid})
 
@@ -1272,12 +1355,17 @@ class TickerDisplayAPI:
         return web.json_response(self.store.get_global_settings())
 
     async def _config_global_save(self, request):
-        await self.store.async_update_global_settings(await request.json())
+        data = self._sanitize_global_settings(await self._parse_json(request))
+        await self.store.async_update_global_settings(data)
         return web.json_response({"status": "ok"})
 
     async def _config_backup(self, request):
         return web.json_response(self.store.get_full_backup())
 
     async def _config_restore(self, request):
-        await self.store.async_restore_backup(await request.json())
+        data = await self._parse_json(request)
+        required = {"devices", "templates", "alert_templates", "themes", "global_settings"}
+        if not required.issubset(set(data.keys())):
+            return self._error("invalid backup payload")
+        await self.store.async_restore_backup(data)
         return web.json_response({"status": "ok"})

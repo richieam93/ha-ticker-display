@@ -2,7 +2,7 @@
 
 import logging
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePath
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN, DEFAULT_SOUNDS, DEFAULT_FONTS
 
@@ -15,6 +15,12 @@ SOUND_ALIASES = {
 }
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _safe_filename(filename: str) -> str:
+    """Return a sanitized basename for uploaded or requested files."""
+    name = PurePath(str(filename or "")).name
+    return name.replace("\x00", "")
 
 
 class MediaManager:
@@ -82,7 +88,12 @@ class MediaManager:
         return sounds
 
     def get_sound_path(self, filename: str) -> Path | None:
-        path = self._sounds_path / filename
+        safe = _safe_filename(filename)
+        path = self._sounds_path / safe
+        try:
+            path.resolve().relative_to(self._sounds_path.resolve())
+        except Exception:
+            return None
         return path if path.exists() else None
 
     def get_sound_url(self, sound_id: str) -> str | None:
@@ -97,6 +108,7 @@ class MediaManager:
         return None
 
     async def async_save_sound(self, filename: str, data: bytes) -> dict:
+        filename = _safe_filename(filename)
         path = self._sounds_path / filename
         await self.hass.async_add_executor_job(path.write_bytes, data)
         return {"id": Path(filename).stem, "filename": filename, "url": f"/ticker-display/media/sounds/{filename}", "size": len(data)}
@@ -140,7 +152,12 @@ class MediaManager:
         return fonts
 
     def get_font_path(self, filename: str) -> Path | None:
-        path = self._fonts_path / filename
+        safe = _safe_filename(filename)
+        path = self._fonts_path / safe
+        try:
+            path.resolve().relative_to(self._fonts_path.resolve())
+        except Exception:
+            return None
         return path if path.exists() else None
 
     def get_font_css(self, font_id: str) -> str:
@@ -149,10 +166,13 @@ class MediaManager:
             if font["id"] == font_id:
                 for variant, url in font["files"].items():
                     weight = {"regular": 400, "medium": 500, "bold": 700}.get(variant, 400)
-                    css += f'@font-face{{font-family:"{font["name"]}";font-weight:{weight};font-display:swap;src:url("{url}") format("woff2");}}\n'
+                    ext = Path(url).suffix.lower()
+                    fmt = {".woff2": "woff2", ".woff": "woff", ".ttf": "truetype", ".otf": "opentype"}.get(ext, "woff2")
+                    css += f'@font-face{{font-family:"{font["name"]}";font-weight:{weight};font-display:swap;src:url("{url}") format("{fmt}");}}\n'
         return css
 
     async def async_save_font(self, filename: str, data: bytes) -> dict:
+        filename = _safe_filename(filename)
         path = self._fonts_path / filename
         await self.hass.async_add_executor_job(path.write_bytes, data)
         return {"id": Path(filename).stem, "filename": filename, "url": f"/ticker-display/media/fonts/{filename}"}
@@ -177,10 +197,16 @@ class MediaManager:
         return images
 
     def get_image_path(self, filename: str) -> Path | None:
-        path = self._images_path / filename
+        safe = _safe_filename(filename)
+        path = self._images_path / safe
+        try:
+            path.resolve().relative_to(self._images_path.resolve())
+        except Exception:
+            return None
         return path if path.exists() else None
 
     async def async_save_image(self, filename: str, data: bytes) -> dict:
+        filename = _safe_filename(filename)
         path = self._images_path / filename
         await self.hass.async_add_executor_job(path.write_bytes, data)
         return {"id": Path(filename).stem, "filename": filename, "url": f"/ticker-display/media/images/{filename}"}

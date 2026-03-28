@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from html import escape
 
 from homeassistant.core import HomeAssistant
 
@@ -12,11 +13,11 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
     theme = device_config.get("theme", "dark")
     font_id = device_config.get("font", "roboto")
     font_css = media_manager.get_font_css(font_id)
-    config_json = json.dumps(device_config)
-    global_settings_json = json.dumps(store.get_global_settings() or {})
+    config_json = json.dumps(device_config).replace("</", "<\\/")
+    global_settings_json = json.dumps(store.get_global_settings() or {}).replace("</", "<\\/")
     theme_css = _get_theme_css(theme, store.get_custom_themes())
     entities = _collect_entities(device_config)
-    entities_json = json.dumps(entities)
+    entities_json = json.dumps(entities).replace("</", "<\\/")
     ticker_enabled = device_config.get("ticker", {}).get("enabled", True)
 
     return f"""<!DOCTYPE html>
@@ -28,7 +29,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Ticker Display - {device_config.get('name', device_id)}</title>
+<title>Ticker Display - {escape(str(device_config.get('name', device_id)))}</title>
 
 <style id="font-faces">{font_css}</style>
 <style id="theme-vars">{theme_css}</style>
@@ -63,9 +64,9 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 <script>
 window.TICKER_CONFIG = {config_json};
 window.TICKER_GLOBAL_SETTINGS = {global_settings_json};
-window.TICKER_DEVICE_ID = "{device_id}";
+window.TICKER_DEVICE_ID = {json.dumps(str(device_id)).replace("</", "<\\/")};
 window.TICKER_ENTITIES = {entities_json};
-window.TICKER_WS_URL = ((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ticker-display/ws/{device_id}");
+window.TICKER_WS_URL = ((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ticker-display/ws/" + encodeURIComponent(String(window.TICKER_DEVICE_ID)));
 window.TICKER_API_BASE = "/ticker-display";
 </script>
 

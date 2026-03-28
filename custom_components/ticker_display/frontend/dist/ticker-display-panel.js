@@ -2857,6 +2857,42 @@ class TdScreenEditor extends LitElement {
       .wb .pv-split {
         display: flex; align-items: center; gap: 10px; min-width: 0;
       }
+      .wb .pv-control-card {
+        gap: 8px;
+      }
+      .wb .pv-control-card .pv-title {
+        font-size: 10px; color: rgba(255,255,255,.66);
+      }
+      .wb .pv-control-top {
+        display: flex; align-items: flex-start; gap: 10px; min-width: 0;
+      }
+      .wb .pv-control-icon {
+        width: 44px; height: 44px; border-radius: 14px; flex: none;
+        display: grid; place-items: center; font-size: 22px;
+        background: linear-gradient(135deg, rgba(64,196,255,.22), rgba(126,87,194,.18));
+        overflow: hidden;
+      }
+      .wb .pv-control-icon img { width: 100%; height: 100%; object-fit: cover; }
+      .wb .pv-control-main {
+        flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+      }
+      .wb .pv-chip {
+        padding: 4px 8px; border-radius: 999px; font-size: 9px; font-weight: 700;
+        background: rgba(255,255,255,.12); color: rgba(255,255,255,.82);
+        align-self: flex-start;
+      }
+      .wb .pv-chip.on { background: rgba(76,175,80,.2); color: #c8facc; }
+      .wb .pv-chip.off { background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); }
+      .wb .pv-action-row {
+        display: flex; flex-wrap: wrap; gap: 6px;
+      }
+      .wb .pv-action {
+        min-height: 26px; padding: 0 8px; border-radius: 10px; font-size: 9px; font-weight: 700;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: rgba(255,255,255,.08); color: #fff; border: 1px solid rgba(255,255,255,.08);
+      }
+      .wb .pv-action.primary { background: linear-gradient(135deg, rgba(64,196,255,.3), rgba(126,87,194,.24)); }
+      .wb .pv-action.grow { flex: 1 1 56px; }
 
       /* ── Widget badges ── */
       .wb .layer-badge {
@@ -3562,10 +3598,11 @@ class TdScreenEditor extends LitElement {
       const title = attrs.media_title || value || "—";
       const artist = attrs.media_artist || attrs.source || attrs.friendly_name || "";
       const vol = Math.round(Number(attrs.volume_level || 0) * 100);
+      const actions = compact ? ["▶", "Details"] : ["⏮", "▶", "⏭", "−", "+"];
       if (compact) {
-        return html`<div class="pv pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">🔊 ${vol}%</div>` : html`<div class="pv-sub">Popup / Details</div>`}</div></div>`;
+        return html`<div class="pv pv-control-card pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">🔊 ${vol}%</div>` : html`<div class="pv-sub">Touch-Steuerung</div>`}<div class="pv-action-row">${actions.map((label, index) => html`<span class="pv-action ${index === 0 ? 'primary grow' : 'grow'}">${label}</span>`)}</div></div></div>`;
       }
-      return html`<div class="pv"><div class="pv-split">${showIcon ? html`<div class="pv-media-cover">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}<div style="min-width:0;flex:1">${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showSub ? html`<div class="pv-sub">${artist}</div>` : ""}${showChip ? html`<div class="pv-sub">🔊 ${vol}%</div>` : ""}</div></div>${showMeter ? html`<div class="pv-meter"><span style="width:${vol}%"></span></div>` : ""}</div>`;
+      return html`<div class="pv pv-control-card"><div class="pv-control-top">${showIcon ? html`<div class="pv-control-icon">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}<div class="pv-control-main">${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showSub ? html`<div class="pv-sub">${artist}</div>` : ""}</div>${showChip ? html`<div class="pv-chip on">🔊 ${vol}%</div>` : ""}</div>${showMeter ? html`<div class="pv-meter"><span style="width:${vol}%"></span></div>` : ""}<div class="pv-action-row">${actions.map((label, index) => html`<span class="pv-action ${index === 1 ? 'primary' : ''}">${label}</span>`)}</div></div>`;
     }
 
     if (w.type === "switch-control" || w.type === "light-control" || w.type === "climate-control" || w.type === "cover-control") {
@@ -3580,32 +3617,42 @@ class TdScreenEditor extends LitElement {
       let sub = attrs.friendly_name || w.entity_id || "";
       let pct = 0;
       let chip = String(value || "—");
+      let chipClass = "off";
+      let actions = ["Details"];
       if (w.type === "light-control") {
         pct = attrs.brightness == null ? 0 : Math.round((Number(attrs.brightness || 0) / 255) * 100);
         main = (String(value).toLowerCase() === "on") ? `${pct || 100}%` : "Aus";
         sub = attrs.color_mode || "Licht";
         chip = String(value).toLowerCase() === "on" ? "Licht an" : "Aus";
+        chipClass = String(value).toLowerCase() === "on" ? "on" : "off";
+        actions = compact ? [chipClass === 'on' ? 'Aus' : 'Ein', 'Farben'] : [chipClass === 'on' ? 'Aus' : 'Ein', '−', '+', 'Farben'];
       } else if (w.type === "climate-control") {
         main = `${attrs.current_temperature ?? "—"}°C`;
         sub = `Soll ${attrs.temperature ?? "—"}°C · ${value || "—"}`;
         pct = Number.isFinite(Number(attrs.temperature)) ? Math.max(0, Math.min(100, (Number(attrs.temperature) / 30) * 100)) : 0;
         chip = String(value || "Klima");
+        chipClass = String(value || '').toLowerCase() === 'off' ? 'off' : 'on';
+        actions = compact ? ['−1°', '+1°'] : ['−1°', '+1°', 'Modi'];
       } else if (w.type === "cover-control") {
         pct = Number(attrs.current_position ?? 0);
         main = Number.isFinite(pct) ? `${pct}%` : String(value || "—");
         sub = String(value || "Rollladen");
         chip = pct > 10 ? "Offen" : "Zu";
+        chipClass = pct > 10 ? 'on' : 'off';
+        actions = compact ? ['Stopp', 'Position'] : ['Öffnen', 'Stopp', 'Schließen', 'Position'];
       } else {
         const on = ["on","open","home","playing","true","1"].includes(String(value).toLowerCase());
         main = on ? "Ein" : "Aus";
         pct = on ? 100 : 0;
         sub = String(value || "Schalter");
-        chip = on ? "ON" : "OFF";
+        chip = on ? "Aktiv" : "Aus";
+        chipClass = on ? 'on' : 'off';
+        actions = compact ? [on ? 'Aus' : 'Ein', 'Details'] : [on ? 'Ausschalten' : 'Einschalten', 'Details'];
       }
       if (compact) {
-        return html`<div class="pv pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${icon}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">${chip}</div>` : html`<div class="pv-sub">Popup / Details</div>`}</div></div>`;
+        return html`<div class="pv pv-control-card pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${icon}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">${chip}</div>` : html`<div class="pv-sub">Touch-Steuerung</div>`}<div class="pv-action-row">${actions.map((label, index) => html`<span class="pv-action ${index === 0 ? 'primary grow' : 'grow'}">${label}</span>`)}</div></div></div>`;
       }
-      return html`<div class="pv"><div class="pv-head">${showName ? html`<span class="pv-title">${fallbackTitle}</span>` : html`<span></span>`}${showIcon ? html`<span class="pv-icon">${icon}</span>` : ""}</div>${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showMeter ? html`<div class="pv-meter"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>` : ""}${showSub ? html`<div class="pv-sub">${sub}</div>` : ""}${showChip ? html`<div class="pv-sub">${chip}</div>` : ""}</div>`;
+      return html`<div class="pv pv-control-card"><div class="pv-control-top">${showIcon ? html`<div class="pv-control-icon">${icon}</div>` : ""}<div class="pv-control-main">${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showSub ? html`<div class="pv-sub">${sub}</div>` : ""}</div>${showChip ? html`<div class="pv-chip ${chipClass}">${chip}</div>` : ""}</div>${showMeter ? html`<div class="pv-meter"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>` : ""}<div class="pv-action-row">${actions.map((label, index) => html`<span class="pv-action ${index === 0 ? 'primary' : ''} ${label.length > 7 ? 'grow' : ''}">${label}</span>`)}</div></div>`;
     }
 
     return html`
@@ -4950,8 +4997,8 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
           <label>Layout</label>
           <select .value=${w.config?.control_layout || "card"}
                   @change=${(e) => this._setWidgetConfig("control_layout", e.target.value)}>
-            <option value="card">Karte</option>
-            <option value="compact">Kompakt / Symbol</option>
+            <option value="card">Touch-Karte (neu)</option>
+            <option value="compact">Kompakt / Schnellzugriff</option>
           </select>
         </div>
         <div class="pf2">
@@ -4966,7 +5013,7 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
         </div>
       </div>
 
-      <div class="pf2-hint">Kompakt eignet sich für genau ein Gerät: kleines Symbol im Widget, beim Tippen öffnet sich das große Steuer-Popup.</div>
+      <div class="pf2-hint">Touch-Karte zeigt die neue mobile Bedienung direkt im Widget. Kompakt ist für kleine Flächen gedacht und setzt auf Schnellzugriffe + Popup.</div>
 
       <div class="tog-grid">
         ${[
@@ -8498,42 +8545,57 @@ class TickerDisplayPanel extends LitElement {
      ══════════════════════════════════════════════════════ */
 
   _authHeaders() {
-    return { Authorization: `Bearer ${this.hass?.auth?.data?.access_token}` };
+    const token = this.hass?.auth?.data?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  async _request(path, options = {}) {
+    const response = await fetch(`${API}${path}`, {
+      credentials: "same-origin",
+      ...options,
+      headers: { ...this._authHeaders(), ...(options.headers || {}) },
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => "");
+
+    if (!response.ok) {
+      const message = typeof payload === "object" && payload?.error
+        ? payload.error
+        : (typeof payload === "string" && payload)
+          ? payload
+          : `${options.method || "GET"} ${path}: ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload;
   }
 
   async _get(path) {
-    const r = await fetch(`${API}${path}`, { headers: this._authHeaders() });
-    if (!r.ok) throw new Error(`GET ${path}: ${r.status}`);
-    return r.json();
+    return this._request(path);
   }
 
   async _post(path, data) {
-    const r = await fetch(`${API}${path}`, {
+    return this._request(path, {
       method: "POST",
-      headers: { ...this._authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data ?? {}),
     });
-    if (!r.ok) throw new Error(`POST ${path}: ${r.status}`);
-    return r.json();
   }
 
   async _del(path) {
-    const r = await fetch(`${API}${path}`, {
-      method: "DELETE",
-      headers: this._authHeaders(),
-    });
-    return r.json();
+    return this._request(path, { method: "DELETE" });
   }
 
   async _upload(path, file) {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch(`${API}${path}`, {
+    return this._request(path, {
       method: "POST",
-      headers: this._authHeaders(),
       body: fd,
     });
-    return r.json();
   }
 
   async _loadAll() {
