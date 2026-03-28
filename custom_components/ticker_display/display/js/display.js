@@ -1624,9 +1624,7 @@ class ScreenManager {
   _openWidgetUrl(config) { const url = config.tap_url || config.config?.tap_url || ""; if (url) window.open(url, "_blank", "noopener,noreferrer"); }
   _gotoTargetScreen(config) { const target = config.tap_screen_id || config.config?.tap_screen_id || ""; if (target) this.goto(target); }
 
-  _openWidgetDetail(widget, config) {
-    const overlay = document.getElementById("widget-detail-overlay") || this._createWidgetDetailOverlay();
-    const body = overlay.querySelector(".widget-detail-body");
+  _buildWidgetFocusCard(config, fallbackWidget = null, options = {}) {
     const renderConfig = Utils.deepClone(config || {});
     renderConfig.tap_action = "none";
     renderConfig.group_tap_action = "none";
@@ -1634,27 +1632,99 @@ class ScreenManager {
     if (!renderConfig.config) renderConfig.config = {};
     renderConfig.config.camera_tap_fullscreen = false;
 
-    const stage = document.createElement("div");
-    stage.className = "widget-detail-stage";
-
-    let detailWidget = null;
+    let card = null;
     try {
-      detailWidget = this._createWidget(renderConfig);
+      card = this._createWidget(renderConfig);
     } catch (err) {
-      console.warn("[TickerDisplay] expand render failed, falling back to clone", err);
+      console.warn("[TickerDisplay] focus render failed, falling back to clone", err);
     }
 
-    if (!detailWidget) detailWidget = widget.cloneNode(true);
-    detailWidget.classList.add("widget-detail-card");
-    detailWidget.style.width = "min(760px, 82vw)";
-    detailWidget.style.height = "min(440px, 60vh)";
-    detailWidget.style.transform = `scale(${config.tap_scale || 1.18})`;
-    detailWidget.style.transformOrigin = "center center";
+    if (!card && fallbackWidget) card = fallbackWidget.cloneNode(true);
+    if (!card) {
+      card = document.createElement("div");
+      card.className = "widget widget-detail-card widget-fallback-card";
+      const entityId = config?.entity_id || config?.tap_target_entity || "";
+      const st = this.app?.entityStates?.[entityId] || {};
+      const attrs = st.attributes || {};
+      card.innerHTML = `<div class="w-value-wrap"><span class="w-value">${Utils.formatStateWithUnit(st.state ?? "—", attrs.unit_of_measurement || "", { decimals: config?.config?.value_decimals, trimTrailingZeros: config?.config?.trim_trailing_zeros !== false })}</span></div><div class="w-name">${Utils.text(attrs.friendly_name || entityId || config?.type || "Widget")}</div>`;
+    }
+
+    card.classList.add("widget-detail-card");
+    card.dataset.focusWidgetType = config?.type || "generic";
+    const width = options.width || "min(760px, 82vw)";
+    const height = options.height || "min(440px, 60vh)";
+    const scale = Number(options.scale ?? config?.tap_scale ?? 1.08);
+    card.style.width = width;
+    card.style.height = height;
+    card.style.maxWidth = options.maxWidth || width;
+    card.style.maxHeight = options.maxHeight || height;
+    card.style.transform = `scale(${Math.max(1, scale)})`;
+    card.style.transformOrigin = "center center";
+    return card;
+  }
+
+  _refreshFocusWidget(card, config = {}) {
+    if (!card || !config) return;
+    const state = this.app?.entityStates?.[config.entity_id] || {};
+    try {
+      switch (config.type) {
+        case "gauge":
+        case "progress-bar":
+        case "status-dot":
+        case "weather":
+        case "trend-arrow":
+        case "media-player-control":
+        case "switch-control":
+        case "light-control":
+        case "climate-control":
+        case "cover-control":
+        case "simple-value":
+        case "icon-value":
+        case "camera":
+        case "clock":
+        case "countdown":
+        case "image":
+        case "qr-code":
+        case "color-block":
+        case "button":
+        case "mini-graph": case "sparkline": case "line-chart": case "bar-chart":
+        case "area-chart": case "multi-line-chart": case "stacked-bar-chart":
+        case "horizontal-bar-chart": case "donut-chart": case "pie-chart":
+        case "radar-chart": case "heatmap-mini": case "timeline-chart":
+        case "scatter-chart": case "bubble-chart": case "polar-area-chart":
+        case "forecast-chart": case "energy-flow-mini": case "comparison-chart":
+        case "radial-gauge-advanced": case "bullet-chart":
+          this._updateWidget({ element: card, config }, config.entity_id, state);
+          break;
+        default:
+          this._updateWidget({ element: card, config }, config.entity_id, state);
+      }
+    } catch (err) {
+      console.warn("[TickerDisplay] focus refresh failed", config?.type, err);
+    }
+    requestAnimationFrame(() => {
+      try {
+        const canvas = card.querySelector(".chart-canvas");
+        if (canvas && window.Chart) this._scheduleChartBuild(card, canvas, config, state);
+        if (METRIC_WIDGET_TYPES.has(config.type || "")) this._renderMetricSparkline(card, config);
+      } catch (err) {
+        console.warn("[TickerDisplay] focus chart refresh failed", config?.type, err);
+      }
+    });
+  }
+
+  _openWidgetDetail(widget, config) {
+    const overlay = document.getElementById("widget-detail-overlay") || this._createWidgetDetailOverlay();
+    const body = overlay.querySelector(".widget-detail-body");
+    const stage = document.createElement("div");
+    stage.className = "widget-detail-stage";
+    const detailWidget = this._buildWidgetFocusCard(config, widget, { width: "min(760px, 82vw)", height: "min(440px, 60vh)", scale: config?.tap_scale ?? 1.05 });
 
     body.innerHTML = "";
     stage.appendChild(detailWidget);
     body.appendChild(stage);
     overlay.hidden = false;
+    this._refreshFocusWidget(detailWidget, config);
 
     const close = () => {
       overlay.hidden = true;
@@ -1679,7 +1749,7 @@ class ScreenManager {
     return overlay;
   }
 
-  _closeWidgetPopup() { const o = document.getElementById("widget-popup-overlay"); if (!o) return; o.hidden = true; const b = o.querySelector(".widget-popup-body"); if (b) b.innerHTML = ""; }
+  _closeWidgetPopup() { const o = document.getElementById("widget-popup-overlay"); if (!o) return; o.hidden = true; clearTimeout(this._popupTimer); const b = o.querySelector(".widget-popup-body"); if (b) b.innerHTML = ""; }
   _openCameraFullscreen(config) { this._openWidgetPopup({ ...config, tap_popup_kind: "camera" }); }
   _popupFriendlyName(config, st) { return this._widgetName(config, st?.attributes?.friendly_name || config.entity_id || config.type || "Widget"); }
 
@@ -1766,10 +1836,19 @@ class ScreenManager {
       const hvacModes = Utils.safeArray(attrs.hvac_modes);
       html = `<div class="popup-hero popup-control popup-climate"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(attrs.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(attrs.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-mini-row"><span>Modus</span><strong>${Utils.text(st.state || "—")}</strong></div>${options.showPopupModes && hvacModes.length ? `<div class="popup-mode-row">${hvacModes.map(m => `<span class="popup-mode-chip ${String(st.state) === String(m) ? 'active' : ''}">${Utils.text(m)}</span>`).join("")}</div>` : ``}<div class="popup-controls"></div></div>`;
     } else {
-      html = `<div class="popup-hero"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId || this._widgetName(config, "Widget"))}</div><div class="popup-big-value">${Utils.formatStateWithUnit(st.state ?? "—", attrs.unit_of_measurement || "", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</div><div class="popup-subtitle">${Utils.text(st.state ?? "—")}</div></div>`;
+      html = `<div class="popup-widget-host"></div>`;
     }
 
     body.innerHTML = `<div class="widget-popup-sheet"><div class="widget-popup-header"><div class="widget-popup-title">${Utils.text(this._popupFriendlyName(config, st) || "Steuerung")}</div><button class="widget-popup-close" type="button">Schließen</button></div><div class="widget-popup-content">${html}</div></div>`;
+     const popupFocusCard = this._buildWidgetFocusCard(config, null, {
+      width: "min(880px, 100%)",
+      height: "min(500px, 58vh)",
+      maxWidth: "100%",
+      maxHeight: "min(500px, 58vh)",
+      scale: Math.min(1.02, Number(config?.tap_scale || 1.02)),
+    });
+    body.querySelector(".popup-widget-host")?.appendChild(popupFocusCard);
+    this._refreshFocusWidget(popupFocusCard, config);
     body.querySelector(".widget-popup-close")?.addEventListener("click", close);
     const hero = body.querySelector(".popup-hero") || body;
     const controls = body.querySelector(".popup-controls");
