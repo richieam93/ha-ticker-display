@@ -189,5 +189,20 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     }
 
     for name, handler in services.items():
-        hass.services.async_register(DOMAIN, name, handler)
+        if not hass.services.has_service(DOMAIN, name):
+            hass.services.async_register(DOMAIN, name, handler)
+
+    hass.data[f"{DOMAIN}_services_registered"] = True
     _LOGGER.info("Registered %d services", len(services))
+
+
+async def async_unload_services(hass: HomeAssistant) -> None:
+    """Unload registered services for Ticker Display."""
+    removed = 0
+    for name in REGISTERED_SERVICES:
+        if hass.services.has_service(DOMAIN, name):
+            hass.services.async_remove(DOMAIN, name)
+            removed += 1
+
+    hass.data.pop(f"{DOMAIN}_services_registered", None)
+    _LOGGER.info("Unregistered %d services", removed)
