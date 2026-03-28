@@ -8,6 +8,14 @@
    ══════════════════════════════════════════════════════════ */
 
 const Utils = {
+  deepClone(value) {
+    if (value === null || value === undefined) return value;
+    if (typeof structuredClone === "function") {
+      try { return structuredClone(value); } catch (e) {}
+    }
+    try { return JSON.parse(JSON.stringify(value)); } catch (e) { return value; }
+  },
+
   formatNumber(v, d = 1) {
     const n = parseFloat(v);
     return Number.isNaN(n) ? v : n.toFixed(d);
