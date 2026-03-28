@@ -2208,6 +2208,66 @@ body {
   justify-content: center;
   min-height: min(60svh, 560px);
 }
+.widget-modal-stage > .widget-detail-card .td-control-actions,
+.widget-modal-stage > .widget-detail-card .td-control-open {
+  display: none !important;
+}
+.widget-modal-stage.has-controls {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: auto;
+}
+.widget-modal-controls {
+  width: min(960px, 100%);
+  padding: 14px 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+.widget-modal-controls .popup-section-title:first-child {
+  margin-top: 0;
+}
+.widget-modal-controls .popup-controls,
+.widget-modal-controls .popup-controls-sub,
+.widget-modal-controls .popup-controls-media,
+.widget-modal-controls .popup-controls-colors {
+  width: 100%;
+}
+.widget-modal-controls .popup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.widget-modal-controls .popup-controls-media {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.widget-modal-controls .popup-control-btn,
+.widget-modal-controls .popup-color-chip {
+  min-height: 44px;
+}
+.widget-modal-controls .popup-control-btn.busy {
+  opacity: .7;
+}
+@media (max-width: 700px), (pointer: coarse) and (max-width: 900px) {
+  .widget-modal-stage.has-controls {
+    gap: 10px;
+  }
+  .widget-modal-controls {
+    padding: 12px;
+    border-radius: 16px;
+  }
+  .widget-modal-controls .popup-controls,
+  .widget-modal-controls .popup-controls-media,
+  .widget-modal-controls .popup-controls-colors {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .widget-modal-stage > .widget-detail-card {
   width: min(960px, 100%) !important;
   max-width: 100% !important;

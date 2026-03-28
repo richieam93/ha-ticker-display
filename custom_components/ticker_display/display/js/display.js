@@ -1709,6 +1709,7 @@ class ScreenManager {
 
     card.classList.add("widget-detail-card");
     card.dataset.focusWidgetType = type;
+    card.querySelectorAll('.td-control-action[data-action="details"], .td-control-open').forEach((node) => node.remove());
     const width = options.width || "min(760px, 82vw)";
     const height = options.height || "min(440px, 60vh)";
     const scale = Number(options.scale ?? config?.tap_scale ?? 1.08);
@@ -1820,6 +1821,13 @@ class ScreenManager {
     body.innerHTML = "";
     titleEl.textContent = Utils.text(title);
     stage.appendChild(focusCard);
+    if (this._isControlWidgetType(config?.type)) {
+      const controlPanel = this._buildControlModalPanel(config);
+      if (controlPanel) {
+        stage.classList.add("has-controls");
+        stage.appendChild(controlPanel);
+      }
+    }
     body.appendChild(stage);
     overlay.hidden = false;
 
@@ -1950,6 +1958,169 @@ class ScreenManager {
     btn.innerHTML = `<span class="popup-color-swatch" style="background:${tone}"></span><span>${label}</span>`;
     btn.onclick = onClick;
     body.appendChild(btn);
+  }
+
+  _isControlWidgetType(type) {
+    return ["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(String(type || ""));
+  }
+
+  _modalRunAction(button, handler) {
+    return async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (button.disabled) return;
+      button.disabled = true;
+      button.classList.add("busy");
+      try {
+        await handler();
+      } catch (err) {
+        console.warn("[TickerDisplay] modal action failed", err);
+      } finally {
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove("busy");
+        }, 180);
+      }
+    };
+  }
+
+  _buildControlModalPanel(config) {
+    if (!this._isControlWidgetType(config?.type)) return null;
+    const entityId = config?.entity_id || "";
+    if (!entityId) return null;
+    const state = this.app?.entityStates?.[entityId] || {};
+    const attrs = state?.attributes || {};
+    const domain = String(entityId).split(".")[0] || "";
+    const opts = this._controlDisplayOptions(config);
+
+    const panel = document.createElement("div");
+    panel.className = `widget-modal-controls widget-modal-controls-${config.type || "generic"}`;
+
+    const addSection = (title, className = "popup-controls") => {
+      const heading = document.createElement("div");
+      heading.className = "popup-section-title";
+      heading.textContent = title;
+      panel.appendChild(heading);
+      const row = document.createElement("div");
+      row.className = className;
+      panel.appendChild(row);
+      return row;
+    };
+
+    const addButton = (row, label, handler, opts = {}) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `popup-control-btn ${opts.primary ? "active" : ""} ${opts.className || ""}`.trim();
+      btn.textContent = label;
+      btn.title = opts.title || label;
+      btn.addEventListener("click", this._modalRunAction(btn, handler));
+      row.appendChild(btn);
+      return btn;
+    };
+
+    const addColor = (row, label, tone, handler) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "popup-color-chip";
+      btn.innerHTML = `<span class="popup-color-swatch" style="background:${tone}"></span><span>${label}</span>`;
+      btn.addEventListener("click", this._modalRunAction(btn, handler));
+      row.appendChild(btn);
+      return btn;
+    };
+
+    const call = (domain, service, data) => this.app.callEntityService(domain, service, { entity_id: entityId, ...data });
+
+    if (config.type === "switch-control") {
+      const row = addSection("Schalter");
+      addButton(row, "Ein", () => call(domain, "turn_on", {}), { primary: String(state?.state) === "on" });
+      addButton(row, "Aus", () => call(domain, "turn_off", {}), { primary: String(state?.state) === "off" });
+      addButton(row, "Toggle", () => this.app.callEntityToggle(entityId));
+    }
+
+    if (config.type === "light-control") {
+      const power = addSection("Licht");
+      addButton(power, "Ein", () => call("light", "turn_on", {}), { primary: Utils.isTruthyState(state?.state) });
+      addButton(power, "Aus", () => call("light", "turn_off", {}), { primary: !Utils.isTruthyState(state?.state) });
+      addButton(power, "Toggle", () => this.app.callEntityToggle(entityId));
+
+      const brightness = addSection("Helligkeit");
+      [10, 25, 50, 75, 100].forEach((pct) => addButton(brightness, `${pct}%`, () => call("light", "turn_on", { brightness_pct: pct })));
+
+      const colorModes = Array.isArray(attrs.supported_color_modes) ? attrs.supported_color_modes : [];
+      if (opts.showPopupColors !== false && (colorModes.some((mode) => ["rgb", "rgbw", "rgbww", "hs", "xy", "color_temp"].includes(mode)) || attrs.rgb_color || attrs.color_temp_kelvin)) {
+        const colors = addSection("Farben", "popup-controls popup-controls-colors");
+        addColor(colors, "Warm", "linear-gradient(135deg,#ffb45c,#ff7043)", () => call("light", "turn_on", { color_temp_kelvin: 2700 }));
+        addColor(colors, "Neutral", "linear-gradient(135deg,#ffe6a3,#f9fbff)", () => call("light", "turn_on", { color_temp_kelvin: 4000 }));
+        addColor(colors, "Kalt", "linear-gradient(135deg,#d8f2ff,#7fd5ff)", () => call("light", "turn_on", { color_temp_kelvin: 6500 }));
+        addColor(colors, "Rot", "linear-gradient(135deg,#ff8a80,#ef5350)", () => call("light", "turn_on", { rgb_color: [255, 82, 82] }));
+        addColor(colors, "Grün", "linear-gradient(135deg,#a5d6a7,#43a047)", () => call("light", "turn_on", { rgb_color: [67, 160, 71] }));
+        addColor(colors, "Blau", "linear-gradient(135deg,#90caf9,#1e88e5)", () => call("light", "turn_on", { rgb_color: [30, 136, 229] }));
+      }
+
+      if (opts.showPopupEffects !== false && Array.isArray(attrs.effect_list) && attrs.effect_list.length) {
+        const fx = addSection("Effekte");
+        attrs.effect_list.slice(0, 8).forEach((effect) => addButton(fx, String(effect), () => call("light", "turn_on", { effect })));
+      }
+    }
+
+    if (config.type === "climate-control") {
+      const target = Number(attrs.temperature ?? state?.state ?? 20) || 20;
+      const temp = addSection("Temperatur");
+      addButton(temp, "−2°", () => call("climate", "set_temperature", { temperature: target - 2 }));
+      addButton(temp, "−1°", () => call("climate", "set_temperature", { temperature: target - 1 }));
+      addButton(temp, "+1°", () => call("climate", "set_temperature", { temperature: target + 1 }), { primary: true });
+      addButton(temp, "+2°", () => call("climate", "set_temperature", { temperature: target + 2 }));
+
+      if (opts.showPopupModes !== false && Array.isArray(attrs.hvac_modes) && attrs.hvac_modes.length) {
+        const modes = addSection("Modus");
+        attrs.hvac_modes.slice(0, 8).forEach((mode) => addButton(modes, String(mode), () => call("climate", "set_hvac_mode", { hvac_mode: mode }), { primary: attrs.hvac_mode === mode }));
+      }
+      if (opts.showPopupPresets !== false && Array.isArray(attrs.preset_modes) && attrs.preset_modes.length) {
+        const presets = addSection("Preset");
+        attrs.preset_modes.slice(0, 8).forEach((preset) => addButton(presets, String(preset), () => call("climate", "set_preset_mode", { preset_mode: preset }), { primary: attrs.preset_mode === preset }));
+      }
+      if (opts.showPopupFanModes !== false && Array.isArray(attrs.fan_modes) && attrs.fan_modes.length) {
+        const fanModes = addSection("Lüfter");
+        attrs.fan_modes.slice(0, 8).forEach((fanMode) => addButton(fanModes, String(fanMode), () => call("climate", "set_fan_mode", { fan_mode: fanMode }), { primary: attrs.fan_mode === fanMode }));
+      }
+    }
+
+    if (config.type === "cover-control") {
+      const actions = addSection("Rollladen");
+      addButton(actions, "Öffnen", () => call("cover", "open_cover", {}));
+      addButton(actions, "Stop", () => call("cover", "stop_cover", {}), { primary: true });
+      addButton(actions, "Schließen", () => call("cover", "close_cover", {}));
+
+      if (opts.showPopupPositionPresets !== false) {
+        const positions = addSection("Position");
+        [0, 25, 50, 75, 100].forEach((position) => addButton(positions, `${position}%`, () => call("cover", "set_cover_position", { position })));
+      }
+      if (opts.showPopupTilt !== false && (attrs.current_tilt_position !== undefined || attrs.supported_features)) {
+        const tilt = addSection("Lamellen");
+        [0, 50, 100].forEach((tilt_position) => addButton(tilt, `${tilt_position}%`, () => call("cover", "set_cover_tilt_position", { tilt_position })));
+      }
+    }
+
+    if (config.type === "media-player-control") {
+      const transport = addSection("Wiedergabe", "popup-controls popup-controls-media");
+      addButton(transport, "⏮", () => call("media_player", "media_previous_track", {}));
+      addButton(transport, Utils.isTruthyState(state?.state) ? "Pause" : "Play", () => call("media_player", "media_play_pause", {}), { primary: true });
+      addButton(transport, "⏭", () => call("media_player", "media_next_track", {}));
+      addButton(transport, "Stop", () => call("media_player", "media_stop", {}));
+      addButton(transport, "Mute", () => call("media_player", "volume_mute", { is_volume_muted: !attrs.is_volume_muted }));
+
+      const vol = Number(attrs.volume_level ?? 0);
+      const volume = addSection("Lautstärke");
+      [0, 0.25, 0.5, 0.75, 1].forEach((level) => addButton(volume, `${Math.round(level * 100)}%`, () => call("media_player", "volume_set", { volume_level: level }), { primary: Math.abs(level - vol) < 0.06 }));
+
+      if (Array.isArray(attrs.source_list) && attrs.source_list.length) {
+        const sources = addSection("Quelle");
+        attrs.source_list.slice(0, 8).forEach((source) => addButton(sources, String(source), () => call("media_player", "select_source", { source }), { primary: attrs.source === source }));
+      }
+    }
+
+    if (!panel.childElementCount) return null;
+    return panel;
   }
 
   _openWidgetPopup(config) {
