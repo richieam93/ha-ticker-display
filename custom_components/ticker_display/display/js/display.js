@@ -2333,6 +2333,40 @@ class AlertManager {
     return Math.max(0, Math.min(3600, duration));
   }
 
+  _startAttentionEffects(data = {}) {
+    const soundUrl = String(data.sound_url || data.soundUrl || '').trim();
+    const volume = Utils.clamp(Number(data.volume ?? data.sound_volume ?? 100) || 100, 0, 100);
+    const persistentAttention = !!(data.persistent || data.require_ack || data.loop_sound || data.sound_loop);
+    if (soundUrl) {
+      this.app?.bridge?.playSound(soundUrl, volume, persistentAttention);
+    }
+
+    const ttsUrl = String(data.tts_url || data.tts_audio_url || '').trim();
+    if (ttsUrl) {
+      this.app?.bridge?.playSound(ttsUrl, volume, false);
+    } else if (data.tts_message) {
+      this.app?.bridge?.ttsSpeak(String(data.tts_message), String(data.tts_language || 'de-DE'));
+    }
+
+    const shouldFlash = !!data.flash_screen || !!data.blink_screen;
+    if (shouldFlash) {
+      this.overlay?.classList.add('alert-flash-on');
+      document.body?.classList?.add('alert-flash-on');
+      this._flashTimer = setInterval(() => {
+        this.overlay?.classList.toggle('alert-flash-on');
+        document.body?.classList?.toggle('alert-flash-on');
+      }, 650);
+    }
+
+    if (data.vibrate) {
+      const pulse = Utils.clamp(Number(data.vibration_ms ?? data.vibrate_ms ?? 700) || 700, 100, 5000);
+      this.app?.bridge?.vibrate(pulse);
+      if (persistentAttention) {
+        this._vibrationTimer = setInterval(() => this.app?.bridge?.vibrate(pulse), Math.max(1200, pulse + 400));
+      }
+    }
+  }
+
   _showActionFeedback(label = "Aktion gesendet") {
     const text = Utils.text(label || "Aktion gesendet");
     try { this.app?.bridge?.showToast?.(text); } catch (e) {}
