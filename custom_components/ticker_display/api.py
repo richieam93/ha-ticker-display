@@ -225,7 +225,7 @@ class TickerDisplayAPI:
     def _sanitize_alert_config(self, data: dict) -> dict:
         allowed = {
             "id", "name", "title", "message", "severity", "mode", "icon",
-            "sound", "sound_url", "duration", "flash_screen", "vibrate",
+            "sound", "sound_url", "duration", "dismiss_after", "auto_close_after", "flash_screen", "vibrate",
             "persistent", "color", "volume", "entity_id", "pip_position",
             "pip_size", "tag", "source", "camera_entity_id", "progress_value",
             "progress_text", "require_ack", "ack_label", "secondary_label",
@@ -254,10 +254,12 @@ class TickerDisplayAPI:
         cleaned["progress_text"] = str(cleaned.get("progress_text") or "").strip()[:160]
         cleaned["tts_message"] = str(cleaned.get("tts_message") or "").strip()[:500]
         cleaned["tts_language"] = str(cleaned.get("tts_language") or "de").strip()[:16]
+        raw_duration = cleaned.get("duration") or data.get("dismiss_after") or data.get("auto_close_after") or 0
         try:
-            cleaned["duration"] = max(0, min(3600, int(cleaned.get("duration") or 0)))
+            cleaned["duration"] = max(0, min(3600, int(raw_duration or 0)))
         except (TypeError, ValueError):
             cleaned["duration"] = 0
+        cleaned["dismiss_after"] = cleaned["duration"]
         try:
             cleaned["volume"] = max(0, min(100, int(cleaned.get("volume") or 100)))
         except (TypeError, ValueError):

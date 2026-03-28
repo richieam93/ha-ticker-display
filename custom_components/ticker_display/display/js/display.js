@@ -1627,15 +1627,44 @@ class ScreenManager {
   _openWidgetDetail(widget, config) {
     const overlay = document.getElementById("widget-detail-overlay") || this._createWidgetDetailOverlay();
     const body = overlay.querySelector(".widget-detail-body");
-    const clone = widget.cloneNode(true);
-    clone.classList.add("widget-detail-card"); clone.style.width = "100%"; clone.style.height = "100%";
-    clone.style.transform = `scale(${config.tap_scale || 1.45})`;
-    body.innerHTML = ""; body.appendChild(clone); overlay.hidden = false;
-    const close = () => { overlay.hidden = true; body.innerHTML = ""; };
+    const renderConfig = Utils.deepClone(config || {});
+    renderConfig.tap_action = "none";
+    renderConfig.group_tap_action = "none";
+    renderConfig.camera_tap_fullscreen = false;
+    if (!renderConfig.config) renderConfig.config = {};
+    renderConfig.config.camera_tap_fullscreen = false;
+
+    const stage = document.createElement("div");
+    stage.className = "widget-detail-stage";
+
+    let detailWidget = null;
+    try {
+      detailWidget = this._createWidget(renderConfig);
+    } catch (err) {
+      console.warn("[TickerDisplay] expand render failed, falling back to clone", err);
+    }
+
+    if (!detailWidget) detailWidget = widget.cloneNode(true);
+    detailWidget.classList.add("widget-detail-card");
+    detailWidget.style.width = "min(760px, 82vw)";
+    detailWidget.style.height = "min(440px, 60vh)";
+    detailWidget.style.transform = `scale(${config.tap_scale || 1.18})`;
+    detailWidget.style.transformOrigin = "center center";
+
+    body.innerHTML = "";
+    stage.appendChild(detailWidget);
+    body.appendChild(stage);
+    overlay.hidden = false;
+
+    const close = () => {
+      overlay.hidden = true;
+      body.innerHTML = "";
+    };
     overlay.querySelector(".widget-detail-close").onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
     const secs = Number(config.tap_autoclose || 0);
-    if (secs > 0) { clearTimeout(this._detailTimer); this._detailTimer = setTimeout(close, secs * 1000); }
+    clearTimeout(this._detailTimer);
+    if (secs > 0) this._detailTimer = setTimeout(close, secs * 1000);
   }
 
   _createWidgetDetailOverlay() {
@@ -2261,11 +2290,12 @@ class AlertManager {
   }
 
   show(data = {}) {
-    this.clearAll();
+    this.clearAll({ silent: true });
     const payload = { ...data };
+    payload.duration = this._resolveDuration(payload);
     const mode = payload.mode || "fullscreen";
     this._activeTag = payload.tag || null;
-    this._emit("alert_shown", { tag: payload.tag || "", title: payload.title || "", mode, severity: payload.severity || "info" });
+    this._emit("alert_shown", { tag: payload.tag || "", title: payload.title || "", mode, severity: payload.severity || "info", duration: payload.duration || 0 });
     if (payload.wake_screen) this.app?.bridge?.setScreenPower?.(true);
     if (payload.tts_message) this.app?.bridge?.ttsSpeak?.(payload.tts_message, payload.tts_language || "de", payload.volume || 70);
     switch (mode) {
@@ -2298,7 +2328,7 @@ class AlertManager {
     if (this.overlay) { this.overlay.hidden = true; this.overlay.innerHTML = ""; }
     if (this.banner) { this.banner.hidden = true; this.banner.innerHTML = ""; }
     if (this.toastContainer) { this.toastContainer.hidden = true; this.toastContainer.innerHTML = ""; }
-    if (this._activeTag) this._emit("alert_closed", { tag: this._activeTag, reason: opts?.reason || "clear" });
+    if (!opts?.silent && this._activeTag) this._emit("alert_closed", { tag: this._activeTag, reason: opts?.reason || "clear" });
     this._activeTag = null;
   }
 
@@ -2308,6 +2338,33 @@ class AlertManager {
     } catch (e) {
       console.warn("alert event emit failed", event, e);
     }
+  }
+
+  _resolveDuration(data = {}) {
+    const raw = data.dismiss_after ?? data.auto_close_after ?? data.duration ?? 0;
+    const duration = Number(raw || 0);
+    if (!Number.isFinite(duration)) return 0;
+    return Math.max(0, Math.min(3600, duration));
+  }
+
+  _showActionFeedback(label = "Aktion gesendet") {
+    const text = Utils.text(label || "Aktion gesendet");
+    try { this.app?.bridge?.showToast?.(text); } catch (e) {}
+    if (!this.toastContainer) return;
+    const el = document.createElement('div');
+    el.className = 'alert-feedback-toast';
+    el.textContent = text;
+    this.toastContainer.hidden = false;
+    this.toastContainer.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+    const timer = setTimeout(() => {
+      el.classList.remove('visible');
+      setTimeout(() => {
+        el.remove();
+        if (!this.toastContainer?.children?.length) this.toastContainer.hidden = true;
+      }, 220);
+    }, 1800);
+    this._timers.push(timer);
   }
 
   _armAutoClose(data) {
@@ -2338,7 +2395,11 @@ class AlertManager {
       btn.addEventListener('click', () => {
         const action = btn.getAttribute('data-alert-action') || 'action';
         const close = btn.getAttribute('data-alert-close') !== 'false';
+        const label = btn.textContent?.trim() || action;
+        btn.classList.add('is-busy');
         this._emit('alert_action', { tag: data.tag || '', action, title: data.title || '', source: data.source || '' });
+        this._showActionFeedback(`${label} gesendet`);
+        setTimeout(() => btn.classList.remove('is-busy'), 500);
         if (close) this.clearAll({ reason: action });
       });
     });
@@ -2463,6 +2524,17 @@ class TickerDisplayApp {
     const screenCmds = ["show_dashboard", "show_graph", "show_camera", "show_weather", "show_single_value", "show_clock", "show_status_board", "show_image", "show_template"];
     if (screenCmds.includes(cmd)) { this.screenManager.showTemporaryScreen(cmd, data); return; }
     if (cmd === "clear_alert") this.alertManager.clearAll(data || {});
+    else if (cmd === "show_alert_sequence") {
+      const alerts = Utils.safeArray(data?.alerts);
+      if (!alerts.length) return;
+      let delay = 0;
+      alerts.forEach((alert, index) => {
+        const startDelay = delay;
+        setTimeout(() => this.alertManager.show(alert || {}), startDelay * 1000);
+        const duration = Number(alert?.dismiss_after ?? alert?.auto_close_after ?? alert?.duration ?? 0) || 0;
+        delay += Math.max(duration, index === alerts.length - 1 ? 0 : 1);
+      });
+    }
     else if (cmd === "set_ticker_entities") this.tickerManager.setEntities(data);
     else if (cmd === "clear_ticker") this.tickerManager.clear();
     else if (cmd === "identify") this._showIdentify();

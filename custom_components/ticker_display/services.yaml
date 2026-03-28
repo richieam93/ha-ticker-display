@@ -163,6 +163,22 @@ show_alert:
       name: Actions
       description: Liste zusätzlicher Buttons, z. B. [{"id":"open_cam","label":"Kamera"}].
       example: '[{"id":"open_cam","label":"Kamera"}]'
+    tts_message:
+      name: TTS message
+      description: Optionaler Text, den die Android-App direkt vorliest.
+      example: "Achtung. Bewegung an der Haustür."
+    tts_language:
+      name: TTS language
+      description: Sprachcode fuer die Android-App, z. B. de-DE, de-CH oder en-US.
+      example: "de-DE"
+    duration:
+      name: Duration
+      description: Sekunden bis der Alert automatisch verschwindet und der vorherige Screen wieder sichtbar wird.
+      example: 10
+    dismiss_after:
+      name: Dismiss after
+      description: Alias zu Duration in Sekunden.
+      example: 10
 
 show_alert_template:
   name: Show alert template

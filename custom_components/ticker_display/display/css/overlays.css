@@ -625,3 +625,32 @@
 .toast-message .alert-actions { justify-content:flex-start; margin-top:10px; }
 .toast-message .alert-action-btn { min-height:34px; padding:8px 12px; font-size:12px; }
 @media (max-width: 820px) { .alert-split-main { grid-template-columns:1fr; } .overlay-card-mode { padding:14px; } .alert-card-overlay { width:100%; } .notification-banner { top:10px; width:min(96vw, 96vw); } }
+
+
+.alert-feedback-toast {
+  max-width: min(360px, 88vw);
+  margin-top: 10px;
+  margin-left: auto;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(16,18,24,.92);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 14px 34px rgba(0,0,0,.28);
+  backdrop-filter: blur(10px);
+  font-size: 13px;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateY(10px) scale(.98);
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.alert-feedback-toast.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.alert-action-btn.is-busy {
+  opacity: .76;
+  transform: scale(.98);
+}
