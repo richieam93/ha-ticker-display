@@ -4661,9 +4661,6 @@ TdScreenEditor.prototype._renderInteractionConfig = function (w) {
                  @change=${(e) => this._setWidget("tap_scale", +e.target.value)}>
         </div>
       </div>
-      <div class="pf2-hint">
-        Hinweis: Vergrößern und Popup rendern das Widget jetzt neu. Charts, Gauge, Kamera, Bild und Wetter sollten dadurch nicht mehr leer bleiben.
-      </div>
     ` : ""}
 
     ${w.tap_action === "toggle" ? html`
