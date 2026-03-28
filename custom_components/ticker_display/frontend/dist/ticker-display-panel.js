@@ -311,8 +311,7 @@ function tdNormalizedDefaults(settings = {}) {
 }
 
 function tdDefaultTapActionForWidget(type = "") {
-  if (["switch-control", "light-control"].includes(type)) return "toggle";
-  if (["media-player-control", "climate-control", "cover-control"].includes(type)) return "popup";
+  if (["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(type)) return "popup";
   return "none";
 }
 
@@ -350,7 +349,7 @@ function tdCreateWidget(type, col, row, settings = {}) {
       extra_value_decimals: 1,
       trim_trailing_zeros: false,
       show_name: true,
-      control_layout: "card",
+      control_layout: "compact",
       control_show_icon: true,
       control_show_name: true,
       control_show_value: true,
@@ -390,7 +389,7 @@ function tdNormalizeWidgetRuntime(widget = {}) {
   if (!w.tap_action) w.tap_action = tdDefaultTapActionForWidget(w.type);
   if (["switch-control", "light-control"].includes(w.type) && w.toggle_badge == null) w.toggle_badge = true;
   if (["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(w.type)) {
-    if (w.config.control_layout == null) w.config.control_layout = "card";
+    if (w.config.control_layout == null) w.config.control_layout = "compact";
     if (w.config.control_show_icon == null) w.config.control_show_icon = true;
     if (w.config.control_show_name == null) w.config.control_show_name = w.config.show_name !== false;
     if (w.config.control_show_value == null) w.config.control_show_value = true;
@@ -615,7 +614,7 @@ class TdToast extends LitElement {
         box-shadow: 0 4px 16px rgba(0,0,0,.35);
         opacity: 0; transform: translateY(20px);
         transition: all .3s cubic-bezier(.4,0,.2,1);
-        pointer-events: auto; display: flex; align-items: center; gap: 8px;
+        pointer-events: auto; display: flex; align-items: center; gap: 6px;
         backdrop-filter: blur(12px);
       }
       .t.v { opacity: 1; transform: translateY(0); }
@@ -781,10 +780,10 @@ class TdEntityPicker extends LitElement {
       }
       .op:hover, .op.hl { background: rgba(255,255,255,.06); }
       .op.hl { border-left: 3px solid var(--primary-color); }
-      .top { display: flex; justify-content: space-between; gap: 8px; }
+      .top { display: flex; justify-content: space-between; gap: 6px; }
       .fn { font-weight: 500; }
       .id { font-family: monospace; font-size: 11px; color: var(--secondary-text-color); }
-      .meta { display: flex; gap: 8px; font-size: 11px; color: var(--secondary-text-color); }
+      .meta { display: flex; gap: 6px; font-size: 11px; color: var(--secondary-text-color); }
       .empty { padding: 16px; text-align: center; color: var(--secondary-text-color); font-size: 13px; }
     `;
   }
@@ -938,7 +937,7 @@ class TdEntityMultiPicker extends LitElement {
         color: var(--primary-text-color); font-size: 13px; outline: none;
       }
       input:focus { border-color: var(--primary-color); }
-      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+      .chips { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin: 0 0 8px; }
       .chip {
         display: inline-flex; align-items: center; gap: 6px;
         padding: 4px 10px; border-radius: 999px;
@@ -967,7 +966,7 @@ class TdEntityMultiPicker extends LitElement {
         border-bottom: 1px solid rgba(255,255,255,.04);
       }
       .op:hover { background: rgba(255,255,255,.06); }
-      .top { display: flex; justify-content: space-between; gap: 8px; }
+      .top { display: flex; justify-content: space-between; gap: 6px; }
       .fn { font-weight: 500; }
       .id { font-family: monospace; font-size: 11px; color: var(--secondary-text-color); }
       .cnt { font-size: 11px; color: var(--secondary-text-color); margin-top: 4px; }
@@ -1133,7 +1132,7 @@ class TdIconPicker extends LitElement {
     return css`
       :host { display: block; position: relative; }
       label { display: block; font-size: 12px; color: var(--secondary-text-color); margin-bottom: 4px; }
-      .w { display: flex; gap: 8px; align-items: center; }
+      .w { display: flex; gap: 6px; align-items: center; }
       .pv { font-size: 24px; display: flex; align-items: center; min-width: 32px; justify-content: center; }
       input {
         flex: 1; padding: 8px 12px;
@@ -1219,7 +1218,7 @@ class TdColorPicker extends LitElement {
     return css`
       :host { display: block; }
       label { display: block; font-size: 12px; color: var(--secondary-text-color); margin-bottom: 4px; }
-      .w { display: flex; gap: 8px; align-items: center; }
+      .w { display: flex; gap: 6px; align-items: center; }
       input[type=color] {
         width: 40px; height: 34px; padding: 2px;
         border: 1px solid var(--divider-color); border-radius: 6px;
@@ -1347,7 +1346,7 @@ class TdSoundPicker extends LitElement {
     return css`
       :host { display: block; }
       label { display: block; font-size: 12px; color: var(--secondary-text-color); margin-bottom: 4px; }
-      .w { display: flex; gap: 8px; }
+      .w { display: flex; gap: 6px; }
       select {
         flex: 1; padding: 8px 12px;
         border: 1px solid var(--divider-color); border-radius: 8px;
@@ -1448,10 +1447,10 @@ class TdDeviceList extends LitElement {
         margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
       }
       .hdr h2 { margin: 0; font-size: 22px; font-weight: 500; }
-      .hdr-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .hdr-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
       .filter-bar {
-        display: flex; gap: 8px; margin-bottom: 16px; align-items: center;
+        display: flex; gap: 6px; margin-bottom: 16px; align-items: center;
       }
       .filter-bar input {
         flex: 1; max-width: 320px; padding: 8px 12px;
@@ -1521,7 +1520,7 @@ class TdDeviceList extends LitElement {
       }
       .di .v { font-weight: 500; color: var(--primary-text-color); }
 
-      .da { display: flex; gap: 8px; flex-wrap: wrap; }
+      .da { display: flex; gap: 6px; flex-wrap: wrap; }
       .ab {
         display: inline-flex; align-items: center; gap: 6px;
         padding: 8px 14px; border: 1px solid var(--divider-color);
@@ -1773,7 +1772,7 @@ class TdDeviceEditor extends LitElement {
       .sec-header:hover { background: rgba(255,255,255,.02); }
       .sec-header h3 {
         margin: 0; font-size: 16px; font-weight: 500; flex: 1;
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 6px;
       }
       .sec-header .arrow {
         font-size: 12px; opacity: .5; transition: transform .2s;
@@ -1834,7 +1833,7 @@ class TdDeviceEditor extends LitElement {
       }
       .sm {
         font-size: 12px; color: var(--secondary-text-color);
-        margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap;
+        margin-top: 3px; display: flex; gap: 6px; flex-wrap: wrap;
       }
       .sm .badge {
         padding: 1px 6px; border-radius: 4px;
@@ -1855,7 +1854,7 @@ class TdDeviceEditor extends LitElement {
 
       /* ── Add Buttons ── */
       .add-row {
-        display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+        display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;
       }
       .add-btn {
         display: inline-flex; align-items: center; gap: 6px;
@@ -1870,7 +1869,7 @@ class TdDeviceEditor extends LitElement {
       }
       .add-btn.large {
         display: flex; align-items: center; justify-content: center;
-        gap: 8px; width: 100%; padding: 14px;
+        gap: 6px; width: 100%; padding: 14px;
         border: 2px dashed var(--divider-color);
         border-radius: 10px; font-size: 14px;
         color: var(--secondary-text-color);
@@ -1883,7 +1882,7 @@ class TdDeviceEditor extends LitElement {
 
       /* ── Template Import ── */
       .import-row {
-        display: flex; gap: 8px; margin-bottom: 14px;
+        display: flex; gap: 6px; margin-bottom: 14px;
         align-items: center;
       }
       .import-row select {
@@ -1913,7 +1912,7 @@ class TdDeviceEditor extends LitElement {
       .savebar .info {
         font-size: 12px; color: var(--secondary-text-color);
       }
-      .savebar .actions { display: flex; gap: 8px; }
+      .savebar .actions { display: flex; gap: 6px; }
       .sbtn {
         padding: 10px 24px; border: none; border-radius: 8px;
         font-size: 14px; font-weight: 500; cursor: pointer;
@@ -2488,7 +2487,7 @@ class TdScreenEditor extends LitElement {
       /* ══════ TOOLBAR ══════ */
       .tb {
         grid-column: 1 / -1; display: flex; flex-wrap: wrap;
-        align-items: center; gap: 8px; padding: 6px 12px;
+        align-items: center; gap: 6px; padding: 6px 12px;
         background: var(--app-header-background-color, #1e1e1e);
         border-bottom: 1px solid var(--divider-color);
         position: relative; z-index: 30;
@@ -2562,7 +2561,7 @@ class TdScreenEditor extends LitElement {
         background: var(--sidebar-background-color, #111);
       }
       .pal-tools {
-        display: grid; gap: 8px; margin-bottom: 10px;
+        display: grid; gap: 6px; margin-bottom: 10px;
         position: sticky; top: 0; z-index: 1;
         background: linear-gradient(180deg,
           var(--sidebar-background-color, #111) 80%,
@@ -2601,13 +2600,13 @@ class TdScreenEditor extends LitElement {
         list-style: none; cursor: pointer;
         padding: 8px 10px; display: flex;
         align-items: center; justify-content: space-between;
-        gap: 8px; font-size: 13px;
+        gap: 6px; font-size: 13px;
         transition: background .12s; user-select: none;
       }
       .folder summary::-webkit-details-marker { display: none; }
       .folder summary:hover { background: rgba(255,255,255,.03); }
       .folder .f-left {
-        display: flex; align-items: center; gap: 8px; min-width: 0;
+        display: flex; align-items: center; gap: 6px; min-width: 0;
       }
       .folder .f-meta {
         font-size: 10px; color: var(--secondary-text-color);
@@ -2628,7 +2627,7 @@ class TdScreenEditor extends LitElement {
       .p-item {
         display: grid;
         grid-template-columns: 24px 1fr auto;
-        gap: 8px; align-items: center;
+        gap: 6px; align-items: center;
         padding: 8px 10px;
         border: 1px solid rgba(255,255,255,.05);
         border-radius: 10px; cursor: grab;
@@ -2835,10 +2834,10 @@ class TdScreenEditor extends LitElement {
         align-items: center; justify-content: center;
       }
       .wb .pv-compact-shell {
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; text-align: center;
+        display:flex; flex-direction:column; justify-content:center; gap:8px; height:100%; text-align:left;
       }
       .wb .pv-compact-icon {
-        width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-size: 22px;
+        width: 36px; height: 36px; border-radius: 12px; display:grid; place-items:center; font-size:19px;
         background: linear-gradient(135deg, rgba(64,196,255,.22), rgba(126,87,194,.18)); box-shadow: 0 8px 18px rgba(0,0,0,.2); overflow: hidden;
       }
       .wb .pv-compact-icon img {
@@ -2858,7 +2857,7 @@ class TdScreenEditor extends LitElement {
         display: flex; align-items: center; gap: 10px; min-width: 0;
       }
       .wb .pv-control-card {
-        gap: 8px;
+        gap: 6px;
       }
       .wb .pv-control-card .pv-title {
         font-size: 10px; color: rgba(255,255,255,.66);
@@ -2884,10 +2883,10 @@ class TdScreenEditor extends LitElement {
       .wb .pv-chip.on { background: rgba(76,175,80,.2); color: #c8facc; }
       .wb .pv-chip.off { background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); }
       .wb .pv-action-row {
-        display: flex; flex-wrap: wrap; gap: 6px;
+        display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px;
       }
       .wb .pv-action {
-        min-height: 26px; padding: 0 8px; border-radius: 10px; font-size: 9px; font-weight: 700;
+        min-height: 28px; padding: 0 8px; border-radius: 10px; font-size: 9px; font-weight: 700;
         display: inline-flex; align-items: center; justify-content: center;
         background: rgba(255,255,255,.08); color: #fff; border: 1px solid rgba(255,255,255,.08);
       }
@@ -3587,7 +3586,7 @@ class TdScreenEditor extends LitElement {
     }
 
     if (w.type === "media-player-control") {
-      const compact = (w.config?.control_layout || "card") === "compact";
+      const compact = (w.config?.control_layout || "compact") !== "card";
       const showIcon = w.config?.control_show_icon !== false;
       const showName = w.config?.control_show_name !== false;
       const showValue = w.config?.control_show_value !== false;
@@ -3598,7 +3597,7 @@ class TdScreenEditor extends LitElement {
       const title = attrs.media_title || value || "—";
       const artist = attrs.media_artist || attrs.source || attrs.friendly_name || "";
       const vol = Math.round(Number(attrs.volume_level || 0) * 100);
-      const actions = compact ? ["▶", "Details"] : ["⏮", "▶", "⏭", "−", "+"];
+      const actions = compact ? ["Play", "Öffnen"] : ["Play", "Weiter", "Öffnen"];
       if (compact) {
         return html`<div class="pv pv-control-card pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${cover ? html`<img src=${cover} alt="Cover">` : "🎵"}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${title}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">🔊 ${vol}%</div>` : html`<div class="pv-sub">Touch-Steuerung</div>`}<div class="pv-action-row">${actions.map((label, index) => html`<span class="pv-action ${index === 0 ? 'primary grow' : 'grow'}">${label}</span>`)}</div></div></div>`;
       }
@@ -3606,7 +3605,7 @@ class TdScreenEditor extends LitElement {
     }
 
     if (w.type === "switch-control" || w.type === "light-control" || w.type === "climate-control" || w.type === "cover-control") {
-      const compact = (w.config?.control_layout || "card") === "compact";
+      const compact = (w.config?.control_layout || "compact") !== "card";
       const showIcon = w.config?.control_show_icon !== false;
       const showName = w.config?.control_show_name !== false;
       const showValue = w.config?.control_show_value !== false;
@@ -3625,21 +3624,21 @@ class TdScreenEditor extends LitElement {
         sub = attrs.color_mode || "Licht";
         chip = String(value).toLowerCase() === "on" ? "Licht an" : "Aus";
         chipClass = String(value).toLowerCase() === "on" ? "on" : "off";
-        actions = compact ? [chipClass === 'on' ? 'Aus' : 'Ein', 'Farben'] : [chipClass === 'on' ? 'Aus' : 'Ein', '−', '+', 'Farben'];
+        actions = compact ? [chipClass === 'on' ? 'Aus' : 'Ein', 'Öffnen'] : [chipClass === 'on' ? 'Aus' : 'Ein', '+', 'Öffnen'];
       } else if (w.type === "climate-control") {
         main = `${attrs.current_temperature ?? "—"}°C`;
         sub = `Soll ${attrs.temperature ?? "—"}°C · ${value || "—"}`;
         pct = Number.isFinite(Number(attrs.temperature)) ? Math.max(0, Math.min(100, (Number(attrs.temperature) / 30) * 100)) : 0;
         chip = String(value || "Klima");
         chipClass = String(value || '').toLowerCase() === 'off' ? 'off' : 'on';
-        actions = compact ? ['−1°', '+1°'] : ['−1°', '+1°', 'Modi'];
+        actions = compact ? ['+1°', 'Öffnen'] : ['−1°', '+1°', 'Öffnen'];
       } else if (w.type === "cover-control") {
         pct = Number(attrs.current_position ?? 0);
         main = Number.isFinite(pct) ? `${pct}%` : String(value || "—");
         sub = String(value || "Rollladen");
         chip = pct > 10 ? "Offen" : "Zu";
         chipClass = pct > 10 ? 'on' : 'off';
-        actions = compact ? ['Stopp', 'Position'] : ['Öffnen', 'Stopp', 'Schließen', 'Position'];
+        actions = compact ? ['Stopp', 'Öffnen'] : ['Öffnen', 'Stopp', 'Öffnen'];
       } else {
         const on = ["on","open","home","playing","true","1"].includes(String(value).toLowerCase());
         main = on ? "Ein" : "Aus";
@@ -3647,7 +3646,7 @@ class TdScreenEditor extends LitElement {
         sub = String(value || "Schalter");
         chip = on ? "Aktiv" : "Aus";
         chipClass = on ? 'on' : 'off';
-        actions = compact ? [on ? 'Aus' : 'Ein', 'Details'] : [on ? 'Ausschalten' : 'Einschalten', 'Details'];
+        actions = compact ? [on ? 'Aus' : 'Ein', 'Öffnen'] : [on ? 'Ausschalten' : 'Einschalten', 'Öffnen'];
       }
       if (compact) {
         return html`<div class="pv pv-control-card pv-control-compact"><div class="pv-compact-shell">${showIcon ? html`<div class="pv-compact-icon">${icon}</div>` : ""}${showName ? html`<div class="pv-title">${fallbackTitle}</div>` : ""}${showValue ? html`<div class="pv-value">${main}</div>` : ""}${showChip ? html`<div class="pv-compact-chip">${chip}</div>` : html`<div class="pv-sub">Touch-Steuerung</div>`}<div class="pv-action-row">${actions.map((label, index) => html`<span class="pv-action ${index === 0 ? 'primary grow' : 'grow'}">${label}</span>`)}</div></div></div>`;
@@ -4989,16 +4988,16 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
   // Smart-Home Control Widgets
   if (["media-player-control", "switch-control", "light-control", "climate-control", "cover-control"].includes(w.type)) {
     const defaultAction = tdDefaultTapActionForWidget(w.type) || "popup";
-    const compact = (w.config?.control_layout || "card") === "compact";
+    const compact = (w.config?.control_layout || "compact") !== "card";
     parts.push(html`
       <div class="pg4">Steuerung</div>
       <div class="pf2-row">
         <div class="pf2">
           <label>Layout</label>
-          <select .value=${w.config?.control_layout || "card"}
+          <select .value=${w.config?.control_layout || "compact"}
                   @change=${(e) => this._setWidgetConfig("control_layout", e.target.value)}>
-            <option value="card">Touch-Karte (neu)</option>
-            <option value="compact">Kompakt / Schnellzugriff</option>
+            <option value="compact">Kleine Karte</option>
+            <option value="card">Große Karte</option>
           </select>
         </div>
         <div class="pf2">
@@ -5013,7 +5012,7 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
         </div>
       </div>
 
-      <div class="pf2-hint">Touch-Karte zeigt die neue mobile Bedienung direkt im Widget. Kompakt ist für kleine Flächen gedacht und setzt auf Schnellzugriffe + Popup.</div>
+      <div class="pf2-hint">Kleine Karte ist jetzt der Standard: kompakt, gut für Browser und Handy und mit Popup samt Schließen-Button.</div>
 
       <div class="tog-grid">
         ${[
@@ -5597,7 +5596,7 @@ const propsStyles = css`
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; height: 160px;
     color: var(--secondary-text-color); text-align: center;
-    font-size: 14px; gap: 8px;
+    font-size: 14px; gap: 6px;
   }
 
   /* Tabs */
@@ -5652,7 +5651,7 @@ const propsStyles = css`
 
   .pf2-row {
     display: grid; grid-template-columns: 1fr 1fr;
-    gap: 8px; margin-bottom: 10px;
+    gap: 6px; margin-bottom: 10px;
   }
   .pf2-row .pf2 { margin-bottom: 0; }
 
@@ -5663,7 +5662,7 @@ const propsStyles = css`
 
   /* Toggles */
   .tog {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     padding: 6px 0; font-size: 13px;
   }
   .tog input[type=checkbox] {
@@ -5718,7 +5717,7 @@ const propsStyles = css`
 
   /* Entity meta */
   .entity-meta-list {
-    display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+    display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
   }
   .entity-meta-card {
     border: 1px solid rgba(255,255,255,.06);
@@ -5727,7 +5726,7 @@ const propsStyles = css`
   }
   .entity-meta-header {
     display: flex; justify-content: space-between;
-    align-items: center; margin-bottom: 8px; gap: 8px;
+    align-items: center; margin-bottom: 8px; gap: 6px;
   }
   .entity-meta-id {
     font-size: 11px; opacity: .7; word-break: break-all;
@@ -5783,7 +5782,7 @@ class TdTemplateGallery extends LitElement {
         margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
       }
       .hdr h2 { margin: 0; font-size: 22px; font-weight: 500; }
-      .hdr-actions { display: flex; gap: 8px; }
+      .hdr-actions { display: flex; gap: 6px; }
 
       .desc {
         margin: 0 0 16px; color: var(--secondary-text-color);
@@ -5792,7 +5791,7 @@ class TdTemplateGallery extends LitElement {
 
       /* Filters */
       .filter-bar {
-        display: flex; gap: 8px; margin-bottom: 16px;
+        display: flex; gap: 6px; margin-bottom: 16px;
         align-items: center; flex-wrap: wrap;
       }
       .filter-bar input {
@@ -5871,7 +5870,7 @@ class TdTemplateGallery extends LitElement {
       }
       .card-meta {
         font-size: 12px; color: var(--secondary-text-color);
-        margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;
+        margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap;
       }
       .card-meta .badge {
         padding: 2px 8px; border-radius: 4px;
@@ -6136,7 +6135,7 @@ class TdTemplateEditor extends LitElement {
       }
       .sec h3 {
         margin: 0 0 16px; font-size: 16px; font-weight: 500;
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 6px;
       }
 
       .f { margin-bottom: 14px; }
@@ -6159,7 +6158,7 @@ class TdTemplateEditor extends LitElement {
       /* Variables */
       .var-list { list-style: none; padding: 0; margin: 0; }
       .var-item {
-        display: flex; gap: 8px; align-items: center;
+        display: flex; gap: 6px; align-items: center;
         padding: 10px 12px; background: var(--primary-background-color);
         border-radius: 8px; margin-bottom: 6px;
         border: 1px solid var(--divider-color);
@@ -6403,7 +6402,7 @@ class TdAlertList extends LitElement {
       }
 
       .filter-bar {
-        display: flex; gap: 8px; margin-bottom: 16px;
+        display: flex; gap: 6px; margin-bottom: 16px;
       }
       .filter-bar input {
         flex: 1; max-width: 320px; padding: 8px 12px;
@@ -6431,7 +6430,7 @@ class TdAlertList extends LitElement {
       }
       .card-title {
         font-size: 16px; font-weight: 500;
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 6px;
       }
 
       .sev-badge {
@@ -6637,7 +6636,7 @@ class TdAlertEditor extends LitElement {
       }
       .sec h3 {
         margin: 0 0 16px; font-size: 16px; font-weight: 500;
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 6px;
       }
 
       .f { margin-bottom: 14px; }
@@ -7260,7 +7259,7 @@ class TdThemeEditor extends LitElement {
       }
       .sec h3 {
         margin: 0 0 16px; font-size: 16px; font-weight: 500;
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 6px;
       }
 
       .f { margin-bottom: 14px; }
@@ -7318,7 +7317,7 @@ class TdThemeEditor extends LitElement {
 
       /* Presets */
       .preset-row {
-        display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+        display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;
       }
       .preset-btn {
         padding: 6px 14px; border: 1px solid var(--divider-color);
@@ -7740,7 +7739,7 @@ class TdFontManager extends LitElement {
         border: 1px solid rgba(255,255,255,.04);
       }
       .google-sec h3 { margin: 0 0 12px; font-size: 15px; font-weight: 500; }
-      .google-row { display: flex; gap: 8px; }
+      .google-row { display: flex; gap: 6px; }
       .google-row input {
         flex: 1; padding: 10px 12px;
         border: 1px solid var(--divider-color); border-radius: 8px;
@@ -8103,7 +8102,7 @@ class TdGlobalSettings extends LitElement {
       }
       .sec h3 {
         margin: 0 0 16px; font-size: 16px; font-weight: 500;
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 6px;
       }
       .sec p {
         font-size: 13px; color: var(--secondary-text-color);
@@ -8757,7 +8756,7 @@ class TickerDisplayPanel extends LitElement {
 
       /* Subtabs */
       .subtabs {
-        display: flex; gap: 8px; flex-wrap: wrap;
+        display: flex; gap: 6px; flex-wrap: wrap;
         margin-bottom: 16px; padding: 0 16px;
       }
       .chip {

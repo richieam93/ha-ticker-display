@@ -864,7 +864,7 @@ class ScreenManager {
   _controlDisplayOptions(config = {}) {
     const cfg = config?.config || {};
     return {
-      layout: cfg.control_layout || "card",
+      layout: cfg.control_layout || "compact",
       showIcon: cfg.control_show_icon !== false,
       showName: cfg.control_show_name !== false && cfg.show_name !== false,
       showValue: cfg.control_show_value !== false,
@@ -996,16 +996,14 @@ class ScreenManager {
     const actions = [];
     if (domain === "media_player") {
       actions.push(
-        { key: "prev", label: "⏮", title: "Zurück", style: "ghost" },
-        { key: "playpause", label: summary.active ? "⏸" : "▶", title: "Play / Pause", style: "primary" },
-        { key: "next", label: "⏭", title: "Weiter", style: "ghost" },
-        { key: "vol-down", label: "−", title: "Leiser", style: "ghost" },
-        { key: "vol-up", label: "+", title: "Lauter", style: "ghost" },
+        { key: "playpause", label: summary.active ? "Pause" : "Play", title: "Play / Pause", style: "primary", grow: true },
+        { key: "next", label: "Weiter", title: "Weiter", style: "ghost" },
+        { key: "details", label: "Öffnen", title: "Popup öffnen", style: "ghost" },
       );
     } else if (["switch", "input_boolean", "fan", "valve"].includes(domain)) {
       actions.push(
         { key: "toggle", label: summary.active ? "Ausschalten" : "Einschalten", title: "Umschalten", style: "primary", grow: true },
-        { key: "details", label: "Details", title: "Details", style: "ghost" },
+        { key: "details", label: "Öffnen", title: "Popup öffnen", style: "ghost" },
       );
       if (domain === "fan") {
         [25, 50, 100].forEach((pct) => actions.push({ key: `fan-${pct}`, label: `${pct}%`, title: `${pct}%`, style: Number(attrs.percentage || 0) === pct ? "active" : "ghost" }));
@@ -1015,20 +1013,20 @@ class ScreenManager {
         { key: "toggle", label: summary.active ? "Aus" : "Ein", title: "Licht schalten", style: "primary", grow: true },
         { key: "brightness-down", label: "−", title: "Dunkler", style: "ghost" },
         { key: "brightness-up", label: "+", title: "Heller", style: "ghost" },
-        { key: "details", label: "Farben", title: "Popup öffnen", style: "ghost" },
+        { key: "details", label: "Öffnen", title: "Popup öffnen", style: "ghost" },
       );
     } else if (domain === "cover") {
       actions.push(
         { key: "open", label: "Öffnen", title: "Öffnen", style: "ghost" },
         { key: "stop", label: "Stopp", title: "Stopp", style: "primary" },
         { key: "close", label: "Schließen", title: "Schließen", style: "ghost" },
-        { key: "details", label: "Position", title: "Positionen", style: "ghost", grow: true },
+        { key: "details", label: "Öffnen", title: "Popup öffnen", style: "ghost", grow: true },
       );
     } else if (domain === "climate") {
       actions.push(
         { key: "temp-down", label: "−1°", title: "Temperatur senken", style: "ghost" },
         { key: "temp-up", label: "+1°", title: "Temperatur erhöhen", style: "primary" },
-        { key: "details", label: "Modi", title: "Modi", style: "ghost", grow: true },
+        { key: "details", label: "Öffnen", title: "Popup öffnen", style: "ghost", grow: true },
       );
     }
     return actions;
@@ -1037,7 +1035,7 @@ class ScreenManager {
   _controlQuickActionsMarkup(config, state, summary, compact = false) {
     const actions = this._controlQuickActions(config, state, summary);
     if (!actions.length) return compact ? `<div class="td-control-actions compact"><button class="td-control-action ghost grow" data-action="details" type="button">Details</button></div>` : "";
-    const visible = compact ? actions.filter((action, index) => index < 2 || action.key === "details") : actions;
+    const visible = compact ? actions.filter((action, index) => index < 1 || action.key === "details") : actions.filter((action, index) => index < 3 || action.key === "details");
     return `<div class="td-control-actions ${compact ? "compact" : ""}">${visible.map((action) => `<button class="td-control-action ${action.style || "ghost"} ${action.grow ? "grow" : ""}" type="button" data-action="${action.key}" title="${action.title || action.label}">${action.label}</button>`).join("")}</div>`;
   }
 
@@ -1098,21 +1096,19 @@ class ScreenManager {
     const summary = this._controlSummary(config, state, name, icon);
     widget.classList.remove("widget-media-modern");
     widget.classList.add("widget-control-card");
-    widget.classList.toggle("widget-control-compact", opts.layout === "compact");
+    widget.classList.toggle("widget-control-compact", opts.layout !== "card");
 
+    const compact = opts.layout !== "card";
     const iconMarkup = opts.showIcon ? this._controlIconMarkup(summary) : "";
     const nameMarkup = opts.showName && summary.name ? `<div class="w-name td-control-name">${summary.name}</div>` : "";
     const valueMarkup = opts.showValue ? `<div class="td-control-value">${summary.value}</div>` : "";
     const subMarkup = opts.showSub && summary.sub ? `<div class="td-control-sub">${summary.sub}</div>` : "";
     const chipMarkup = opts.showStatusChip ? `<div class="td-control-chip ${summary.chipClass}">${summary.chip}</div>` : "";
-    const meterMarkup = opts.showMeter ? `<div class="td-control-meter ${opts.layout === "compact" ? "compact" : ""}"><span style="width:${Math.max(0, Math.min(100, summary.meter || 0))}%"></span></div>` : "";
-    const actionMarkup = this._controlQuickActionsMarkup(config, state, summary, opts.layout === "compact");
+    const meterMarkup = opts.showMeter ? `<div class="td-control-meter ${compact ? "compact" : ""}"><span style="width:${Math.max(0, Math.min(100, summary.meter || 0))}%"></span></div>` : "";
+    const actionMarkup = this._controlQuickActionsMarkup(config, state, summary, compact);
+    const headerRight = chipMarkup || `<button class="td-control-open" type="button" data-action="details" aria-label="Öffnen">Öffnen</button>`;
 
-    if (opts.layout === "compact") {
-      widget.innerHTML = `<div class="td-control-shell compact"><div class="td-control-compact-core">${iconMarkup}<div class="td-control-compact-meta">${nameMarkup}${valueMarkup}${chipMarkup || subMarkup || `<div class="td-control-sub">Tippen für Details</div>`}</div></div>${meterMarkup}${actionMarkup}</div>`;
-    } else {
-      widget.innerHTML = `<div class="td-control-shell"><div class="td-control-top">${iconMarkup}<div class="td-control-main">${nameMarkup}${valueMarkup}${subMarkup}</div>${chipMarkup}</div>${meterMarkup}${actionMarkup}</div>`;
-    }
+    widget.innerHTML = `<div class="td-control-shell ${compact ? "compact" : "card"}"><div class="td-control-top">${iconMarkup}<div class="td-control-main">${nameMarkup}${valueMarkup}${subMarkup || `<div class="td-control-sub">Tippen für Details</div>`}</div>${headerRight}</div>${meterMarkup}${actionMarkup}</div>`;
     this._bindControlQuickActions(widget, config, state);
     this._renderExtraEntityList(widget, config);
   }
@@ -1642,7 +1638,7 @@ class ScreenManager {
 
   _widgetPopupOverlay() {
     let overlay = document.getElementById("widget-popup-overlay");
-    if (!overlay) { overlay = document.createElement("div"); overlay.id = "widget-popup-overlay"; overlay.className = "widget-popup-overlay"; overlay.hidden = true; overlay.innerHTML = `<div class="widget-popup-panel"><button class="widget-popup-close">✕</button><div class="widget-popup-body"></div></div>`; document.body.appendChild(overlay); }
+    if (!overlay) { overlay = document.createElement("div"); overlay.id = "widget-popup-overlay"; overlay.className = "widget-popup-overlay"; overlay.hidden = true; overlay.innerHTML = `<div class="widget-popup-panel"><div class="widget-popup-body"></div></div>`; document.body.appendChild(overlay); }
     return overlay;
   }
 
@@ -1701,7 +1697,6 @@ class ScreenManager {
     const overlay = this._widgetPopupOverlay();
     const body = overlay.querySelector(".widget-popup-body");
     const close = () => this._closeWidgetPopup();
-    overlay.querySelector(".widget-popup-close").onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
     const entityId = config.tap_target_entity || config.entity_id || "";
@@ -1737,8 +1732,9 @@ class ScreenManager {
       html = `<div class="popup-hero"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId || this._widgetName(config, "Widget"))}</div><div class="popup-big-value">${Utils.formatStateWithUnit(st.state ?? "—", attrs.unit_of_measurement || "", { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</div><div class="popup-subtitle">${Utils.text(st.state ?? "—")}</div></div>`;
     }
 
-    body.innerHTML = html;
-    const hero = body.firstElementChild || body;
+    body.innerHTML = `<div class="widget-popup-sheet"><div class="widget-popup-header"><div class="widget-popup-title">${Utils.text(this._popupFriendlyName(config, st) || "Steuerung")}</div><button class="widget-popup-close" type="button">Schließen</button></div><div class="widget-popup-content">${html}</div></div>`;
+    body.querySelector(".widget-popup-close")?.addEventListener("click", close);
+    const hero = body.querySelector(".popup-hero") || body;
     const controls = body.querySelector(".popup-controls");
 
     if (controls && domain === "media_player") {

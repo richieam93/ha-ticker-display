@@ -1975,3 +1975,76 @@ body {
     flex: 1 1 calc(50% - 8px);
   }
 }
+
+
+/* ===== 1.8 compact control redesign ===== */
+.widget-control-card { padding: 0 !important; }
+.widget-control-card .td-control-shell {
+  height: 100%; display:flex; flex-direction:column; gap:10px;
+  padding: 12px; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18,22,30,.88), rgba(12,16,23,.92));
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 12px 24px rgba(0,0,0,.16);
+}
+.widget-control-card .td-control-top { align-items:center; gap:10px; }
+.widget-control-card .td-control-icon,
+.widget-control-card .td-control-cover {
+  width: 42px; height: 42px; border-radius: 14px; font-size: 20px; flex: 0 0 42px;
+}
+.widget-control-card .td-control-name { font-size: 11px; opacity:.72; margin:0; line-height:1.15; }
+.widget-control-card .td-control-value { font-size: 18px; line-height:1.1; font-weight:800; }
+.widget-control-card .td-control-sub { font-size: 11px; line-height:1.25; opacity:.78; }
+.widget-control-card .td-control-chip, .widget-control-card .td-control-open {
+  align-self:flex-start; min-height:32px; padding:6px 11px; border-radius:999px; font-size:11px; font-weight:700;
+}
+.widget-control-card .td-control-open {
+  border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.06); color:#fff; cursor:pointer;
+}
+.widget-control-card .td-control-meter { height:7px; border-radius:999px; margin:0; }
+.td-control-actions { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; }
+.td-control-action { min-height:40px; padding: 0 12px; border-radius: 12px; font-size: 12px; }
+.td-control-action.grow { flex:auto; }
+.widget-control-compact .td-control-shell { padding:10px; gap:8px; border-radius:16px; }
+.widget-control-compact .td-control-icon,
+.widget-control-compact .td-control-cover { width:38px; height:38px; border-radius:12px; flex-basis:38px; }
+.widget-control-compact .td-control-value { font-size:16px; }
+.widget-control-compact .td-control-name,
+.widget-control-compact .td-control-sub { font-size:10px; }
+.widget-control-compact .td-control-chip,
+.widget-control-compact .td-control-open { min-height:28px; padding:5px 9px; font-size:10px; }
+.widget-control-compact .td-control-action { min-height:34px; font-size:11px; }
+
+.widget-popup-overlay { padding: 14px; align-items:center; justify-content:center; }
+.widget-popup-panel {
+  width: min(560px, 96vw) !important; max-width: 560px; min-height: auto !important; max-height: min(82vh, 720px);
+  border-radius: 24px !important; overflow: hidden; display:flex; flex-direction:column;
+}
+.widget-popup-body { min-height: auto !important; max-height: min(82vh, 720px); display:block !important; overflow:auto; }
+.widget-popup-sheet { display:flex; flex-direction:column; min-height:100%; }
+.widget-popup-header {
+  position: sticky; top:0; z-index:3; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding: 14px 16px; background: rgba(10,14,20,.94); border-bottom: 1px solid rgba(255,255,255,.08);
+  backdrop-filter: blur(10px);
+}
+.widget-popup-title { font-size: 16px; font-weight: 800; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.widget-popup-close {
+  border:none; border-radius:999px; padding:10px 14px; min-height:40px;
+  background: rgba(255,255,255,.1); color:#fff; font-size:13px; font-weight:800; cursor:pointer;
+}
+.widget-popup-content { padding: 14px; }
+.popup-hero { padding: 16px !important; border-radius: 18px !important; }
+.popup-big-value { font-size: clamp(24px, 4vw, 34px) !important; }
+.popup-big-icon { font-size: 34px !important; }
+.popup-controls, .popup-controls-sub { gap: 8px !important; }
+.popup-control-btn, .popup-color-chip { min-height: 42px; font-size: 13px !important; padding: 10px 12px !important; }
+.popup-section-title { margin-top: 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+
+@media (max-width: 700px) {
+  .widget-popup-overlay { align-items:flex-end; padding: 8px; }
+  .widget-popup-panel {
+    width: min(100vw, 100% ) !important; max-width: none; max-height: 78vh; border-radius: 22px 22px 0 0 !important;
+  }
+  .widget-popup-body { max-height: 78vh; }
+  .widget-popup-content { padding: 12px; }
+  .popup-hero { padding: 14px !important; }
+}
