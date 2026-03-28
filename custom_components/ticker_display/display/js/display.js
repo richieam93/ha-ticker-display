@@ -1713,43 +1713,85 @@ class ScreenManager {
     });
   }
 
-  _openWidgetDetail(widget, config) {
-    const overlay = document.getElementById("widget-detail-overlay") || this._createWidgetDetailOverlay();
-    const body = overlay.querySelector(".widget-detail-body");
+  _openWidgetModal(config, fallbackWidget = null, options = {}) {
+    const overlay = document.getElementById("widget-modal-overlay") || this._createWidgetModalOverlay();
+    const body = overlay.querySelector(".widget-modal-body");
+    const titleEl = overlay.querySelector(".widget-modal-title");
+    const mode = options.mode || "popup";
+    const title = options.title || this._popupFriendlyName(config, this.app?.entityStates?.[config.tap_target_entity || config.entity_id || ""] || {} ) || "Widget";
     const stage = document.createElement("div");
-    stage.className = "widget-detail-stage";
-    const detailWidget = this._buildWidgetFocusCard(config, widget, { width: "min(760px, 82vw)", height: "min(440px, 60vh)", scale: config?.tap_scale ?? 1.05 });
+    stage.className = `widget-modal-stage ${mode === "detail" ? "is-detail" : "is-popup"}`;
+
+    const width = mode === "detail" ? "min(760px, 82vw)" : "min(960px, 92vw)";
+    const height = mode === "detail" ? "min(440px, 60vh)" : "min(620px, 74vh)";
+    const maxHeight = mode === "detail" ? "min(440px, 60vh)" : "min(620px, 74vh)";
+    const focusCard = this._buildWidgetFocusCard(config, fallbackWidget, {
+      width,
+      height,
+      maxWidth: "100%",
+      maxHeight,
+      scale: Math.min(1.02, Math.max(1, Number(config?.tap_scale || (mode === "detail" ? 1.03 : 1.01))))
+    });
 
     body.innerHTML = "";
-    stage.appendChild(detailWidget);
+    titleEl.textContent = Utils.text(title);
+    stage.appendChild(focusCard);
     body.appendChild(stage);
     overlay.hidden = false;
-    this._refreshFocusWidget(detailWidget, config);
 
     const close = () => {
       overlay.hidden = true;
       body.innerHTML = "";
+      clearTimeout(this._popupTimer);
+      clearTimeout(this._detailTimer);
     };
-    overlay.querySelector(".widget-detail-close").onclick = close;
+
+    this._refreshFocusWidget(focusCard, config);
+    requestAnimationFrame(() => this._refreshFocusWidget(focusCard, config));
+
+    overlay.querySelector(".widget-modal-close")?.addEventListener("click", close, { once: true });
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
     const secs = Number(config.tap_autoclose || 0);
-    clearTimeout(this._detailTimer);
-    if (secs > 0) this._detailTimer = setTimeout(close, secs * 1000);
+    if (mode === "detail") clearTimeout(this._detailTimer); else clearTimeout(this._popupTimer);
+    if (secs > 0) {
+      const timer = setTimeout(close, secs * 1000);
+      if (mode === "detail") this._detailTimer = timer; else this._popupTimer = timer;
+    }
   }
 
-  _createWidgetDetailOverlay() {
-    const overlay = document.createElement("div"); overlay.id = "widget-detail-overlay"; overlay.className = "widget-detail-overlay"; overlay.hidden = true;
-    overlay.innerHTML = `<div class="widget-detail-panel"><button class="widget-detail-close">✕</button><div class="widget-detail-body"></div></div>`;
-    document.body.appendChild(overlay); return overlay;
+  _openWidgetDetail(widget, config) {
+    this._openWidgetModal(config, widget, { mode: "detail" });
   }
 
-  _widgetPopupOverlay() {
-    let overlay = document.getElementById("widget-popup-overlay");
-    if (!overlay) { overlay = document.createElement("div"); overlay.id = "widget-popup-overlay"; overlay.className = "widget-popup-overlay"; overlay.hidden = true; overlay.innerHTML = `<div class="widget-popup-panel"><div class="widget-popup-body"></div></div>`; document.body.appendChild(overlay); }
+  _createWidgetModalOverlay() {
+    const overlay = document.createElement("div");
+    overlay.id = "widget-modal-overlay";
+    overlay.className = "widget-modal-overlay";
+    overlay.hidden = true;
+    overlay.innerHTML = `<div class="widget-modal-panel"><div class="widget-modal-header"><div class="widget-modal-title">Widget</div><button class="widget-modal-close" type="button">Schließen</button></div><div class="widget-modal-body"></div></div>`;
+    document.body.appendChild(overlay);
     return overlay;
   }
 
-  _closeWidgetPopup() { const o = document.getElementById("widget-popup-overlay"); if (!o) return; o.hidden = true; clearTimeout(this._popupTimer); const b = o.querySelector(".widget-popup-body"); if (b) b.innerHTML = ""; }
+  _createWidgetDetailOverlay() {
+    return document.getElementById("widget-modal-overlay") || this._createWidgetModalOverlay();
+  }
+
+  _widgetPopupOverlay() {
+    return document.getElementById("widget-modal-overlay") || this._createWidgetModalOverlay();
+  }
+
+  _closeWidgetPopup() {
+    const o = document.getElementById("widget-modal-overlay");
+    if (!o) return;
+    o.hidden = true;
+    clearTimeout(this._popupTimer);
+    clearTimeout(this._detailTimer);
+    const b = o.querySelector(".widget-modal-body");
+    if (b) b.innerHTML = "";
+  }
+
   _openCameraFullscreen(config) { this._openWidgetPopup({ ...config, tap_popup_kind: "camera" }); }
   _popupFriendlyName(config, st) { return this._widgetName(config, st?.attributes?.friendly_name || config.entity_id || config.type || "Widget"); }
 
@@ -1801,176 +1843,9 @@ class ScreenManager {
   }
 
   _openWidgetPopup(config) {
-    const overlay = this._widgetPopupOverlay();
-    const body = overlay.querySelector(".widget-popup-body");
-    const close = () => this._closeWidgetPopup();
-    overlay.onclick = (e) => { if (e.target === overlay) close(); };
-
-    const entityId = config.tap_target_entity || config.entity_id || "";
-    const st = this.app.entityStates[entityId] || {};
-    const attrs = st.attributes || {};
-    const domain = String(entityId || "").split(".")[0];
-    const kind = config.tap_popup_kind || (config.type === "weather" || domain === "weather" ? "weather" : config.type === "camera" ? "camera" : config.type === "image" ? "image" : domain);
-    const options = this._controlDisplayOptions(config);
-    let html = "";
-
-    if (kind === "weather") html = this._popupWeatherMarkup(config, st);
-    else if (kind === "camera") html = this._popupCameraMarkup(config);
-    else if (kind === "image") html = this._popupImageMarkup(config);
-    else if (domain === "media_player") {
-      const cover = attrs.entity_picture || "";
-      const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
-      html = `<div class="popup-hero popup-media popup-media-landscape"><div class="popup-media-art-wrap">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}</div><div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-value popup-media-big">${Utils.text(attrs.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(attrs.media_artist || attrs.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-mini-grid"><div class="popup-mini-row"><span>Status</span><strong>${Utils.text(st.state || "—")}</strong></div><div class="popup-mini-row"><span>Lautstärke</span><strong>${Math.round(Number(attrs.volume_level || 0) * 100)}%</strong></div></div><div class="popup-controls popup-controls-media"></div></div></div>`;
-    } else if (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan") {
-      const summary = this._controlSummary(config, st, this._popupFriendlyName(config, st), config.icon || this._defaultIconForType(config.type));
-      html = `<div class="popup-hero popup-control popup-light"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">${domain === "light" ? (summary.active ? "💡" : "🔅") : (summary.active ? "🟢" : "⚪")}</div><div class="popup-big-value">${Utils.text(summary.value || "—")}</div><div class="popup-subtitle">${Utils.text(summary.sub || st.state || "—")}</div>${domain === "light" || domain === "fan" ? `<div class="popup-meter"><span style="width:${summary.meter || 0}%"></span></div><div class="popup-mini-row"><span>${domain === "light" ? "Helligkeit" : "Leistung"}</span><strong>${Math.round(summary.meter || 0)}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
-    } else if (domain === "cover") {
-      const pos = attrs.current_position ?? attrs.position;
-      const pct = pos == null ? 0 : Math.max(0, Math.min(100, Math.round(Number(pos))));
-      const tilt = attrs.current_tilt_position;
-      html = `<div class="popup-hero popup-control popup-cover"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">🪟</div><div class="popup-big-value">${pos == null ? Utils.text(st.state || "—") : `${pct}<span>%</span>`}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-meter"><span style="width:${pct}%"></span></div><div class="popup-mini-row"><span>Position</span><strong>${pct}%</strong></div>${tilt != null ? `<div class="popup-mini-row"><span>Lamellen</span><strong>${Math.max(0, Math.min(100, Math.round(Number(tilt))))}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
-    } else if (domain === "valve") {
-      const isOpen = Utils.isTruthyState(st.state) || String(st.state || '').toLowerCase() === 'open';
-      html = `<div class="popup-hero popup-control"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">${isOpen ? "💧" : "🚫"}</div><div class="popup-big-value">${isOpen ? "Offen" : "Zu"}</div><div class="popup-subtitle">${Utils.text(st.state || "—")}</div><div class="popup-controls"></div></div>`;
-    } else if (domain === "climate") {
-      const hvacModes = Utils.safeArray(attrs.hvac_modes);
-      html = `<div class="popup-hero popup-control popup-climate"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">🌡️</div><div class="popup-big-value">${Utils.text(attrs.current_temperature ?? "—")}<span>°C</span></div><div class="popup-subtitle">Soll ${Utils.text(attrs.temperature ?? "—")} °C · ${Utils.text(st.state || "—")}</div><div class="popup-mini-row"><span>Modus</span><strong>${Utils.text(st.state || "—")}</strong></div>${options.showPopupModes && hvacModes.length ? `<div class="popup-mode-row">${hvacModes.map(m => `<span class="popup-mode-chip ${String(st.state) === String(m) ? 'active' : ''}">${Utils.text(m)}</span>`).join("")}</div>` : ``}<div class="popup-controls"></div></div>`;
-    } else {
-      html = `<div class="popup-widget-host"></div>`;
-    }
-
-    body.innerHTML = `<div class="widget-popup-sheet"><div class="widget-popup-header"><div class="widget-popup-title">${Utils.text(this._popupFriendlyName(config, st) || "Steuerung")}</div><button class="widget-popup-close" type="button">Schließen</button></div><div class="widget-popup-content">${html}</div></div>`;
-     const popupFocusCard = this._buildWidgetFocusCard(config, null, {
-      width: "min(880px, 100%)",
-      height: "min(500px, 58vh)",
-      maxWidth: "100%",
-      maxHeight: "min(500px, 58vh)",
-      scale: Math.min(1.02, Number(config?.tap_scale || 1.02)),
-    });
-    body.querySelector(".popup-widget-host")?.appendChild(popupFocusCard);
-    this._refreshFocusWidget(popupFocusCard, config);
-    body.querySelector(".widget-popup-close")?.addEventListener("click", close);
-    const hero = body.querySelector(".popup-hero") || body;
-    const controls = body.querySelector(".popup-controls");
-
-    if (controls && domain === "media_player") {
-      this._renderPopupControlButton(controls, "⏮", false, async () => { await this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⏯", false, async () => { await this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⏭", false, async () => { await this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "−", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) }); });
-      this._renderPopupControlButton(controls, "+", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) }); });
-    } else if (controls && (domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
-      this._renderPopupControlButton(controls, "Ein/Aus", false, async () => { await this._invokeToggleAction(entityId, 'toggle'); close(); });
-      if (domain === "fan") {
-        const fanRow = this._popupAppendSection(hero, "Lüfterstufen");
-        [25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(fanRow, `${pct}%`, Number(attrs.percentage || 0) === pct, async () => { await this.app.callEntityService('fan', 'set_percentage', { entity_id: entityId, percentage: pct }); close(); }));
-      }
-    } else if (controls && domain === "light") {
-      const currentBri = Math.round((Number(attrs.brightness ?? (Utils.isTruthyState(st.state) ? 255 : 0)) / 255) * 100);
-      this._renderPopupControlButton(controls, "Ein", Utils.isTruthyState(st.state), async () => { await this._invokeToggleAction(entityId, 'on'); close(); });
-      this._renderPopupControlButton(controls, "Aus", !Utils.isTruthyState(st.state), async () => { await this._invokeToggleAction(entityId, 'off'); close(); });
-      this._renderPopupControlButton(controls, "− Helligkeit", false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: Math.max(1, currentBri - 15) }); close(); });
-      this._renderPopupControlButton(controls, "+ Helligkeit", false, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: Math.min(100, currentBri + 15) }); close(); });
-      if (options.showPopupPositionPresets) {
-        const briRow = this._popupAppendSection(hero, "Helligkeits-Presets");
-        [10, 25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(briRow, `${pct}%`, currentBri === pct, async () => { await this.app.callEntityService('light', 'turn_on', { entity_id: entityId, brightness_pct: pct }); close(); }));
-      }
-      if (options.showPopupColors) {
-        const colorRow = this._popupAppendSection(hero, "Farben", "popup-color-row");
-        [
-          ["Warm", "linear-gradient(135deg,#ffb74d,#ff7043)", () => this.app.callEntityAction(entityId, 'set_color_temp', { color_temp_kelvin: 2200 })],
-          ["Neutral", "linear-gradient(135deg,#fff8e1,#cfd8dc)", () => this.app.callEntityAction(entityId, 'set_color_temp', { color_temp_kelvin: 4000 })],
-          ["Kalt", "linear-gradient(135deg,#e3f2fd,#90caf9)", () => this.app.callEntityAction(entityId, 'set_color_temp', { color_temp_kelvin: 6500 })],
-          ["Rot", "#ef5350", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [239, 83, 80] })],
-          ["Grün", "#66bb6a", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [102, 187, 106] })],
-          ["Blau", "#42a5f5", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [66, 165, 245] })],
-          ["Lila", "#ab47bc", () => this.app.callEntityAction(entityId, 'set_rgb_color', { rgb_color: [171, 71, 188] })],
-        ].forEach(([label, tone, action]) => this._renderPopupColorButton(colorRow, label, tone, async () => { await action(); close(); }));
-      }
-      if (options.showPopupEffects && Utils.safeArray(attrs.effect_list).length) {
-        const fxRow = this._popupAppendSection(hero, "Effekte");
-        Utils.safeArray(attrs.effect_list).slice(0, 10).forEach((effect) => this._renderPopupControlButton(fxRow, String(effect), String(attrs.effect) === String(effect), async () => { await this.app.callEntityAction(entityId, 'set_effect', { effect }); close(); }));
-      }
-    } else if (controls && domain === "cover") {
-      const currentPos = Math.max(0, Math.min(100, Math.round(Number(attrs.current_position ?? attrs.position ?? 0))));
-      this._renderPopupControlButton(controls, "Öffnen", false, async () => { await this.app.callEntityService("cover", "open_cover", { entity_id: entityId }); close(); });
-      this._renderPopupControlButton(controls, "Stopp", false, async () => { await this.app.callEntityService("cover", "stop_cover", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "Schließen", false, async () => { await this.app.callEntityService("cover", "close_cover", { entity_id: entityId }); close(); });
-      if (options.showPopupPositionPresets) {
-        const posRow = this._popupAppendSection(hero, "Positionen");
-        [0, 25, 50, 75, 100].forEach((pct) => this._renderPopupControlButton(posRow, `${pct}%`, currentPos === pct, async () => { await this.app.callEntityService('cover', 'set_cover_position', { entity_id: entityId, position: pct }); close(); }));
-      }
-      if (options.showPopupTilt && (attrs.current_tilt_position != null || attrs.tilt_position != null)) {
-        const currentTilt = Math.max(0, Math.min(100, Math.round(Number(attrs.current_tilt_position ?? attrs.tilt_position ?? 0))));
-        const tiltRow = this._popupAppendSection(hero, "Lamellen / Tilt");
-        this._renderPopupControlButton(tiltRow, "Auf", false, async () => { await this.app.callEntityService('cover', 'open_cover_tilt', { entity_id: entityId }); close(); });
-        this._renderPopupControlButton(tiltRow, "Stopp", false, async () => { await this.app.callEntityService('cover', 'stop_cover_tilt', { entity_id: entityId }); });
-        this._renderPopupControlButton(tiltRow, "Zu", false, async () => { await this.app.callEntityService('cover', 'close_cover_tilt', { entity_id: entityId }); close(); });
-        [0, 50, 100].forEach((pct) => this._renderPopupControlButton(tiltRow, `${pct}%`, currentTilt === pct, async () => { await this.app.callEntityService('cover', 'set_cover_tilt_position', { entity_id: entityId, tilt_position: pct }); close(); }));
-      }
-    } else if (controls && domain === "climate") {
-      this._renderPopupControlButton(controls, "−1°", false, async () => { await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: Number(attrs.temperature ?? 20) - 1 }); close(); });
-      this._renderPopupControlButton(controls, "+1°", false, async () => { await this.app.callEntityService("climate", "set_temperature", { entity_id: entityId, temperature: Number(attrs.temperature ?? 20) + 1 }); close(); });
-      if (options.showPopupModes) {
-        const modeRow = this._popupAppendSection(hero, "HVAC-Modi");
-        Utils.safeArray(attrs.hvac_modes).slice(0, 8).forEach((mode) => this._renderPopupControlButton(modeRow, String(mode), String(st.state) === String(mode), async () => { await this.app.callEntityAction(entityId, 'set_hvac_mode', { hvac_mode: mode }); close(); }));
-      }
-      if (options.showPopupPresets && Utils.safeArray(attrs.preset_modes).length) {
-        const presetRow = this._popupAppendSection(hero, "Preset-Modi");
-        Utils.safeArray(attrs.preset_modes).slice(0, 8).forEach((mode) => this._renderPopupControlButton(presetRow, String(mode), String(attrs.preset_mode) === String(mode), async () => { await this.app.callEntityAction(entityId, 'set_preset_mode', { preset_mode: mode }); close(); }));
-      }
-      if (options.showPopupFanModes && Utils.safeArray(attrs.fan_modes).length) {
-        const fanModeRow = this._popupAppendSection(hero, "Lüfter-Modi");
-        Utils.safeArray(attrs.fan_modes).slice(0, 8).forEach((mode) => this._renderPopupControlButton(fanModeRow, String(mode), String(attrs.fan_mode) === String(mode), async () => { await this.app.callEntityAction(entityId, 'set_fan_mode', { fan_mode: mode }); close(); }));
-      }
-    }
-
-    overlay.hidden = false;
-    const secs = Number(config.tap_autoclose || 0);
-    if (secs > 0) { clearTimeout(this._popupTimer); this._popupTimer = setTimeout(close, secs * 1000); }
+    this._openWidgetModal(config, null, { mode: "popup" });
   }
 
-
-  async _toggleWidgetEntity(widget, config) {
-    const entityId = config.tap_target_entity || config.entity_id;
-    if (!entityId) return;
-    const ok = await this._invokeToggleAction(entityId, config.toggle_mode || 'toggle');
-    if (!ok) return;
-    setTimeout(() => this._syncWidgetToggleBadge(widget, config), 250);
-  }
-
-  async _invokeToggleAction(entityId, mode = 'toggle') {
-    const st = this.app?.entityStates?.[entityId] || {};
-    const domain = String(entityId || '').split('.')[0];
-    const serviceDomain = domain === 'input_boolean' ? 'input_boolean' : domain;
-    if (!entityId) return false;
-    if (mode === 'on') {
-      if (domain === 'cover') return this.app.callEntityService('cover', 'open_cover', { entity_id: entityId });
-      if (domain === 'valve') return this.app.callEntityService('valve', 'open_valve', { entity_id: entityId });
-      return this.app.callEntityService(serviceDomain, 'turn_on', { entity_id: entityId });
-    }
-    if (mode === 'off') {
-      if (domain === 'cover') return this.app.callEntityService('cover', 'close_cover', { entity_id: entityId });
-      if (domain === 'valve') return this.app.callEntityService('valve', 'close_valve', { entity_id: entityId });
-      return this.app.callEntityService(serviceDomain, 'turn_off', { entity_id: entityId });
-    }
-    if (domain === 'cover') {
-      const pos = Number(st.attributes?.current_position ?? (String(st.state).toLowerCase() === 'open' ? 100 : 0));
-      return this.app.callEntityService('cover', pos > 10 ? 'close_cover' : 'open_cover', { entity_id: entityId });
-    }
-    if (domain === 'valve') {
-      const open = Utils.isTruthyState(st.state) || String(st.state || '').toLowerCase() === 'open';
-      return this.app.callEntityService('valve', open ? 'close_valve' : 'open_valve', { entity_id: entityId });
-    }
-    if (!this.app?.callEntityToggle) return false;
-    return this.app.callEntityToggle(entityId);
-  }
-
-// ══════════════════════════════════════════════════════════
-// TEIL 3 – ScreenManager Helpers + TickerManager + AlertManager + App
-// ══════════════════════════════════════════════════════════
-
-  /* ────── Helper-Methoden ────── */
   _normalizeEntityIdList(list) {
     return [...new Set(Utils.safeArray(list).map(item => typeof item === "string" ? item : item?.entity_id || item?.id || "").filter(Boolean))];
   }
