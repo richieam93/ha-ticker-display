@@ -654,3 +654,19 @@
   opacity: .76;
   transform: scale(.98);
 }
+
+
+body.alert-flash-on::after, .alert-overlay.alert-flash-on::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(255,255,255,.22);
+  animation: tdAlertFlash .35s ease-in-out infinite alternate;
+  z-index: 1001;
+}
+
+@keyframes tdAlertFlash {
+  from { opacity: .08; }
+  to { opacity: .42; }
+}

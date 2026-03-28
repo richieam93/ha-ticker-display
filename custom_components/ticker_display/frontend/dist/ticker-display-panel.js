@@ -4661,9 +4661,6 @@ TdScreenEditor.prototype._renderInteractionConfig = function (w) {
                  @change=${(e) => this._setWidget("tap_scale", +e.target.value)}>
         </div>
       </div>
-      <div class="pf2-hint">
-        Hinweis: Vergrößern und Popup rendern das Widget jetzt neu. Charts, Gauge, Kamera, Bild und Wetter sollten dadurch nicht mehr leer bleiben.
-      </div>
     ` : ""}
 
     ${w.tap_action === "toggle" ? html`
@@ -6625,6 +6622,7 @@ class TdAlertEditor extends LitElement {
         vibrate: false, persistent: false, require_ack: false, wake_screen: false,
         color: "", volume: 100, tag: "", source: "", progress_value: 0, progress_text: "",
         ack_label: "Bestätigen", secondary_label: "", camera_entity_id: "", actions: [],
+        tts_message: "", tts_language: "de-DE", tts_url: "",
       };
     }
   }
@@ -6833,6 +6831,30 @@ class TdAlertEditor extends LitElement {
               label="Farbe (Banner)"
               @value-changed=${(e) => this._set("color", e.detail.value)}>
             </td-color-picker>
+          </div>
+        </div>
+
+        <div class="f">
+          <label>TTS von Home Assistant (Audio-URL)</label>
+          <input .value=${c.tts_url || ""}
+                 @input=${(e) => this._set("tts_url", e.target.value)}
+                 placeholder="/api/tts_proxy/... oder volle http(s)-URL">
+          <div style="margin-top:6px;font-size:12px;color:var(--secondary-text-color)">
+            Wenn gesetzt, wird diese Audio-Datei über den Smartphone-Lautsprecher abgespielt. Das ist ideal für Home-Assistant-TTS.
+          </div>
+        </div>
+        <div class="row">
+          <div class="f">
+            <label>TTS-Nachricht (Fallback lokal)</label>
+            <input .value=${c.tts_message || ""}
+                   @input=${(e) => this._set("tts_message", e.target.value)}
+                   placeholder="Optionaler Fallback, wenn keine TTS-URL vorhanden ist">
+          </div>
+          <div class="f">
+            <label>TTS-Sprache</label>
+            <input .value=${c.tts_language || "de-DE"}
+                   @input=${(e) => this._set("tts_language", e.target.value)}
+                   placeholder="de-DE">
           </div>
         </div>
         <div class="row">

@@ -230,7 +230,7 @@ class TickerDisplayAPI:
             "pip_size", "tag", "source", "camera_entity_id", "progress_value",
             "progress_text", "require_ack", "ack_label", "secondary_label",
             "secondary_action", "actions", "wake_screen", "tts_message",
-            "tts_language", "buttons_layout"
+            "tts_language", "tts_url", "tts_audio_url", "tts_engine_id", "buttons_layout"
         }
         cleaned = {k: v for k, v in data.items() if k in allowed}
         cleaned["severity"] = str(cleaned.get("severity") or "info").strip().lower()
@@ -254,6 +254,9 @@ class TickerDisplayAPI:
         cleaned["progress_text"] = str(cleaned.get("progress_text") or "").strip()[:160]
         cleaned["tts_message"] = str(cleaned.get("tts_message") or "").strip()[:500]
         cleaned["tts_language"] = str(cleaned.get("tts_language") or "de").strip()[:16]
+        cleaned["tts_url"] = str(cleaned.get("tts_url") or cleaned.get("tts_audio_url") or "").strip()[:1000]
+        cleaned["tts_audio_url"] = cleaned["tts_url"]
+        cleaned["tts_engine_id"] = str(cleaned.get("tts_engine_id") or "").strip()[:255]
         raw_duration = cleaned.get("duration") or data.get("dismiss_after") or data.get("auto_close_after") or 0
         try:
             cleaned["duration"] = max(0, min(3600, int(raw_duration or 0)))
