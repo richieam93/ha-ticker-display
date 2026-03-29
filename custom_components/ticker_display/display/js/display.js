@@ -2264,9 +2264,7 @@ class AlertManager {
     this.clearAll();
     const payload = { ...data };
     const mode = payload.mode || "fullscreen";
-    if (!payload.tts_url && payload.tts_message) {
-      payload.tts_url = await this._resolveHaTtsUrl(payload);
-    }
+    // TTS URL is prepared by the backend to avoid unauthenticated /api/tts_get_url calls.
     this._activeTag = payload.tag || null;
     this._emit("alert_shown", { tag: payload.tag || "", title: payload.title || "", mode, severity: payload.severity || "info" });
     if (payload.wake_screen) this.app?.bridge?.setScreenPower?.(true);
@@ -2315,33 +2313,8 @@ class AlertManager {
   }
 
   async _resolveHaTtsUrl(data = {}) {
-    const message = String(data.tts_message || data.text || data.message || "").trim();
-    const engineId = String(data.tts_engine_id || data.engine_id || data.tts_engine || data.engine || "").trim();
-    const language = String(data.tts_language || data.language || "").trim();
-    if (!message || !engineId) return "";
-    try {
-      const resp = await fetch("/api/tts_get_url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          engine_id: engineId,
-          message,
-          language: language || undefined,
-          options: { preferred_format: "mp3" }
-        })
-      });
-      if (!resp.ok) {
-        const raw = await resp.text().catch(() => "");
-        console.warn("TTS URL generation failed", resp.status, raw);
-        return "";
-      }
-      const payload = await resp.json();
-      return payload?.path || payload?.url || "";
-    } catch (e) {
-      console.warn("TTS URL generation error", e);
-      return "";
-    }
+    // Deprecated on the client side. Backend prepares tts_url to avoid auth issues.
+    return String(data.tts_url || "").trim();
   }
 
   _startAttentionEffects(data = {}) {

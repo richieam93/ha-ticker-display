@@ -1,6 +1,8 @@
 """Services for Ticker Display."""
 
 import logging
+from homeassistant.components import tts as ha_tts
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, ServiceCall
 from .const import DOMAIN
 
@@ -81,9 +83,42 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         language = out.get("tts_language") or out.get("language")
         if language:
             out["tts_language"] = str(language)
-        message = out.get("tts_message") or out.get("message")
-        if message and out.get("use_tts_for_message"):
+        message = out.get("tts_message") or (out.get("message") if out.get("use_tts_for_message") else None)
+        if message:
             out["tts_message"] = str(message)
+        return out
+
+    async def _resolve_ha_tts_url(data):
+        if not isinstance(data, dict):
+            return data
+        out = _apply_ha_tts(data)
+        if out.get("tts_url"):
+            return out
+        message = str(out.get("tts_message") or "").strip()
+        if not message:
+            return out
+        engine_id = str(out.get("tts_engine_id") or "").strip()
+        if not engine_id:
+            engine_id = ha_tts.async_default_engine(hass) or ""
+            if engine_id:
+                out["tts_engine_id"] = engine_id
+        if not engine_id:
+            _LOGGER.warning("No TTS engine available for alert TTS")
+            return out
+        language = str(out.get("tts_language") or "").strip() or None
+        try:
+            stream = ha_tts.async_create_stream(
+                hass,
+                engine=engine_id,
+                language=language,
+                options={"preferred_format": "mp3"},
+            )
+            stream.async_set_message(message)
+            out["tts_url"] = stream.url
+        except HomeAssistantError as err:
+            _LOGGER.warning("Failed to prepare HA TTS audio: %s", err)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Unexpected HA TTS error: %s", err)
         return out
 
     async def handle_show_alert(call):
@@ -93,6 +128,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             tmpl = store.get_alert_templates().get(template_id)
             if tmpl:
                 d = _apply_ha_tts({**tmpl, **d})
+        d = await _resolve_ha_tts_url(d)
 
         sound_id = d.get("sound")
         if not d.get("sound_url") and sound_id:
@@ -120,7 +156,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not tmpl:
             _LOGGER.error("Alert template not found: %s", template_id)
             return
-        payload = {**tmpl, **d}
+        payload = await _resolve_ha_tts_url({**tmpl, **d})
         await websocket.send_command(_dev(call), {"type": "alert", "data": payload})
 
     async def handle_show_alert_sequence(call):
@@ -129,7 +165,10 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not isinstance(alerts, list):
             _LOGGER.error("alerts must be a list")
             return
-        await websocket.send_command(_dev(call), {"type": "command", "command": "show_alert_sequence", "data": {"alerts": alerts}})
+        resolved_alerts = []
+        for alert in alerts:
+            resolved_alerts.append(await _resolve_ha_tts_url(alert if isinstance(alert, dict) else {}))
+        await websocket.send_command(_dev(call), {"type": "command", "command": "show_alert_sequence", "data": {"alerts": resolved_alerts}})
 
     # ── Ticker commands ──
     async def handle_send_ticker(call):
@@ -171,10 +210,17 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             "volume": call.data.get("volume", 100), "loop": call.data.get("loop", False)})
 
     async def handle_tts_speak(call):
-        engine_id = call.data.get("tts_engine_id") or call.data.get("engine_id") or call.data.get("engine")
-        await websocket.send_command(_dev(call), {"type": "audio", "action": "tts",
-            "text": call.data.get("message", ""), "language": call.data.get("language", "de"),
-            "engine_id": engine_id, "volume": call.data.get("volume", 70)})
+        data = await _resolve_ha_tts_url({
+            "tts_message": call.data.get("message", ""),
+            "tts_language": call.data.get("language", "de"),
+            "tts_engine_id": call.data.get("tts_engine_id") or call.data.get("engine_id") or call.data.get("engine"),
+        })
+        url = data.get("tts_url")
+        if not url:
+            _LOGGER.error("Failed to prepare HA TTS URL")
+            return
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "play",
+            "url": url, "volume": call.data.get("volume", 70), "loop": False})
 
     async def handle_stop_audio(call):
         await websocket.send_command(_dev(call), {"type": "audio", "action": "stop"})
