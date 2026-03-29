@@ -75,6 +75,13 @@ class TickerDisplayCoordinator:
             d["assist_message"] = event_data.get("message") or event_data.get("text") or ""
         elif event_type == "assist_stt":
             d["assist_last_stt"] = event_data.get("text", "")
+        elif event_type == "assist_tts":
+            d["assist_last_tts"] = event_data.get("text", "")
+            d["assist_tts_url"] = event_data.get("url", "")
+            if event_data.get("text"):
+                d["assist_message"] = f"TTS: {event_data.get('text')}"
+            elif event_data.get("url"):
+                d["assist_message"] = f"TTS-URL: {event_data.get('url')}"
 
         self.hass.bus.async_fire(
             f"ticker_display_{event_type}",

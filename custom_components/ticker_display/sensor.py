@@ -245,6 +245,22 @@ SENSOR_DEFINITIONS = {
         "dc": None,
         "sc": None,
     },
+    "assist_last_tts": {
+        "name": "Assist Spoken Text",
+        "key": "assist_last_tts",
+        "icon": "mdi:account-voice",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
+    "assist_tts_url": {
+        "name": "Assist TTS URL",
+        "key": "assist_tts_url",
+        "icon": "mdi:link-variant",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
     "assist_wake_word": {
         "name": "Assist Wake Word",
         "key": "assist_wake_word",
