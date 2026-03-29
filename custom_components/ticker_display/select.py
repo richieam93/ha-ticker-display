@@ -15,6 +15,27 @@ DEFAULT_WAKE_WORDS = ["okay_nabu", "kenobi", "hey_jarvis", "hey_mycroft", "disab
 DEFAULT_ASSISTANTS = ["default", "preferred", "secondary", "disabled"]
 DEFAULT_VAD = ["short", "normal", "long"]
 
+
+def _collect_pipeline_entries_from_obj(obj, out: list[dict[str, str]], depth: int = 0) -> None:
+    if depth > 4 or obj is None:
+        return
+    if isinstance(obj, dict):
+        maybe_id = obj.get("id")
+        maybe_name = obj.get("name")
+        if isinstance(maybe_id, str) and maybe_id.strip():
+            keys = {str(k) for k in obj.keys()}
+            if {"language", "conversation_engine", "conversation_engine_id", "stt_engine_id", "tts_engine_id"} & keys:
+                entry = {"id": maybe_id.strip(), "name": str(maybe_name or maybe_id).strip() or maybe_id.strip()}
+                if entry not in out:
+                    out.append(entry)
+        for value in obj.values():
+            _collect_pipeline_entries_from_obj(value, out, depth + 1)
+        return
+    if isinstance(obj, (list, tuple, set)):
+        for value in obj:
+            _collect_pipeline_entries_from_obj(value, out, depth + 1)
+
+
 SELECTS = {
     "wake_word": ("Wake Word", "assist_wake_word", "assist_available_wake_words", DEFAULT_WAKE_WORDS),
     "wake_word_2": ("Wake Word 2", "assist_wake_word_2", "assist_available_wake_words", DEFAULT_WAKE_WORDS),
@@ -56,17 +77,41 @@ def _collect_pipeline_ids_from_obj(obj, out: list[str], depth: int = 0) -> None:
 
 
 
-def _read_assist_storage_options(hass: HomeAssistant) -> list[str]:
-    options: list[str] = []
+def _read_assist_storage_entries(hass: HomeAssistant) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
     try:
         storage_path = Path(hass.config.path('.storage/assist_pipeline.pipelines'))
         if not storage_path.exists():
-            return options
+            return entries
         raw = json.loads(storage_path.read_text(encoding='utf-8'))
-        _collect_pipeline_ids_from_obj(raw, options)
+        _collect_pipeline_entries_from_obj(raw, entries)
     except Exception:
-        return options
+        return entries
+    return entries
+
+
+def _read_assist_storage_options(hass: HomeAssistant) -> list[str]:
+    entries = _read_assist_storage_entries(hass)
+    options: list[str] = []
+    for entry in entries:
+        for candidate in (entry.get("name"), entry.get("id")):
+            item = str(candidate or "").strip()
+            if item and item not in options:
+                options.append(item)
     return options
+
+
+def _resolve_assistant_option_to_pipeline_id(hass: HomeAssistant, option: str) -> str:
+    normalized = str(option or "").strip()
+    if not normalized:
+        return "default"
+    if normalized.lower() in {"default", "preferred", "secondary", "disabled"}:
+        return normalized
+    entries = (hass.data.get(DOMAIN, {}) or {}).get("assist_pipeline_storage_entries", []) or []
+    for entry in entries:
+        if normalized == str(entry.get("name") or "").strip() or normalized == str(entry.get("id") or "").strip():
+            return str(entry.get("id") or normalized).strip() or normalized
+    return normalized
 
 def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
     options: list[str] = []
@@ -105,7 +150,9 @@ def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    hass.data.setdefault(DOMAIN, {})["assist_pipeline_storage_options"] = await hass.async_add_executor_job(_read_assist_storage_options, hass)
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    domain_data["assist_pipeline_storage_entries"] = await hass.async_add_executor_job(_read_assist_storage_entries, hass)
+    domain_data["assist_pipeline_storage_options"] = await hass.async_add_executor_job(_read_assist_storage_options, hass)
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
     store = entry_data["store"]
@@ -170,11 +217,14 @@ class TickerDisplayAssistSelect(SelectEntity):
         return out
 
     async def async_select_option(self, option: str) -> None:
+        resolved_option = option
+        if self._select_key in {"assistant", "assistant_2"}:
+            resolved_option = _resolve_assistant_option_to_pipeline_id(self.hass, option)
         data_key = self._data_key
-        self._coordinator.update_device_data(self._device_id, {data_key: option})
+        self._coordinator.update_device_data(self._device_id, {data_key: resolved_option})
         await self._websocket.send_command(
             self._device_id,
-            {"type": "command", "command": "assist_command", "data": {"action": "set_option", "key": self._select_key, "value": option}},
+            {"type": "command", "command": "assist_command", "data": {"action": "set_option", "key": self._select_key, "value": resolved_option}},
         )
 
     async def async_added_to_hass(self):
