@@ -7,8 +7,16 @@ import json
 from homeassistant.components.assist_satellite import (
     AssistSatelliteEntity,
     AssistSatelliteEntityFeature,
-    AssistSatelliteState,
 )
+
+try:
+    from homeassistant.components.assist_satellite import AssistSatelliteState
+except ImportError:
+    class AssistSatelliteState:
+        IDLE = "idle"
+        LISTENING = "listening"
+        PROCESSING = "processing"
+        RESPONDING = "responding"
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
