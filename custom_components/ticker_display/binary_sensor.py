@@ -141,7 +141,7 @@ class TickerDisplayBinarySensor(BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true if binary sensor is on."""
         if self._sensor_key == "online":
-            return self._coordinator.is_device_online(self._device_id)
+            return self._coordinator.is_device_available(self._device_id)
 
         data = self._coordinator.get_device_data(self._device_id)
         key = self._sensor_def.get("key")
@@ -161,7 +161,7 @@ class TickerDisplayBinarySensor(BinarySensorEntity):
         """Return availability."""
         if self._sensor_key == "online":
             return True
-        return self._coordinator.is_device_online(self._device_id)
+        return self._coordinator.is_device_available(self._device_id)
 
     async def async_added_to_hass(self) -> None:
         """Handle entity being added to Home Assistant."""

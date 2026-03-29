@@ -64,7 +64,7 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
 
     @property
     def available(self) -> bool:
-        return self._coordinator.is_device_online(self._device_id)
+        return self._coordinator.is_device_available(self._device_id)
 
     @property
     def state(self) -> MediaPlayerState | None:

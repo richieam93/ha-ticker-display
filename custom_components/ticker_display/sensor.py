@@ -352,7 +352,7 @@ class TickerDisplaySensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self._coordinator.is_device_online(self._device_id)
+        return self._coordinator.is_device_available(self._device_id)
 
     async def async_added_to_hass(self) -> None:
         """Handle entity being added to Home Assistant."""

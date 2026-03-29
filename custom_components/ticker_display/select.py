@@ -20,6 +20,71 @@ SELECTS = {
     "speech_pause_detection": ("Speech Pause Detection", "assist_vad_mode", None, DEFAULT_VAD),
 }
 
+
+def _collect_pipeline_ids_from_obj(obj, out: list[str], depth: int = 0) -> None:
+    if depth > 4 or obj is None:
+        return
+    if isinstance(obj, dict):
+        maybe_id = obj.get("id")
+        if isinstance(maybe_id, str) and maybe_id.strip() and maybe_id not in out:
+            keys = {str(k) for k in obj.keys()}
+            if {"language", "conversation_engine", "conversation_engine_id", "stt_engine_id", "tts_engine_id"} & keys:
+                out.append(maybe_id)
+        for value in obj.values():
+            _collect_pipeline_ids_from_obj(value, out, depth + 1)
+        return
+    if isinstance(obj, (list, tuple, set)):
+        for value in obj:
+            _collect_pipeline_ids_from_obj(value, out, depth + 1)
+        return
+    maybe_id = getattr(obj, "id", None)
+    if isinstance(maybe_id, str) and maybe_id.strip() and maybe_id not in out:
+        attrs = {name for name in dir(obj) if name.endswith("_id") or name in {"language", "name"}}
+        if {"conversation_engine_id", "stt_engine_id", "tts_engine_id", "language"} & attrs:
+            out.append(maybe_id)
+    for name in ("items", "pipelines", "data", "store"):
+        try:
+            value = getattr(obj, name, None)
+        except Exception:
+            value = None
+        if value is not None and value is not obj:
+            _collect_pipeline_ids_from_obj(value, out, depth + 1)
+
+
+def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
+    options: list[str] = []
+    for item in list(DEFAULT_ASSISTANTS) + [str(x) for x in data.get("assist_available_assistants", []) or []]:
+        if item and item not in options:
+            options.append(item)
+
+    # Try to discover Assist pipelines from HA internals.
+    try:
+        for key, value in (hass.data or {}).items():
+            key_s = str(key).lower()
+            if "assist" in key_s or "pipeline" in key_s or "conversation" in key_s:
+                _collect_pipeline_ids_from_obj(value, options)
+    except Exception:
+        pass
+
+    # Fallback: include likely related entity ids/options from state machine.
+    try:
+        for state in hass.states.async_all():
+            eid = state.entity_id
+            attrs = state.attributes or {}
+            eid_lower = eid.lower()
+            if any(k in eid_lower for k in ["assist", "pipeline", "conversation", "voice"]):
+                if eid not in options:
+                    options.append(eid)
+                for item in attrs.get("options", []) or []:
+                    item_s = str(item).strip()
+                    if item_s and item_s not in options:
+                        options.append(item_s)
+    except Exception:
+        pass
+
+    return options
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
@@ -28,14 +93,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities = []
     for device_id, device_config in store.get_devices().items():
         for key in SELECTS:
-            entities.append(TickerDisplayAssistSelect(coordinator, websocket, device_id, device_config.get("name", device_id), key))
+            entities.append(TickerDisplayAssistSelect(hass, coordinator, websocket, device_id, device_config.get("name", device_id), key))
     async_add_entities(entities)
+
 
 class TickerDisplayAssistSelect(SelectEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, coordinator, websocket, device_id: str, device_name: str, select_key: str) -> None:
+    def __init__(self, hass: HomeAssistant, coordinator, websocket, device_id: str, device_name: str, select_key: str) -> None:
+        self.hass = hass
         self._coordinator = coordinator
         self._websocket = websocket
         self._device_id = device_id
@@ -56,24 +123,29 @@ class TickerDisplayAssistSelect(SelectEntity):
 
     @property
     def available(self):
-        return True
+        return self._coordinator.is_device_available(self._device_id)
 
     @property
     def current_option(self):
-        return str(self._coordinator.get_device_data(self._device_id).get(self._data_key) or self.options[0])
+        current = str(self._coordinator.get_device_data(self._device_id).get(self._data_key) or "").strip()
+        return current or (self.options[0] if self.options else None)
 
     @property
     def options(self):
         data = self._coordinator.get_device_data(self._device_id)
-        values = list(self._defaults)
-        if self._options_key:
-            values.extend([str(x) for x in data.get(self._options_key, []) or [] if str(x).strip()])
+        if self._select_key in {"assistant", "assistant_2"}:
+            values = _discover_assistant_options(self.hass, data)
+        else:
+            values = list(self._defaults)
+            if self._options_key:
+                values.extend([str(x) for x in data.get(self._options_key, []) or [] if str(x).strip()])
         current = str(data.get(self._data_key) or "").strip()
         if current:
             values.append(current)
         out = []
         for item in values:
-            if item not in out:
+            item = str(item).strip()
+            if item and item not in out:
                 out.append(item)
         return out
 

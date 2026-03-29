@@ -142,7 +142,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
 
     @property
     def available(self) -> bool:
-        return self._coordinator.is_device_online(self._device_id)
+        return self._coordinator.is_device_available(self._device_id)
 
     @property
     def pipeline_entity_id(self) -> str | None:
@@ -168,7 +168,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         }
         return mapping.get(state, AssistSatelliteState.IDLE)
 
-    async def async_get_configuration(self) -> AssistSatelliteConfiguration:
+    def async_get_configuration(self) -> AssistSatelliteConfiguration:
         self._configuration = _build_assist_configuration(self._coordinator.get_device_data(self._device_id))
         return self._configuration
 

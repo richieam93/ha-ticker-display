@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, UTC
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
-from .const import DEFAULT_HEARTBEAT_TIMEOUT
+from .const import DEFAULT_HEARTBEAT_TIMEOUT, DEVICE_STALE_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,12 +15,16 @@ class TickerDisplayCoordinator:
         self.store = store
         self._device_data: dict[str, dict] = {}
         self._last_heartbeat: dict[str, datetime] = {}
+        self._last_seen: dict[str, datetime] = {}
         self._update_callbacks: dict[str, list] = {}
         self._heartbeat_timeout = heartbeat_timeout
 
         self._unsub_timer = async_track_time_interval(
             hass, self._check_device_timeouts, timedelta(seconds=30)
         )
+
+    def _touch(self, device_id: str) -> None:
+        self._last_seen[device_id] = datetime.now(UTC)
 
     def process_heartbeat(self, device_id: str, data: dict):
         current = self._device_data.get(device_id, {})
@@ -29,12 +33,15 @@ class TickerDisplayCoordinator:
             self._device_data[device_id] = current
         else:
             self._device_data[device_id] = dict(data or {})
-        self._last_heartbeat[device_id] = datetime.now(UTC)
+        now = datetime.now(UTC)
+        self._last_heartbeat[device_id] = now
+        self._last_seen[device_id] = now
         self._notify_update(device_id)
 
     def process_event(self, device_id: str, event_type: str, event_data: dict):
         if device_id not in self._device_data:
             self._device_data[device_id] = {}
+        self._touch(device_id)
 
         d = self._device_data[device_id]
         if event_type == "motion_detected":
@@ -83,6 +90,7 @@ class TickerDisplayCoordinator:
         if device_id not in self._device_data:
             self._device_data[device_id] = {}
         self._device_data[device_id].update(data or {})
+        self._touch(device_id)
         self._notify_update(device_id)
 
     def get_device_data(self, device_id: str) -> dict:
@@ -97,25 +105,39 @@ class TickerDisplayCoordinator:
             last = last.replace(tzinfo=UTC)
         return (now - last).total_seconds() < self._heartbeat_timeout
 
+    def is_device_available(self, device_id: str) -> bool:
+        if self.is_device_online(device_id):
+            return True
+        if device_id in self._device_data:
+            last = self._last_seen.get(device_id) or self._last_heartbeat.get(device_id)
+            if last is None:
+                return True
+            if getattr(last, "tzinfo", None) is None:
+                last = last.replace(tzinfo=UTC)
+            return (datetime.now(UTC) - last).total_seconds() < DEVICE_STALE_TIMEOUT
+        return False
+
     def get_all_online_devices(self) -> list[str]:
         return [did for did in self._device_data if self.is_device_online(did)]
 
     @callback
     def register_update_callback(self, device_id: str, callback_fn):
         self._update_callbacks.setdefault(device_id, []).append(callback_fn)
+        def _remove():
+            callbacks = self._update_callbacks.get(device_id, [])
+            if callback_fn in callbacks:
+                callbacks.remove(callback_fn)
+        return _remove
 
     @callback
     def _notify_update(self, device_id: str):
-        for cb in self._update_callbacks.get(device_id, []):
-            cb()
+        for cb in list(self._update_callbacks.get(device_id, [])):
+            try:
+                cb()
+            except Exception:
+                _LOGGER.exception("Error in update callback for %s", device_id)
 
     @callback
     def _check_device_timeouts(self, _now=None):
-        for device_id in list(self._last_heartbeat.keys()):
-            last = self._last_heartbeat[device_id]
-            now = datetime.now(UTC)
-            if getattr(last, "tzinfo", None) is None:
-                last = last.replace(tzinfo=UTC)
-            is_online = (now - last).total_seconds() < self._heartbeat_timeout
-            if not is_online:
-                self._notify_update(device_id)
+        for device_id in set(self._last_seen) | set(self._last_heartbeat):
+            self._notify_update(device_id)

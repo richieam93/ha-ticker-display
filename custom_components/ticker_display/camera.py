@@ -43,7 +43,7 @@ class TickerDisplayPhoneCamera(Camera):
     @property
     def available(self) -> bool:
         data = self._coordinator.get_device_data(self._device_id)
-        return self._coordinator.is_device_online(self._device_id) and bool(data.get(f"{self._kind}_camera_enabled"))
+        return (self._coordinator.is_device_available(self._device_id) and (bool(data.get(f"{self._kind}_camera_enabled")) or bool((self._frame or {}).get("bytes"))))
 
     @property
     def is_on(self) -> bool:
