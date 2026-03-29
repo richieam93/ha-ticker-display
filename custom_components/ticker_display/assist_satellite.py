@@ -80,14 +80,20 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _build_assist_configuration() -> AssistSatelliteConfiguration:
+def _build_assist_configuration(device_data: dict[str, Any] | None = None) -> AssistSatelliteConfiguration:
     """Build an AssistSatelliteConfiguration compatible with multiple HA versions."""
+    device_data = device_data or {}
+    available_words = []
+    for word in device_data.get("assist_available_wake_words", []) or []:
+        wid = str(word).strip()
+        if wid:
+            available_words.append(AssistSatelliteWakeWord(id=wid, wake_word=wid.replace("_", " "), trained_languages=["de", "en"]))
     base_kwargs: dict[str, Any] = {
-        "available_wake_words": [],
-        "active_wake_words": [],
-        "max_active_wake_words": 0,
-        "pipeline_entity_id": None,
-        "vad_sensitivity_entity_id": None,
+        "available_wake_words": available_words,
+        "active_wake_words": list(device_data.get("assist_active_wake_words", []) or []),
+        "max_active_wake_words": int(device_data.get("assist_max_active_wake_words", 2) or 2),
+        "pipeline_entity_id": device_data.get("assist_assistant"),
+        "vad_sensitivity_entity_id": device_data.get("assist_vad_mode"),
         "tts_options": None,
     }
     try:
@@ -131,7 +137,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
             "manufacturer": "Ticker Display",
             "model": "Android Assist Satellite",
         }
-        self._configuration = _build_assist_configuration()
+        self._configuration = _build_assist_configuration(self._coordinator.get_device_data(device_id))
         self._tts_options: dict[str, Any] | None = None
 
     @property
@@ -163,6 +169,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         return mapping.get(state, AssistSatelliteState.IDLE)
 
     async def async_get_configuration(self) -> AssistSatelliteConfiguration:
+        self._configuration = _build_assist_configuration(self._coordinator.get_device_data(self._device_id))
         return self._configuration
 
     async def async_set_configuration(self, config: AssistSatelliteConfiguration) -> None:
@@ -173,8 +180,19 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
             "action": "set_configuration",
             "wake_word_ids": wake_word_ids,
             "pipeline_entity_id": getattr(config, "pipeline_entity_id", None),
+            "pipeline_entity_id_secondary": self._coordinator.get_device_data(self._device_id).get("assist_assistant_2"),
             "vad_entity_id": getattr(config, "vad_sensitivity_entity_id", None),
         }
+        self._coordinator.update_device_data(
+            self._device_id,
+            {
+                "assist_active_wake_words": wake_word_ids,
+                "assist_wake_word": wake_word_ids[0] if len(wake_word_ids) > 0 else "disabled",
+                "assist_wake_word_2": wake_word_ids[1] if len(wake_word_ids) > 1 else "disabled",
+                "assist_assistant": getattr(config, "pipeline_entity_id", None),
+                "assist_vad_mode": getattr(config, "vad_sensitivity_entity_id", None),
+            },
+        )
         await self._websocket.send_command(
             self._device_id,
             {"type": "command", "command": "assist_command", "data": payload},

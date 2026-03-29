@@ -74,6 +74,12 @@ class TickerDisplayCoordinator:
         )
         self._notify_update(device_id)
 
+    def update_device_data(self, device_id: str, data: dict):
+        if device_id not in self._device_data:
+            self._device_data[device_id] = {}
+        self._device_data[device_id].update(data or {})
+        self._notify_update(device_id)
+
     def get_device_data(self, device_id: str) -> dict:
         return self._device_data.get(device_id, {})
 
