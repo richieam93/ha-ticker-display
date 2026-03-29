@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from homeassistant.components import tts as ha_tts
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 
 REGISTERED_SERVICES = [
@@ -50,6 +51,33 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         d = dict(call.data)
         d.pop("device", None)
         return d
+    def _assist_entity_ids_for_device(device):
+        registry = er.async_get(hass)
+        if device == "all":
+            device_ids = list((store.get_devices() or {}).keys())
+        elif isinstance(device, list):
+            device_ids = [str(d) for d in device]
+        else:
+            device_ids = [str(device)]
+
+        entity_ids = []
+        for device_id in device_ids:
+            entity_id = registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist")
+            if entity_id:
+                entity_ids.append(entity_id)
+        return entity_ids
+
+    async def _assist_announce(device, *, message=None, media_id=None, preannounce=False):
+        entity_ids = _assist_entity_ids_for_device(device)
+        if not entity_ids:
+            return False
+        payload = {"preannounce": preannounce, "entity_id": entity_ids}
+        if message:
+            payload["message"] = message
+        if media_id:
+            payload["media_id"] = media_id
+        await hass.services.async_call("assist_satellite", "announce", payload, blocking=True)
+        return True
 
     # ── Screen commands ──
     async def _screen_cmd(call, cmd):
@@ -132,14 +160,21 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         return out
 
     async def _send_alert_tts(device, payload):
-        url = str((payload or {}).get("tts_url") or "").strip()
+        if not isinstance(payload, dict):
+            return
+        message = str(payload.get("tts_message") or "").strip()
+        if message and await _assist_announce(device, message=message, preannounce=False):
+            return
+        url = str(payload.get("tts_url") or "").strip()
         if not url:
+            return
+        if await _assist_announce(device, media_id=url, preannounce=False):
             return
         await websocket.send_command(device, {
             "type": "audio",
             "action": "announce",
             "url": url,
-            "volume": int((payload or {}).get("volume", 90)),
+            "volume": int(payload.get("volume", 90)),
             "loop": False,
         })
 
@@ -239,8 +274,15 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             "volume": call.data.get("volume", 100), "loop": call.data.get("loop", False)})
 
     async def handle_tts_speak(call):
+        device = _dev(call)
+        message = str(call.data.get("message", "")).strip()
+        if not message:
+            _LOGGER.error("message required for tts_speak")
+            return
+        if await _assist_announce(device, message=message, preannounce=False):
+            return
         data = await _resolve_ha_tts_url({
-            "tts_message": call.data.get("message", ""),
+            "tts_message": message,
             "tts_language": call.data.get("language", "de"),
             "tts_engine_id": call.data.get("tts_engine_id") or call.data.get("engine_id") or call.data.get("engine"),
         })
@@ -248,10 +290,11 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not url:
             _LOGGER.error("Failed to prepare HA TTS URL")
             return
-        await websocket.send_command(_dev(call), {"type": "audio", "action": "announce",
+        await websocket.send_command(device, {"type": "audio", "action": "announce",
             "url": url, "volume": call.data.get("volume", 70), "loop": False})
 
     async def handle_play_announcement(call):
+        device = _dev(call)
         url = call.data.get("sound_url") or call.data.get("url")
         if not url:
             sound_id = call.data.get("sound", "")
@@ -259,7 +302,9 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not url:
             _LOGGER.error("Announcement audio not found")
             return
-        await websocket.send_command(_dev(call), {"type": "audio", "action": "announce", "url": url,
+        if await _assist_announce(device, media_id=url, preannounce=False):
+            return
+        await websocket.send_command(device, {"type": "audio", "action": "announce", "url": url,
             "volume": call.data.get("volume", 90), "loop": False, "title": call.data.get("title", "Announcement")})
 
     async def handle_stop_audio(call):

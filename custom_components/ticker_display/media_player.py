@@ -26,6 +26,7 @@ async def async_setup_entry(
             TickerDisplayMediaPlayer(
                 coordinator,
                 entry_data["websocket"],
+                entry_data["media_manager"],
                 device_id,
                 device_config.get("name", device_id),
             )
@@ -44,11 +45,13 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
         | MediaPlayerEntityFeature.VOLUME_SET
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
+        | MediaPlayerEntityFeature.SELECT_SOURCE
     )
 
-    def __init__(self, coordinator, websocket, device_id: str, device_name: str) -> None:
+    def __init__(self, coordinator, websocket, media_manager, device_id: str, device_name: str) -> None:
         self._coordinator = coordinator
         self._websocket = websocket
+        self._media_manager = media_manager
         self._device_id = device_id
         self._attr_unique_id = f"ticker_display_{device_id}_speaker"
         self._attr_name = f"{device_name} Speaker"
@@ -91,6 +94,15 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
     @property
     def media_content_type(self) -> str | None:
         return MediaType.MUSIC
+    @property
+    def source_list(self) -> list[str] | None:
+        sounds = self._media_manager.get_sounds()
+        return [item.get("name") or item.get("id") for item in sounds if item.get("url")]
+
+    @property
+    def source(self) -> str | None:
+        data = self._coordinator.get_device_data(self._device_id)
+        return data.get("media_selected_source") or None
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -100,6 +112,7 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
             "announcement_active": bool(data.get("media_announcement_active", False)),
             "can_next": bool(data.get("media_can_next", False)),
             "can_previous": bool(data.get("media_can_previous", False)),
+            "selected_source": data.get("media_selected_source") or "",
         }
 
     async def async_play_media(self, media_type: str, media_id: str, **kwargs) -> None:
@@ -138,6 +151,24 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
 
     async def async_media_previous_track(self) -> None:
         await self._websocket.send_command(self._device_id, {"type": "audio", "action": "previous"})
+
+    async def async_select_source(self, source: str) -> None:
+        for item in self._media_manager.get_sounds():
+            name = item.get("name") or item.get("id")
+            if name == source and item.get("url"):
+                await self._websocket.send_command(
+                    self._device_id,
+                    {
+                        "type": "audio",
+                        "action": "play",
+                        "url": item["url"],
+                        "volume": 90,
+                        "loop": False,
+                        "title": name,
+                        "selected_source": name,
+                    },
+                )
+                return
 
     async def async_added_to_hass(self) -> None:
         self._coordinator.register_update_callback(self._device_id, self.async_write_ha_state)
