@@ -122,6 +122,11 @@ def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
     for pid in (hass.data.get(DOMAIN, {}) or {}).get("assist_pipeline_storage_options", []) or []:
         if pid and pid not in options:
             options.append(pid)
+    for entry in (hass.data.get(DOMAIN, {}) or {}).get("assist_pipeline_storage_entries", []) or []:
+        for candidate in (entry.get("name"), entry.get("id")):
+            value = str(candidate or "").strip()
+            if value and value not in options:
+                options.append(value)
 
     try:
         for key, value in (hass.data or {}).items():
