@@ -33,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up Ticker Display integration")
 
     hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN].setdefault("camera_frames", {})
 
     store = TickerDisplayStore(hass)
     await store.async_load()

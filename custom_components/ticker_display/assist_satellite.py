@@ -230,16 +230,3 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         except Exception:
             pass
         await super().async_will_remove_from_hass()
-        remove_cb = remove_cb = self._coordinator.register_update_callback(self._device_id, self._handle_update)
-        if remove_cb:
-            self.async_on_remove(remove_cb)
-        if remove_cb:
-            self.async_on_remove(remove_cb)
-
-    def _handle_update(self) -> None:
-        if self.state == AssistSatelliteState.IDLE:
-            try:
-                self.tts_response_finished()
-            except Exception:
-                pass
-        self.async_write_ha_state()

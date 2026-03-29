@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import base64
 import json
 import re
 import inspect
@@ -12,7 +13,7 @@ from pathlib import Path
 from aiohttp import web
 from homeassistant.core import HomeAssistant
 
-from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH, SENSOR_KEYS, ALERT_MODES, ALERT_SEVERITIES
+from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH, SENSOR_KEYS, ALERT_MODES, ALERT_SEVERITIES, CAMERA_FRAME_MAX_BYTES
 from .media_manager import _safe_filename
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ class TickerDisplayAPI:
 
         # Data API
         app.router.add_get(f"{API_BASE}/api/image/camera/{{entity_id}}", self._camera_proxy)
+        app.router.add_post(f"{API_BASE}/api/camera/upload", self._camera_upload)
         app.router.add_get(f"{API_BASE}/api/history/{{entity_id}}", self._history)
         app.router.add_get(f"{API_BASE}/api/weather/{{entity_id}}", self._weather)
         app.router.add_get(f"{API_BASE}/api/states/{{entity_id}}", self._states)
@@ -516,6 +518,26 @@ class TickerDisplayAPI:
     # Unterstützt HA 2023.x, 2024.x und 2025.x
     # ══════════════════════════════════════════════════════════
 
+    async def _camera_upload(self, request):
+        data = await self._parse_json(request)
+        device_id = self._clean_identifier(data.get("device_id"), field="device_id", max_len=255)
+        camera = str(data.get("camera") or "").strip().lower()
+        if camera not in {"front", "back"}:
+            return self._error("invalid camera", 400)
+        image_b64 = str(data.get("image_base64") or "")
+        if not image_b64:
+            return self._error("image_base64 required", 400)
+        try:
+            image_bytes = base64.b64decode(image_b64, validate=True)
+        except Exception:
+            return self._error("invalid image_base64", 400)
+        if len(image_bytes) > CAMERA_FRAME_MAX_BYTES:
+            return self._error("image too large", 413)
+        frames = self.hass.data.setdefault(DOMAIN, {}).setdefault("camera_frames", {})
+        frames.setdefault(device_id, {})[camera] = {"bytes": image_bytes, "ts": dt_util.utcnow().isoformat(), "content_type": "image/jpeg"}
+        self.coordinator.update_device_data(device_id, {f"{camera}_camera_last_frame": dt_util.utcnow().isoformat()})
+        return web.json_response({"status": "ok", "device_id": device_id, "camera": camera})
+
     async def _history(self, request):
         """Fetch history data for an entity."""
         entity_id = self._clean_entity_id(request.match_info["entity_id"])
@@ -587,49 +609,23 @@ class TickerDisplayAPI:
             )
 
     async def _fetch_history_states(self, entity_id, start_time, end_time):
-        """Fetch history states using recorder-safe APIs without blocking the event loop."""
         try:
             from homeassistant.components.recorder import get_instance
             from homeassistant.components.recorder import history as recorder_history
-
-            def _build_kwargs(func):
-                supported = set(inspect.signature(func).parameters)
-                kwargs = {}
-                if "hass" in supported:
-                    kwargs["hass"] = self.hass
-                if "start_time" in supported:
-                    kwargs["start_time"] = start_time
-                if "end_time" in supported:
-                    kwargs["end_time"] = end_time
-                if "entity_ids" in supported:
-                    kwargs["entity_ids"] = [entity_id]
-                elif "entity_id" in supported:
-                    kwargs["entity_id"] = entity_id
-                if "include_start_time_state" in supported:
-                    kwargs["include_start_time_state"] = True
-                if "significant_changes_only" in supported:
-                    kwargs["significant_changes_only"] = False
-                if "minimal_response" in supported:
-                    kwargs["minimal_response"] = False
-                if "no_attributes" in supported:
-                    kwargs["no_attributes"] = False
-                return kwargs
-
             instance = get_instance(self.hass)
-            if hasattr(recorder_history, "async_get_significant_states"):
-                func = recorder_history.async_get_significant_states
-                _LOGGER.debug("Using recorder_history.async_get_significant_states")
-                history = await func(**_build_kwargs(func))
-                return history.get(entity_id, []) if isinstance(history, dict) else history or []
-
-            if hasattr(recorder_history, "get_significant_states") and instance:
-                func = recorder_history.get_significant_states
-                _LOGGER.debug("Using recorder instance executor + get_significant_states")
-                history = await instance.async_add_executor_job(lambda: func(**_build_kwargs(func)))
-                return history.get(entity_id, []) if isinstance(history, dict) else history or []
+            if instance and hasattr(recorder_history, "state_changes_during_period"):
+                _LOGGER.debug("Using recorder instance executor + state_changes_during_period")
+                def _run():
+                    return recorder_history.state_changes_during_period(
+                        self.hass, start_time, end_time, entity_id, True, False
+                    )
+                history = await instance.async_add_executor_job(_run)
+                if isinstance(history, dict):
+                    return history.get(entity_id, []) or []
+                if history:
+                    return history
         except Exception as err:
             _LOGGER.debug("Recorder history fetch failed: %s", err)
-
         state = self.hass.states.get(entity_id)
         return [state] if state is not None else []
 

@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-PLATFORMS = ["sensor", "binary_sensor", "media_player", "assist_satellite"]
+PLATFORMS = ["sensor", "binary_sensor", "media_player", "assist_satellite", "camera"]
 
 API_BASE = "/ticker-display"
 WS_PATH = f"{API_BASE}/ws"
@@ -81,3 +81,4 @@ DEFAULT_FONTS = {
         },
     },
 }
+CAMERA_FRAME_MAX_BYTES = 2500000
