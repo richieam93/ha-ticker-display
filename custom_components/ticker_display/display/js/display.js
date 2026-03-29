@@ -988,13 +988,15 @@ class ScreenManager {
   }
 
   _controlQuickActions(config, state, summary) {
-    const domain = String(config?.entity_id || "").split(".")[0] || "";
+    const domainFromEntity = String(config?.entity_id || "").split(".")[0] || "";
+    const domain = domainFromEntity || this._controlDomainFallback(config?.type);
     const attrs = state?.attributes || {};
     const actions = [];
     if (domain === "media_player") {
       actions.push(
         { key: "playpause", label: summary.active ? "Pause" : "Play", title: "Play / Pause", style: "primary", grow: true },
         { key: "next", label: "Weiter", title: "Weiter", style: "ghost" },
+        { key: "stop", label: "Stopp", title: "Wiedergabe stoppen", style: "ghost" },
         { key: "details", label: "Öffnen", title: "Popup öffnen", style: "ghost" },
       );
     } else if (["switch", "input_boolean", "fan", "valve"].includes(domain)) {
@@ -1029,6 +1031,63 @@ class ScreenManager {
     return actions;
   }
 
+
+  _controlDomainFallback(type) {
+    const mapping = {
+      "media-player-control": "media_player",
+      "switch-control": "switch",
+      "light-control": "light",
+      "climate-control": "climate",
+      "cover-control": "cover",
+    };
+    return mapping[String(type || "")] || "";
+  }
+
+  async _loadHaMediaItems(kind = "audio", limit = 24) {
+    try {
+      return await this.app.dataManager._fetchJson(`/api/ha-media/items?kind=${encodeURIComponent(kind)}&limit=${encodeURIComponent(limit)}`);
+    } catch (e) {
+      console.warn("ha media item loading failed", e);
+      return [];
+    }
+  }
+
+  async _renderHaMediaSources(host, entityId, close) {
+    if (!host || !entityId) return;
+    host.innerHTML = `<div class="popup-loading">Lade Medienquellen …</div>`;
+    const items = await this._loadHaMediaItems("audio", 24);
+    if (!Array.isArray(items) || !items.length) {
+      host.innerHTML = `<div class="popup-empty">Keine Audio-Medienquellen gefunden</div>`;
+      return;
+    }
+    const buttons = items.map((item) => {
+      const title = Utils.text(item?.title || item?.path || item?.media_content_id || "Medium");
+      const sub = Utils.text(item?.path || item?.media_class || "Medienquelle");
+      const mediaId = Utils.text(item?.media_content_id || item?.id || "");
+      return `<button class="popup-control-btn popup-media-source-btn" type="button" data-media-id="${mediaId}" title="${sub}"><span>${title}</span><small>${sub}</small></button>`;
+    }).join("");
+    host.innerHTML = `<div class="popup-controls popup-media-source-grid">${buttons}</div>`;
+    host.querySelectorAll("[data-media-id]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const mediaId = btn.getAttribute("data-media-id") || "";
+        if (!mediaId) return;
+        btn.disabled = true;
+        try {
+          await this.app.callEntityService("media_player", "play_media", {
+            entity_id: entityId,
+            media_content_id: mediaId,
+            media_content_type: "music",
+          });
+          close?.();
+        } catch (err) {
+          console.warn("media source play failed", mediaId, err);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   _controlQuickActionsMarkup(config, state, summary, compact = false) {
     const actions = this._controlQuickActions(config, state, summary);
     if (!actions.length) return compact ? `<div class="td-control-actions compact"><button class="td-control-action ghost grow" data-action="details" type="button">Details</button></div>` : "";
@@ -1039,13 +1098,14 @@ class ScreenManager {
   async _handleControlQuickAction(config, state, action) {
     const entityId = config?.entity_id || "";
     if (!entityId || !action) return;
-    const domain = String(entityId).split(".")[0] || "";
+    const domain = String(entityId).split(".")[0] || this._controlDomainFallback(config?.type);
     const attrs = state?.attributes || {};
     if (action === "details") { this._openWidgetPopup(config); return; }
     if (domain === "media_player") {
       if (action === "prev") return this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId });
       if (action === "playpause") return this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId });
       if (action === "next") return this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId });
+      if (action === "stop") return this.app.callEntityService("media_player", "media_stop", { entity_id: entityId });
       if (action === "vol-down") return this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) });
       if (action === "vol-up") return this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) });
     }
@@ -1718,7 +1778,7 @@ class ScreenManager {
     const entityId = config.tap_target_entity || config.entity_id || "";
     const st = this.app.entityStates[entityId] || {};
     const attrs = st.attributes || {};
-    const domain = String(entityId || "").split(".")[0];
+    const domain = String(entityId || "").split(".")[0] || this._controlDomainFallback(config.type);
     const chartTypes = new Set(["mini-graph","sparkline","line-chart","area-chart","multi-line-chart","forecast-chart","comparison-chart","energy-flow-mini","timeline-chart","bar-chart","stacked-bar-chart","horizontal-bar-chart","heatmap-mini","bullet-chart","donut-chart","pie-chart","radial-gauge-advanced","polar-area-chart","radar-chart"]);
     const kind = config.tap_popup_kind || (config.type === "weather" || domain === "weather" ? "weather" : config.type === "camera" ? "camera" : config.type === "image" ? "image" : domain);
     const options = this._controlDisplayOptions(config);
@@ -1765,8 +1825,11 @@ class ScreenManager {
       this._renderPopupControlButton(controls, "Zurück", false, async () => { await this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }); });
       this._renderPopupControlButton(controls, (String(st.state||"") === "playing") ? "Pause" : "Play", false, async () => { await this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }); });
       this._renderPopupControlButton(controls, "Weiter", false, async () => { await this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "Stopp", false, async () => { await this.app.callEntityService("media_player", "media_stop", { entity_id: entityId }); });
       this._renderPopupControlButton(controls, "Leiser", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) }); });
       this._renderPopupControlButton(controls, "Lauter", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) }); });
+      const mediaSourceHost = this._popupAppendSection(hero, "Home Assistant Medienquellen");
+      this._renderHaMediaSources(mediaSourceHost, entityId, close);
     } else if (controls && (domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
       this._renderPopupControlButton(controls, "Ein/Aus", false, async () => { await this._invokeToggleAction(entityId, 'toggle'); close(); });
       if (domain === "fan") {
