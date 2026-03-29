@@ -49,6 +49,17 @@ class TickerDisplayCoordinator:
         elif event_type == "alert_closed":
             d["active_alert_tag"] = ""
             d["active_alert_title"] = ""
+        elif event_type == "media_state":
+            d["media_state"] = event_data.get("state", "idle")
+            d["media_title"] = event_data.get("title", "")
+            d["media_url"] = event_data.get("url", "")
+            if "volume" in event_data:
+                d["volume_percent"] = event_data.get("volume")
+        elif event_type == "assist_state":
+            d["assist_state"] = event_data.get("state", "idle")
+            d["assist_message"] = event_data.get("message") or event_data.get("text") or ""
+        elif event_type == "assist_stt":
+            d["assist_last_stt"] = event_data.get("text", "")
 
         self.hass.bus.async_fire(
             f"ticker_display_{event_type}",

@@ -213,6 +213,22 @@ SENSOR_DEFINITIONS = {
         "dc": None,
         "sc": None,
     },
+    "assist_state": {
+        "name": "Assist State",
+        "key": "assist_state",
+        "icon": "mdi:microphone-message",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
+    "assist_last_stt": {
+        "name": "Assist Last Text",
+        "key": "assist_last_stt",
+        "icon": "mdi:text-recognition",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
     "app_version": {
         "name": "App Version",
         "key": "app_version",

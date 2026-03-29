@@ -51,6 +51,27 @@ BINARY_SENSOR_DEFINITIONS = {
         "icon_off": "mdi:monitor-off",
         "dc": None,
     },
+    "native_media": {
+        "name": "Native Media",
+        "key": "native_media_player_enabled",
+        "icon_on": "mdi:speaker-wireless",
+        "icon_off": "mdi:speaker-off",
+        "dc": None,
+    },
+    "assist_satellite": {
+        "name": "Assist Satellite",
+        "key": "assist_satellite_enabled",
+        "icon_on": "mdi:microphone",
+        "icon_off": "mdi:microphone-off",
+        "dc": None,
+    },
+    "microphone": {
+        "name": "Microphone",
+        "key": "microphone_enabled",
+        "icon_on": "mdi:microphone",
+        "icon_off": "mdi:microphone-off",
+        "dc": None,
+    },
 }
 
 

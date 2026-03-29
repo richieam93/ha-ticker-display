@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = ["sensor", "binary_sensor", "media_player", "assist_satellite"]
 
 API_BASE = "/ticker-display"
 WS_PATH = f"{API_BASE}/ws"
@@ -46,6 +46,7 @@ SENSOR_KEYS = [
     "memory_free_mb", "memory_total_mb", "storage_free_mb", "storage_total_mb",
     "storage_used_percent", "cpu_usage", "volume_percent", "ringer_mode",
     "app_version", "webview_url", "orientation", "uptime_seconds",
+    "native_media_player_enabled", "assist_satellite_enabled", "microphone_enabled",
 ]
 
 DEFAULT_SOUNDS = {

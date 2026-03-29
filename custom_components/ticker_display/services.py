@@ -131,6 +131,18 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             _LOGGER.exception("Unexpected HA TTS error: %s", err)
         return out
 
+    async def _send_alert_tts(device, payload):
+        url = str((payload or {}).get("tts_url") or "").strip()
+        if not url:
+            return
+        await websocket.send_command(device, {
+            "type": "audio",
+            "action": "play",
+            "url": url,
+            "volume": int((payload or {}).get("volume", 90)),
+            "loop": False,
+        })
+
     async def handle_show_alert(call):
         d = _apply_ha_tts(_data(call))
         template_id = d.get("template_id")
@@ -148,7 +160,9 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             else:
                 _LOGGER.warning("Alert sound not found: %s", sound_id)
 
-        await websocket.send_command(_dev(call), {"type": "alert", "data": d})
+        device = _dev(call)
+        await websocket.send_command(device, {"type": "alert", "data": d})
+        await _send_alert_tts(device, d)
 
     async def handle_show_notification(call):
         await websocket.send_command(_dev(call), {"type": "alert", "data": {**_data(call), "mode": "notification"}})
@@ -167,7 +181,9 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             _LOGGER.error("Alert template not found: %s", template_id)
             return
         payload = await _resolve_ha_tts_url({**tmpl, **d})
-        await websocket.send_command(_dev(call), {"type": "alert", "data": payload})
+        device = _dev(call)
+        await websocket.send_command(device, {"type": "alert", "data": payload})
+        await _send_alert_tts(device, payload)
 
     async def handle_show_alert_sequence(call):
         d = _data(call)
@@ -178,7 +194,10 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         resolved_alerts = []
         for alert in alerts:
             resolved_alerts.append(await _resolve_ha_tts_url(alert if isinstance(alert, dict) else {}))
-        await websocket.send_command(_dev(call), {"type": "command", "command": "show_alert_sequence", "data": {"alerts": resolved_alerts}})
+        device = _dev(call)
+        await websocket.send_command(device, {"type": "command", "command": "show_alert_sequence", "data": {"alerts": resolved_alerts}})
+        for alert in resolved_alerts:
+            await _send_alert_tts(device, alert)
 
     # ── Ticker commands ──
     async def handle_send_ticker(call):

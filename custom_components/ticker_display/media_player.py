@@ -1,0 +1,114 @@
+"""Media player entities for Ticker Display devices."""
+
+from __future__ import annotations
+
+from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerEntityFeature, MediaType
+from homeassistant.components.media_player.const import MediaPlayerState
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import DOMAIN
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry_data["coordinator"]
+    store = entry_data["store"]
+    entities: list[TickerDisplayMediaPlayer] = []
+
+    for device_id, device_config in store.get_devices().items():
+        entities.append(
+            TickerDisplayMediaPlayer(
+                coordinator,
+                entry_data["websocket"],
+                device_id,
+                device_config.get("name", device_id),
+            )
+        )
+
+    async_add_entities(entities)
+
+
+class TickerDisplayMediaPlayer(MediaPlayerEntity):
+    _attr_has_entity_name = True
+    _attr_supported_features = (
+        MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.STOP
+        | MediaPlayerEntityFeature.VOLUME_SET
+    )
+
+    def __init__(self, coordinator, websocket, device_id: str, device_name: str) -> None:
+        self._coordinator = coordinator
+        self._websocket = websocket
+        self._device_id = device_id
+        self._attr_unique_id = f"ticker_display_{device_id}_speaker"
+        self._attr_name = f"{device_name} Speaker"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, device_id)},
+            "name": device_name,
+            "manufacturer": "Ticker Display",
+            "model": "Android Speaker",
+        }
+
+    @property
+    def available(self) -> bool:
+        return self._coordinator.is_device_online(self._device_id)
+
+    @property
+    def state(self) -> MediaPlayerState | None:
+        state = str(self._coordinator.get_device_data(self._device_id).get("media_state") or "idle").lower()
+        if state == "playing":
+            return MediaPlayerState.PLAYING
+        if state == "paused":
+            return MediaPlayerState.PAUSED
+        if state == "buffering":
+            return MediaPlayerState.BUFFERING
+        if state == "error":
+            return MediaPlayerState.IDLE
+        return MediaPlayerState.IDLE
+
+    @property
+    def volume_level(self) -> float | None:
+        raw = self._coordinator.get_device_data(self._device_id).get("volume_percent")
+        try:
+            return max(0.0, min(1.0, float(raw) / 100.0))
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def media_title(self) -> str | None:
+        return self._coordinator.get_device_data(self._device_id).get("media_title") or None
+
+    @property
+    def media_content_type(self) -> str | None:
+        return MediaType.MUSIC
+
+    async def async_play_media(self, media_type: str, media_id: str, **kwargs) -> None:
+        await self._websocket.send_command(
+            self._device_id,
+            {
+                "type": "audio",
+                "action": "play",
+                "url": media_id,
+                "volume": int((kwargs.get("extra", {}) or {}).get("volume", 90)),
+                "loop": bool((kwargs.get("extra", {}) or {}).get("loop", False)),
+                "title": kwargs.get("title") or kwargs.get("media_title") or "",
+            },
+        )
+
+    async def async_set_volume_level(self, volume: float) -> None:
+        await self._websocket.send_command(
+            self._device_id,
+            {"type": "audio", "action": "set_volume", "volume": int(max(0.0, min(1.0, volume)) * 100)},
+        )
+
+    async def async_media_stop(self) -> None:
+        await self._websocket.send_command(self._device_id, {"type": "audio", "action": "stop"})
+
+    async def async_added_to_hass(self) -> None:
+        self._coordinator.register_update_callback(self._device_id, self.async_write_ha_state)

@@ -289,9 +289,6 @@ class BridgeWrapper {
     if (this._audioElement) { this._audioElement.pause(); this._audioElement = null; }
   }
 
-  ttsSpeak(text, lang = "de") {
-    if (this._bridge?.ttsSpeak) { try { this._bridge.ttsSpeak(text, lang); } catch (e) {} }
-  }
 
   setVolume(v) {
     if (this._bridge?.setVolume) { try { this._bridge.setVolume(v); } catch (e) {} }
@@ -2312,15 +2309,10 @@ class AlertManager {
     }
   }
 
-  async _resolveHaTtsUrl(data = {}) {
-    // Deprecated on the client side. Backend prepares tts_url to avoid auth issues.
-    return String(data.tts_url || "").trim();
-  }
-
   _startAttentionEffects(data = {}) {
     this._stopAttentionEffects();
     const volume = Number(data.volume ?? 70);
-    const audioUrl = data.tts_url || data.sound_url || "";
+    const audioUrl = data.sound_url || "";
     const shouldLoop = !!(data.sound_url && !data.tts_url && (data.persistent || data.require_ack));
     if (audioUrl) this.app?.bridge?.playSound?.(audioUrl, volume, shouldLoop);
     if (data.vibrate) {
@@ -2498,6 +2490,7 @@ class TickerDisplayApp {
     else if (cmd === "set_ticker_entities") this.tickerManager.setEntities(data);
     else if (cmd === "clear_ticker") this.tickerManager.clear();
     else if (cmd === "identify") this._showIdentify();
+    else if (cmd === "assist_command") { try { this.bridge?._bridge?.assistCommand?.(JSON.stringify(data || {})); } catch (e) { console.warn("assist command failed", e); } }
   }
 
   onAlert(data) { this.alertManager.show(data); }
@@ -2506,15 +2499,6 @@ class TickerDisplayApp {
 
   async onAudio(data) {
     if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
-    else if (data.action === "tts") {
-      const ttsUrl = await this.alertManager?._resolveHaTtsUrl({
-        tts_message: data.text,
-        tts_language: data.language,
-        tts_engine_id: data.engine_id,
-      });
-      if (ttsUrl) this.bridge.playSound(ttsUrl, data.volume, false);
-      else console.warn("No TTS URL generated for audio action", data);
-    }
     else if (data.action === "stop") this.bridge.stopSound();
     else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
   }
