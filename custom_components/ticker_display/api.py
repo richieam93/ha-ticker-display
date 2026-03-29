@@ -310,6 +310,11 @@ class TickerDisplayAPI:
         for key in SENSOR_KEYS:
             if key in data:
                 cleaned[key] = data.get(key)
+        for key, value in (data or {}).items():
+            if key in {"device_id", "timestamp"}:
+                continue
+            if key.startswith(("assist_", "front_camera_", "back_camera_")):
+                cleaned[key] = value
         if "timestamp" in data:
             cleaned["timestamp"] = data.get("timestamp")
         return cleaned

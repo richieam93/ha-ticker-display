@@ -1,6 +1,9 @@
 """Select entities for Ticker Display assist settings."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -57,7 +60,17 @@ def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
         if item and item not in options:
             options.append(item)
 
-    # Try to discover Assist pipelines from HA internals.
+    try:
+        storage_path = Path(hass.config.path(".storage/assist_pipeline.pipelines"))
+        if storage_path.exists():
+            raw = json.loads(storage_path.read_text(encoding="utf-8"))
+            for pipeline in ((raw or {}).get("data") or {}).get("items", []) or []:
+                pid = str((pipeline or {}).get("id") or "").strip()
+                if pid and pid not in options:
+                    options.append(pid)
+    except Exception:
+        pass
+
     try:
         for key, value in (hass.data or {}).items():
             key_s = str(key).lower()
@@ -66,7 +79,6 @@ def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
     except Exception:
         pass
 
-    # Fallback: include likely related entity ids/options from state machine.
     try:
         for state in hass.states.async_all():
             eid = state.entity_id

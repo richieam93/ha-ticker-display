@@ -51,6 +51,9 @@ SENSOR_KEYS = [
     "front_camera_present", "back_camera_present", "front_camera_enabled", "back_camera_enabled",
     "assist_wake_word", "assist_wake_word_2", "assist_assistant", "assist_assistant_2",
     "assist_vad_mode", "assist_wake_sound", "assist_button_click_sounds",
+    "assist_state", "assist_last_stt", "assist_message",
+    "assist_available_wake_words", "assist_available_assistants",
+    "assist_active_wake_words", "assist_max_active_wake_words", "assist_language",
 ]
 
 DEFAULT_SOUNDS = {
