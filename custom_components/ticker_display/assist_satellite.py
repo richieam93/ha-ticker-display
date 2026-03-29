@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
+
+from homeassistant.util import slugify
 
 from homeassistant.components.assist_satellite import (
     AssistSatelliteEntity,
@@ -48,6 +51,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -59,21 +64,26 @@ async def async_setup_entry(
     store = entry_data["store"]
     entities: list[TickerDisplayAssistSatellite] = []
 
-    for device_id, device_config in store.get_devices().items():
+    for device_id, device_config in (store.get_devices() or {}).items():
+        device_name = device_config.get("name", device_id)
         entities.append(
             TickerDisplayAssistSatellite(
                 coordinator,
                 entry_data["websocket"],
                 device_id,
-                device_config.get("name", device_id),
+                device_name,
             )
         )
 
+    _LOGGER.info("Setting up %s assist satellite entities", len(entities))
     async_add_entities(entities)
 
 
 class TickerDisplayAssistSatellite(AssistSatelliteEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_entity_registry_enabled_default = True
+    _attr_entity_registry_visible_default = True
     _attr_supported_features = (
         AssistSatelliteEntityFeature.ANNOUNCE
         | AssistSatelliteEntityFeature.START_CONVERSATION
@@ -83,8 +93,9 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         self._coordinator = coordinator
         self._websocket = websocket
         self._device_id = device_id
-        self._attr_unique_id = f"ticker_display_{device_id}_assist"
-        self._attr_name = f"{device_name} Assist"
+        self._attr_unique_id = f"ticker_display_{device_id}_assist_satellite"
+        self.entity_id = f"assist_satellite.{slugify(device_name)}_assist_satellit"
+        self._attr_name = f"{device_name} Assist-Satellit"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device_id)},
             "name": device_name,
@@ -98,10 +109,23 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
             pipeline_entity_id=None,
             vad_sensitivity_entity_id=None,
         )
+        self._tts_options: dict[str, Any] | None = None
 
     @property
     def available(self) -> bool:
         return self._coordinator.is_device_online(self._device_id)
+
+    @property
+    def pipeline_entity_id(self) -> str | None:
+        return getattr(self._configuration, "pipeline_entity_id", None)
+
+    @property
+    def vad_sensitivity_entity_id(self) -> str | None:
+        return getattr(self._configuration, "vad_sensitivity_entity_id", None)
+
+    @property
+    def tts_options(self) -> dict[str, Any] | None:
+        return self._tts_options
 
     @property
     def state(self) -> AssistSatelliteState:
@@ -121,6 +145,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
     async def async_set_configuration(self, config: AssistSatelliteConfiguration) -> None:
         self._configuration = config
         wake_word_ids = list(getattr(config, "active_wake_words", []) or [])
+        self._tts_options = getattr(config, "tts_options", None)
         payload = {
             "action": "set_configuration",
             "wake_word_ids": wake_word_ids,
@@ -145,6 +170,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
                 pass
 
     async def async_announce(self, announcement, preannounce: bool = True) -> None:
+        _LOGGER.debug("Assist announce for %s", self._device_id)
         payload = {
             "action": "announce",
             "media_url": getattr(announcement, "media_id", None),
@@ -157,6 +183,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         )
 
     async def async_start_conversation(self, announcement=None, preannounce: bool = True, extra_system_prompt: str | None = None) -> None:
+        _LOGGER.debug("Assist start_conversation for %s", self._device_id)
         payload = {
             "action": "start_conversation",
             "announcement_url": getattr(announcement, "media_id", None) if announcement else None,
@@ -170,6 +197,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         )
 
     async def async_added_to_hass(self) -> None:
+        _LOGGER.info("Assist satellite entity added for %s as %s", self._device_id, self.entity_id)
         self._coordinator.register_update_callback(self._device_id, self._handle_update)
 
     def _handle_update(self) -> None:

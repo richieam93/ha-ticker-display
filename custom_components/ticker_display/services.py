@@ -62,7 +62,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
 
         entity_ids = []
         for device_id in device_ids:
-            entity_id = registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist")
+            entity_id = registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist_satellite") or registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist")
             if entity_id:
                 entity_ids.append(entity_id)
         return entity_ids
