@@ -48,38 +48,6 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         d.pop("device", None)
         return d
 
-
-
-    async def _apply_ha_tts(payload):
-        """Normalize Home Assistant TTS fields for the display layer.
-
-        The actual /api/tts_get_url resolution is intentionally done in the
-        browser / Android display runtime, because that layer already owns the
-        authenticated session and audio playback path. This helper therefore
-        only prepares and sanitizes the TTS-related fields so service handlers
-        can call it safely.
-        """
-        if not isinstance(payload, dict):
-            return {}
-
-        data = dict(payload)
-        # Normalize aliases used by services, editor and alert templates.
-        message = str(data.get('tts_message') or data.get('message') or '').strip()
-        engine_id = str(data.get('tts_engine_id') or data.get('engine_id') or '').strip()
-        language = str(data.get('tts_language') or data.get('language') or '').strip()
-        tts_url = str(data.get('tts_url') or data.get('tts_audio_url') or '').strip()
-
-        if message:
-            data['tts_message'] = message
-        if engine_id:
-            data['tts_engine_id'] = engine_id
-        if language:
-            data['tts_language'] = language
-        if tts_url:
-            data['tts_url'] = tts_url
-
-        return data
-
     # ── Screen commands ──
     async def _screen_cmd(call, cmd):
         await websocket.send_command(_dev(call), {"type": "command", "command": cmd, "data": _data(call)})
@@ -103,13 +71,28 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         await websocket.send_command(_dev(call), {"type": "command", "command": "show_template", "data": d})
 
     # ── Alert commands ──
+    def _apply_ha_tts(data):
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        engine_id = out.get("tts_engine_id") or out.get("engine_id") or out.get("tts_engine") or out.get("engine")
+        if engine_id:
+            out["tts_engine_id"] = str(engine_id)
+        language = out.get("tts_language") or out.get("language")
+        if language:
+            out["tts_language"] = str(language)
+        message = out.get("tts_message") or out.get("message")
+        if message and out.get("use_tts_for_message"):
+            out["tts_message"] = str(message)
+        return out
+
     async def handle_show_alert(call):
-        d = _data(call)
+        d = _apply_ha_tts(_data(call))
         template_id = d.get("template_id")
         if template_id:
             tmpl = store.get_alert_templates().get(template_id)
             if tmpl:
-                d = {**tmpl, **d}
+                d = _apply_ha_tts({**tmpl, **d})
 
         sound_id = d.get("sound")
         if not d.get("sound_url") and sound_id:
@@ -119,7 +102,6 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             else:
                 _LOGGER.warning("Alert sound not found: %s", sound_id)
 
-        d = await _apply_ha_tts(d)
         await websocket.send_command(_dev(call), {"type": "alert", "data": d})
 
     async def handle_show_notification(call):
@@ -138,7 +120,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not tmpl:
             _LOGGER.error("Alert template not found: %s", template_id)
             return
-        payload = await _apply_ha_tts({**tmpl, **d})
+        payload = {**tmpl, **d}
         await websocket.send_command(_dev(call), {"type": "alert", "data": payload})
 
     async def handle_show_alert_sequence(call):
@@ -147,11 +129,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not isinstance(alerts, list):
             _LOGGER.error("alerts must be a list")
             return
-        normalized = []
-        for alert in alerts:
-            if isinstance(alert, dict):
-                normalized.append(await _apply_ha_tts(alert))
-        await websocket.send_command(_dev(call), {"type": "command", "command": "show_alert_sequence", "data": {"alerts": normalized}})
+        await websocket.send_command(_dev(call), {"type": "command", "command": "show_alert_sequence", "data": {"alerts": alerts}})
 
     # ── Ticker commands ──
     async def handle_send_ticker(call):
@@ -193,14 +171,10 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             "volume": call.data.get("volume", 100), "loop": call.data.get("loop", False)})
 
     async def handle_tts_speak(call):
-        message = str(call.data.get("message", "")).strip()
-        if not message:
-            return
+        engine_id = call.data.get("tts_engine_id") or call.data.get("engine_id") or call.data.get("engine")
         await websocket.send_command(_dev(call), {"type": "audio", "action": "tts",
-            "message": message,
-            "engine_id": str(call.data.get("tts_engine_id") or call.data.get("engine_id") or "").strip(),
-            "language": str(call.data.get("language") or call.data.get("tts_language") or "").strip(),
-            "volume": call.data.get("volume", 70)})
+            "text": call.data.get("message", ""), "language": call.data.get("language", "de"),
+            "engine_id": engine_id, "volume": call.data.get("volume", 70)})
 
     async def handle_stop_audio(call):
         await websocket.send_command(_dev(call), {"type": "audio", "action": "stop"})

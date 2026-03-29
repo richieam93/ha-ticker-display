@@ -270,11 +270,8 @@ class BridgeWrapper {
     if (!url) return;
     if (this._bridge) {
       try {
-        if (this._bridge.playAlertSound) this._bridge.playAlertSound(url, Math.round(volume ?? 100), !!loop);
-        else {
-          loop ? this._bridge.playSoundLoop(url) : this._bridge.playSound(url);
-          if (volume !== undefined) this._bridge.setVolume(volume);
-        }
+        loop ? this._bridge.playSoundLoop(url) : this._bridge.playSound(url);
+        if (volume !== undefined) this._bridge.setVolume(volume);
       } catch (e) {}
       return;
     }
@@ -293,7 +290,7 @@ class BridgeWrapper {
   }
 
   ttsSpeak(text, lang = "de") {
-    console.warn('Local app/browser TTS is disabled; use Home Assistant TTS audio URLs instead.', { text, lang });
+    if (this._bridge?.ttsSpeak) { try { this._bridge.ttsSpeak(text, lang); } catch (e) {} }
   }
 
   setVolume(v) {
@@ -2261,17 +2258,17 @@ class AlertManager {
     this.toastContainer = document.getElementById("toast-container");
     this._timers = [];
     this._activeTag = null;
-    this._flashTimer = null;
-    this._vibrationTimer = null;
   }
 
-  show(data = {}) {
-    this.clearAll({ silent: true });
+  async show(data = {}) {
+    this.clearAll();
     const payload = { ...data };
-    payload.duration = this._resolveDuration(payload);
     const mode = payload.mode || "fullscreen";
+    if (!payload.tts_url && payload.tts_message) {
+      payload.tts_url = await this._resolveHaTtsUrl(payload);
+    }
     this._activeTag = payload.tag || null;
-    this._emit("alert_shown", { tag: payload.tag || "", title: payload.title || "", mode, severity: payload.severity || "info", duration: payload.duration || 0 });
+    this._emit("alert_shown", { tag: payload.tag || "", title: payload.title || "", mode, severity: payload.severity || "info" });
     if (payload.wake_screen) this.app?.bridge?.setScreenPower?.(true);
     this._startAttentionEffects(payload);
     switch (mode) {
@@ -2301,15 +2298,11 @@ class AlertManager {
     if (tag && this._activeTag && tag !== this._activeTag) return;
     this._timers.forEach(clearTimeout);
     this._timers = [];
-    if (this._flashTimer) { clearInterval(this._flashTimer); this._flashTimer = null; }
-    if (this._vibrationTimer) { clearInterval(this._vibrationTimer); this._vibrationTimer = null; }
-    this.app?.bridge?.stopSound?.();
-    this.overlay?.classList.remove('alert-flash-on');
-    document.body?.classList?.remove('alert-flash-on');
+    this._stopAttentionEffects();
     if (this.overlay) { this.overlay.hidden = true; this.overlay.innerHTML = ""; }
     if (this.banner) { this.banner.hidden = true; this.banner.innerHTML = ""; }
     if (this.toastContainer) { this.toastContainer.hidden = true; this.toastContainer.innerHTML = ""; }
-    if (!opts?.silent && this._activeTag) this._emit("alert_closed", { tag: this._activeTag, reason: opts?.reason || "clear" });
+    if (this._activeTag) this._emit("alert_closed", { tag: this._activeTag, reason: opts?.reason || "clear" });
     this._activeTag = null;
   }
 
@@ -2321,115 +2314,59 @@ class AlertManager {
     }
   }
 
-  _resolveDuration(data = {}) {
-    const raw = data.dismiss_after ?? data.auto_close_after ?? data.duration ?? 0;
-    const duration = Number(raw || 0);
-    if (!Number.isFinite(duration)) return 0;
-    return Math.max(0, Math.min(3600, duration));
-  }
-
-  _alertPalette(data = {}, severity = "info") {
-    const base = String(data.color || data.accent_color || '').trim() || ({ info: '#2196F3', warning: '#FF9800', critical: '#F44336' }[severity] || '#2196F3');
-    const background = String(data.background_color || '').trim() || Utils.applyAlpha(base, severity === 'critical' ? 0.82 : 0.74);
-    const text = String(data.text_color || '').trim() || '#ffffff';
-    const accent = String(data.accent_color || data.color || '').trim() || base;
-    const muted = Utils.applyAlpha(text, 0.72) || 'rgba(255,255,255,.72)';
-    const cardBg = String(data.card_background_color || '').trim() || Utils.applyAlpha('#111827', 0.76);
-    return { base, background, text, accent, muted, cardBg };
-  }
-
-  _applyAlertTheme(target, data = {}, severity = 'info') {
-    if (!target) return;
-    const palette = this._alertPalette(data, severity);
-    target.style.setProperty('--td-alert-bg', palette.background);
-    target.style.setProperty('--td-alert-text', palette.text);
-    target.style.setProperty('--td-alert-muted', palette.muted);
-    target.style.setProperty('--td-alert-accent', palette.accent);
-    target.style.setProperty('--td-alert-card-bg', palette.cardBg);
-    target.style.setProperty('--td-alert-border', Utils.applyAlpha(palette.accent, 0.38) || 'rgba(255,255,255,.12)');
-  }
-
-
   async _resolveHaTtsUrl(data = {}) {
-    const message = String(data.tts_message || data.message || '').trim();
-    if (!message) return '';
-    const payload = {
-      message,
-      engine_id: String(data.tts_engine_id || data.engine_id || '').trim() || undefined,
-      language: String(data.tts_language || data.language || '').trim() || undefined,
-      cache: true,
-      options: { preferred_format: 'mp3' },
-    };
+    const message = String(data.tts_message || data.text || data.message || "").trim();
+    const engineId = String(data.tts_engine_id || data.engine_id || data.tts_engine || data.engine || "").trim();
+    const language = String(data.tts_language || data.language || "").trim();
+    if (!message || !engineId) return "";
     try {
-      const resp = await fetch('/api/tts_get_url', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const resp = await fetch("/api/tts_get_url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          engine_id: engineId,
+          message,
+          language: language || undefined,
+          options: { preferred_format: "mp3" }
+        })
       });
-      if (!resp.ok) throw new Error(`tts_get_url: ${resp.status}`);
-      const json = await resp.json();
-      return String(json.path || json.url || '').trim();
-    } catch (err) {
-      console.warn('Unable to resolve Home Assistant TTS URL', err, payload);
-      return '';
+      if (!resp.ok) {
+        const raw = await resp.text().catch(() => "");
+        console.warn("TTS URL generation failed", resp.status, raw);
+        return "";
+      }
+      const payload = await resp.json();
+      return payload?.path || payload?.url || "";
+    } catch (e) {
+      console.warn("TTS URL generation error", e);
+      return "";
     }
   }
 
   _startAttentionEffects(data = {}) {
-    const soundUrl = String(data.sound_url || data.soundUrl || '').trim();
-    const volume = Utils.clamp(Number(data.volume ?? data.sound_volume ?? 100) || 100, 0, 100);
-    const persistentAttention = !!(data.persistent || data.require_ack || data.loop_sound || data.sound_loop);
-    if (soundUrl) {
-      this.app?.bridge?.playSound(soundUrl, volume, persistentAttention);
-    }
-
-    const directTtsUrl = String(data.tts_url || data.tts_audio_url || '').trim();
-    if (directTtsUrl) {
-      this.app?.bridge?.playSound(directTtsUrl, volume, false);
-    } else if (String(data.tts_message || '').trim()) {
-      this._resolveHaTtsUrl(data).then((resolvedUrl) => {
-        if (resolvedUrl) this.app?.bridge?.playSound(resolvedUrl, volume, false);
-      });
-    }
-
-    const shouldFlash = !!data.flash_screen || !!data.blink_screen;
-    if (shouldFlash) {
-      this.overlay?.classList.add('alert-flash-on');
-      document.body?.classList?.add('alert-flash-on');
-      this._flashTimer = setInterval(() => {
-        this.overlay?.classList.toggle('alert-flash-on');
-        document.body?.classList?.toggle('alert-flash-on');
-      }, 650);
-    }
-
+    this._stopAttentionEffects();
+    const volume = Number(data.volume ?? 70);
+    const audioUrl = data.tts_url || data.sound_url || "";
+    const shouldLoop = !!(data.sound_url && !data.tts_url && (data.persistent || data.require_ack));
+    if (audioUrl) this.app?.bridge?.playSound?.(audioUrl, volume, shouldLoop);
     if (data.vibrate) {
-      const pulse = Utils.clamp(Number(data.vibration_ms ?? data.vibrate_ms ?? 700) || 700, 100, 5000);
-      this.app?.bridge?.vibrate(pulse);
-      if (persistentAttention) {
-        this._vibrationTimer = setInterval(() => this.app?.bridge?.vibrate(pulse), Math.max(1200, pulse + 400));
+      this.app?.bridge?.vibrate?.(700);
+      if (data.persistent || data.require_ack) {
+        this._attentionVibrateTimer = setInterval(() => this.app?.bridge?.vibrate?.(700), 1800);
       }
+    }
+    if (data.flash_screen || data.blink_screen) {
+      document.body.classList.add("td-alert-flash", "td-alert-flash-active");
+      this._attentionFlashTimer = setInterval(() => document.body.classList.toggle("td-alert-flash-active"), 500);
     }
   }
 
-  _showActionFeedback(label = "Aktion gesendet") {
-    const text = Utils.text(label || "Aktion gesendet");
-    try { this.app?.bridge?.showToast?.(text); } catch (e) {}
-    if (!this.toastContainer) return;
-    const el = document.createElement('div');
-    el.className = 'alert-feedback-toast';
-    el.textContent = text;
-    this.toastContainer.hidden = false;
-    this.toastContainer.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('visible'));
-    const timer = setTimeout(() => {
-      el.classList.remove('visible');
-      setTimeout(() => {
-        el.remove();
-        if (!this.toastContainer?.children?.length) this.toastContainer.hidden = true;
-      }, 220);
-    }, 1800);
-    this._timers.push(timer);
+  _stopAttentionEffects() {
+    if (this._attentionVibrateTimer) { clearInterval(this._attentionVibrateTimer); this._attentionVibrateTimer = null; }
+    if (this._attentionFlashTimer) { clearInterval(this._attentionFlashTimer); this._attentionFlashTimer = null; }
+    document.body.classList.remove("td-alert-flash", "td-alert-flash-active");
+    this.app?.bridge?.stopSound?.();
   }
 
   _armAutoClose(data) {
@@ -2460,11 +2397,7 @@ class AlertManager {
       btn.addEventListener('click', () => {
         const action = btn.getAttribute('data-alert-action') || 'action';
         const close = btn.getAttribute('data-alert-close') !== 'false';
-        const label = btn.textContent?.trim() || action;
-        btn.classList.add('is-busy');
         this._emit('alert_action', { tag: data.tag || '', action, title: data.title || '', source: data.source || '' });
-        this._showActionFeedback(`${label} gesendet`);
-        setTimeout(() => btn.classList.remove('is-busy'), 500);
         if (close) this.clearAll({ reason: action });
       });
     });
@@ -2474,7 +2407,6 @@ class AlertManager {
     if (!this.overlay) return;
     const sev = data.severity || "info";
     this.overlay.className = `alert-overlay severity-${sev}`;
-    this._applyAlertTheme(this.overlay, data, sev);
     this.overlay.innerHTML = `<div class="alert-card"><div class="alert-topline">${Utils.text(data.source || "Alert")}</div><div class="alert-icon">${data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️"}</div><div class="alert-title">${Utils.text(data.title || "")}</div><div class="alert-message">${Utils.text(data.message || "")}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}${data.duration && !data.require_ack && !data.persistent ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}</div>`;
     this.overlay.hidden = false;
     this._bindAlertActions(this.overlay, data);
@@ -2485,7 +2417,6 @@ class AlertManager {
     if (!this.banner) return;
     const sev = data.severity || "info";
     this.banner.className = `notification-banner severity-${sev}`;
-    this._applyAlertTheme(this.banner, data, sev);
     this.banner.innerHTML = `<div class="banner-icon">${Utils.text(data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️")}</div><div class="banner-main"><div class="banner-title-row"><div class="banner-title">${Utils.text(data.title || data.source || 'Hinweis')}</div>${data.tag ? `<div class="banner-tag">${Utils.text(data.tag)}</div>` : ''}</div><div class="banner-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}</div>${this._actionsMarkup(data)}`;
     this.banner.hidden = false;
     this._bindAlertActions(this.banner, data);
@@ -2496,7 +2427,6 @@ class AlertManager {
     if (!this.overlay) return;
     const sev = data.severity || "info";
     this.overlay.className = `alert-overlay overlay-card-mode severity-${sev}`;
-    this._applyAlertTheme(this.overlay, data, sev);
     this.overlay.innerHTML = `<div class="alert-card alert-card-overlay"><div class="alert-topline">${Utils.text(data.source || 'Overlay')}</div><div class="alert-title">${Utils.text(data.title || '')}</div><div class="alert-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}</div>`;
     this.overlay.hidden = false;
     this._bindAlertActions(this.overlay, data);
@@ -2507,7 +2437,6 @@ class AlertManager {
     if (!this.overlay) return;
     const sev = data.severity || "info";
     this.overlay.className = `alert-overlay split-mode severity-${sev}`;
-    this._applyAlertTheme(this.overlay, data, sev);
     const cam = data.camera_entity_id || data.entity_id || '';
     const camUrl = cam ? `${this.app.apiBase}/api/image/camera/${encodeURIComponent(cam)}` : '';
     this.overlay.innerHTML = `<div class="alert-split-shell"><div class="alert-split-main"><div class="alert-topline">${Utils.text(data.source || 'Split')}</div><div class="alert-title">${Utils.text(data.title || '')}</div><div class="alert-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}</div><div class="alert-split-side">${camUrl ? `<img class="alert-split-camera" src="${camUrl}" alt="Kamera">` : `<div class="alert-split-placeholder">${Utils.text(data.icon || '📣')}</div>`}</div></div>`;
@@ -2522,8 +2451,6 @@ class AlertManager {
 
   _showToast(data) {
     if (!this.toastContainer) return;
-    const sev = data.severity || 'info';
-    this._applyAlertTheme(this.toastContainer, data, sev);
     this.toastContainer.innerHTML = `<div class="toast-message"><div class="toast-title">${Utils.text(data.title || data.source || 'Info')}</div><div>${Utils.text(data.message || '')}</div>${this._actionsMarkup(data)}</div>`;
     this.toastContainer.hidden = false;
     this._bindAlertActions(this.toastContainer, data);
@@ -2595,17 +2522,6 @@ class TickerDisplayApp {
     const screenCmds = ["show_dashboard", "show_graph", "show_camera", "show_weather", "show_single_value", "show_clock", "show_status_board", "show_image", "show_template"];
     if (screenCmds.includes(cmd)) { this.screenManager.showTemporaryScreen(cmd, data); return; }
     if (cmd === "clear_alert") this.alertManager.clearAll(data || {});
-    else if (cmd === "show_alert_sequence") {
-      const alerts = Utils.safeArray(data?.alerts);
-      if (!alerts.length) return;
-      let delay = 0;
-      alerts.forEach((alert, index) => {
-        const startDelay = delay;
-        setTimeout(() => this.alertManager.show(alert || {}), startDelay * 1000);
-        const duration = Number(alert?.dismiss_after ?? alert?.auto_close_after ?? alert?.duration ?? 0) || 0;
-        delay += Math.max(duration, index === alerts.length - 1 ? 0 : 1);
-      });
-    }
     else if (cmd === "set_ticker_entities") this.tickerManager.setEntities(data);
     else if (cmd === "clear_ticker") this.tickerManager.clear();
     else if (cmd === "identify") this._showIdentify();
@@ -2615,20 +2531,16 @@ class TickerDisplayApp {
   onTickerMessages(msgs) { this.tickerManager.addMessages(msgs); }
   onDisplayControl(data) { if (data.brightness !== undefined) this.bridge.setScreenBrightness(data.brightness); if (data.screen_power !== undefined) this.bridge.setScreenPower(data.screen_power); }
 
-  onAudio(data) {
+  async onAudio(data) {
     if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
     else if (data.action === "tts") {
-      if (data.url) {
-        this.bridge.playSound(data.url, data.volume, false);
-      } else if (String(data.message || '').trim()) {
-        this.alertManager?._resolveHaTtsUrl({
-          tts_message: data.message,
-          tts_language: data.language,
-          tts_engine_id: data.engine_id,
-        }).then((resolvedUrl) => {
-          if (resolvedUrl) this.bridge.playSound(resolvedUrl, data.volume, false);
-        });
-      }
+      const ttsUrl = await this.alertManager?._resolveHaTtsUrl({
+        tts_message: data.text,
+        tts_language: data.language,
+        tts_engine_id: data.engine_id,
+      });
+      if (ttsUrl) this.bridge.playSound(ttsUrl, data.volume, false);
+      else console.warn("No TTS URL generated for audio action", data);
     }
     else if (data.action === "stop") this.bridge.stopSound();
     else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
