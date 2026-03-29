@@ -38,6 +38,8 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
     _attr_has_entity_name = True
     _attr_supported_features = (
         MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.PLAY
+        | MediaPlayerEntityFeature.PAUSE
         | MediaPlayerEntityFeature.STOP
         | MediaPlayerEntityFeature.VOLUME_SET
     )
@@ -100,6 +102,13 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
                 "title": kwargs.get("title") or kwargs.get("media_title") or "",
             },
         )
+
+
+    async def async_media_pause(self) -> None:
+        await self._websocket.send_command(self._device_id, {"type": "audio", "action": "pause"})
+
+    async def async_media_play(self) -> None:
+        await self._websocket.send_command(self._device_id, {"type": "audio", "action": "resume"})
 
     async def async_set_volume_level(self, volume: float) -> None:
         await self._websocket.send_command(

@@ -2500,6 +2500,8 @@ class TickerDisplayApp {
   async onAudio(data) {
     if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
     else if (data.action === "stop") this.bridge.stopSound();
+    else if (data.action === "pause") this.bridge._bridge?.pauseSound?.();
+    else if (data.action === "resume" || data.action === "play_resume") this.bridge._bridge?.resumeSound?.();
     else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
   }
 

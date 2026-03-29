@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import json
+from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.assist_satellite import (
     AssistSatelliteEntity,
@@ -10,13 +11,37 @@ from homeassistant.components.assist_satellite import (
 )
 
 try:
-    from homeassistant.components.assist_satellite import AssistSatelliteState
+    from homeassistant.components.assist_satellite import (
+        AssistSatelliteConfiguration,
+        AssistSatelliteState,
+        AssistSatelliteWakeWord,
+    )
 except ImportError:
-    class AssistSatelliteState:
-        IDLE = "idle"
-        LISTENING = "listening"
-        PROCESSING = "processing"
-        RESPONDING = "responding"
+    try:
+        from homeassistant.components.assist_satellite import AssistSatelliteConfiguration, AssistSatelliteWakeWord
+    except ImportError:
+        @dataclass
+        class AssistSatelliteWakeWord:
+            id: str
+            wake_word: str
+            trained_languages: list[str]
+
+        @dataclass
+        class AssistSatelliteConfiguration:
+            available_wake_words: list[AssistSatelliteWakeWord]
+            active_wake_words: list[str]
+            max_active_wake_words: int
+            pipeline_entity_id: str | None = None
+            vad_sensitivity_entity_id: str | None = None
+
+    try:
+        from homeassistant.components.assist_satellite import AssistSatelliteState
+    except ImportError:
+        class AssistSatelliteState:
+            IDLE = "idle"
+            LISTENING = "listening"
+            PROCESSING = "processing"
+            RESPONDING = "responding"
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -66,6 +91,13 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
             "manufacturer": "Ticker Display",
             "model": "Android Assist Satellite",
         }
+        self._configuration = AssistSatelliteConfiguration(
+            available_wake_words=[],
+            active_wake_words=[],
+            max_active_wake_words=0,
+            pipeline_entity_id=None,
+            vad_sensitivity_entity_id=None,
+        )
 
     @property
     def available(self) -> bool:
@@ -82,6 +114,35 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
             "error": AssistSatelliteState.IDLE,
         }
         return mapping.get(state, AssistSatelliteState.IDLE)
+
+    async def async_get_configuration(self) -> AssistSatelliteConfiguration:
+        return self._configuration
+
+    async def async_set_configuration(self, config: AssistSatelliteConfiguration) -> None:
+        self._configuration = config
+        wake_word_ids = list(getattr(config, "active_wake_words", []) or [])
+        payload = {
+            "action": "set_configuration",
+            "wake_word_ids": wake_word_ids,
+            "pipeline_entity_id": getattr(config, "pipeline_entity_id", None),
+            "vad_entity_id": getattr(config, "vad_sensitivity_entity_id", None),
+        }
+        await self._websocket.send_command(
+            self._device_id,
+            {"type": "command", "command": "assist_command", "data": payload},
+        )
+
+    def on_pipeline_event(self, event: Any) -> None:
+        event_type = getattr(event, "type", None)
+        event_data = getattr(event, "data", None)
+        if event_type is None and isinstance(event, dict):
+            event_type = event.get("type")
+            event_data = event.get("data")
+        if str(event_type).lower() in {"tts-end", "tts_end", "run-end", "run_end"}:
+            try:
+                self.tts_response_finished()
+            except Exception:
+                pass
 
     async def async_announce(self, announcement, preannounce: bool = True) -> None:
         payload = {
