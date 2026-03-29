@@ -1,7 +1,7 @@
 """Coordinator for managing Ticker Display devices."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from .const import DEFAULT_HEARTBEAT_TIMEOUT
@@ -23,8 +23,13 @@ class TickerDisplayCoordinator:
         )
 
     def process_heartbeat(self, device_id: str, data: dict):
-        self._device_data[device_id] = data
-        self._last_heartbeat[device_id] = datetime.now()
+        current = self._device_data.get(device_id, {})
+        if current:
+            current.update(data or {})
+            self._device_data[device_id] = current
+        else:
+            self._device_data[device_id] = dict(data or {})
+        self._last_heartbeat[device_id] = datetime.now(UTC)
         self._notify_update(device_id)
 
     def process_event(self, device_id: str, event_type: str, event_data: dict):
@@ -87,7 +92,10 @@ class TickerDisplayCoordinator:
         last = self._last_heartbeat.get(device_id)
         if not last:
             return False
-        return (datetime.now() - last).total_seconds() < self._heartbeat_timeout
+        now = datetime.now(UTC)
+        if getattr(last, "tzinfo", None) is None:
+            last = last.replace(tzinfo=UTC)
+        return (now - last).total_seconds() < self._heartbeat_timeout
 
     def get_all_online_devices(self) -> list[str]:
         return [did for did in self._device_data if self.is_device_online(did)]
@@ -105,6 +113,9 @@ class TickerDisplayCoordinator:
     def _check_device_timeouts(self, _now=None):
         for device_id in list(self._last_heartbeat.keys()):
             last = self._last_heartbeat[device_id]
-            is_online = (datetime.now() - last).total_seconds() < self._heartbeat_timeout
+            now = datetime.now(UTC)
+            if getattr(last, "tzinfo", None) is None:
+                last = last.replace(tzinfo=UTC)
+            is_online = (now - last).total_seconds() < self._heartbeat_timeout
             if not is_online:
                 self._notify_update(device_id)

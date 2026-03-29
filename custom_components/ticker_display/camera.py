@@ -4,6 +4,9 @@ from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+import base64
+
+PLACEHOLDER_JPEG = base64.b64decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxAQEBAQEA8QDw8PEA8PDw8PDw8PDw8QFREWFhURFRUYHSggGBolGxUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGxAQGi0fHyUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAEAAQMBIgACEQEDEQH/xAAXAAADAQAAAAAAAAAAAAAAAAAAAQMC/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEAMQAAAB6A//xAAVEAEBAAAAAAAAAAAAAAAAAAABAP/aAAgBAQABBQL/xAAVEQEBAAAAAAAAAAAAAAAAAAAAAf/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwB//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyB//9k=")
 
 from .const import DOMAIN
 
@@ -40,7 +43,7 @@ class TickerDisplayPhoneCamera(Camera):
     @property
     def available(self) -> bool:
         data = self._coordinator.get_device_data(self._device_id)
-        return self._coordinator.is_device_online(self._device_id) and bool(data.get(f"{self._kind}_camera_enabled")) and self._frame is not None
+        return self._coordinator.is_device_online(self._device_id) and bool(data.get(f"{self._kind}_camera_enabled"))
 
     @property
     def is_on(self) -> bool:
@@ -50,11 +53,15 @@ class TickerDisplayPhoneCamera(Camera):
     @property
     def extra_state_attributes(self):
         frame = self._frame or {}
-        return {"camera_position": self._kind, "last_frame_at": frame.get("ts")}
+        return {
+            "camera_position": self._kind,
+            "last_frame_at": frame.get("ts"),
+            "frame_available": bool(frame.get("bytes")),
+        }
 
     async def async_camera_image(self, width=None, height=None):
         frame = self._frame or {}
-        return frame.get("bytes")
+        return frame.get("bytes") or PLACEHOLDER_JPEG
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()

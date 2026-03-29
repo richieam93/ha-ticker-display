@@ -888,7 +888,7 @@ class ScreenManager {
   }
 
   _controlSummary(config, state, name, icon) {
-    const entityId = config?.entity_id || config?.tap_target_entity || "";
+    const entityId = this._resolvePrimaryEntityId(config, state);
     const domain = String(entityId || "").split(".")[0] || "switch";
     const attrs = state?.attributes || {};
     const rawState = String(state?.state || "off");
@@ -988,7 +988,7 @@ class ScreenManager {
   }
 
   _controlQuickActions(config, state, summary) {
-    const domainFromEntity = String(config?.entity_id || "").split(".")[0] || "";
+    const domainFromEntity = String(this._resolvePrimaryEntityId(config, state) || "").split(".")[0] || "";
     const domain = domainFromEntity || this._controlDomainFallback(config?.type);
     const attrs = state?.attributes || {};
     const actions = [];
@@ -1031,6 +1031,19 @@ class ScreenManager {
     return actions;
   }
 
+
+
+  _resolvePrimaryEntityId(config, state = null) {
+    const candidates = [
+      config?.tap_target_entity,
+      config?.entity_id,
+      config?.config?.entity_id,
+      ...(Array.isArray(config?.config?.entities) ? config.config.entities : []),
+      ...(Array.isArray(config?.entities) ? config.entities : []),
+      state?.entity_id,
+    ].filter(Boolean);
+    return String(candidates[0] || "").trim();
+  }
 
   _controlDomainFallback(type) {
     const mapping = {
@@ -1615,7 +1628,7 @@ class ScreenManager {
       return {
         ...config,
         tap_action: compactPopup ? "popup" : "toggle",
-        tap_target_entity: config.tap_target_entity || config.entity_id || "",
+        tap_target_entity: config.tap_target_entity || config.entity_id || this._resolvePrimaryEntityId(config) || "",
         toggle_badge: config.toggle_badge ?? true,
       };
     }
@@ -1623,7 +1636,7 @@ class ScreenManager {
       return {
         ...config,
         tap_action: "popup",
-        tap_target_entity: config.tap_target_entity || config.entity_id || "",
+        tap_target_entity: config.tap_target_entity || config.entity_id || this._resolvePrimaryEntityId(config) || "",
       };
     }
 
@@ -1633,7 +1646,7 @@ class ScreenManager {
     const widgets = Utils.safeArray(current.widgets);
     const master = widgets.find(w => String(w?.group || "").trim() === group && w?.group_touch_enabled);
     if (!master) return config;
-    return { ...config, tap_action: master.group_tap_action || master.tap_action || "none", tap_target_entity: master.group_tap_target_entity || master.tap_target_entity || config.tap_target_entity || config.entity_id || "", toggle_mode: master.group_toggle_mode || master.toggle_mode || config.toggle_mode || "toggle", toggle_badge: master.group_toggle_badge ?? master.toggle_badge ?? config.toggle_badge, tap_popup_kind: master.group_tap_popup_kind || master.tap_popup_kind || config.tap_popup_kind, tap_screen_id: master.group_tap_screen_id || master.tap_screen_id || config.tap_screen_id, tap_url: master.group_tap_url || master.tap_url || config.tap_url, tap_autoclose: master.group_tap_autoclose ?? master.tap_autoclose ?? config.tap_autoclose, tap_scale: master.group_tap_scale ?? master.tap_scale ?? config.tap_scale };
+    return { ...config, tap_action: master.group_tap_action || master.tap_action || "none", tap_target_entity: master.group_tap_target_entity || master.tap_target_entity || config.tap_target_entity || config.entity_id || this._resolvePrimaryEntityId(config) || "", toggle_mode: master.group_toggle_mode || master.toggle_mode || config.toggle_mode || "toggle", toggle_badge: master.group_toggle_badge ?? master.toggle_badge ?? config.toggle_badge, tap_popup_kind: master.group_tap_popup_kind || master.tap_popup_kind || config.tap_popup_kind, tap_screen_id: master.group_tap_screen_id || master.tap_screen_id || config.tap_screen_id, tap_url: master.group_tap_url || master.tap_url || config.tap_url, tap_autoclose: master.group_tap_autoclose ?? master.tap_autoclose ?? config.tap_autoclose, tap_scale: master.group_tap_scale ?? master.tap_scale ?? config.tap_scale };
   }
 
   _bindWidgetInteraction(widget, config) {
@@ -1667,7 +1680,7 @@ class ScreenManager {
 
   _syncWidgetToggleBadge(widget, config) {
     if ((config?.tap_action || "none") !== "toggle" || config?.toggle_badge === false || config?.config?.control_show_toggle_badge === false) { const ex = widget.querySelector(".widget-toggle-badge"); if (ex) ex.remove(); return; }
-    const entityId = config.tap_target_entity || config.entity_id;
+    const entityId = this._resolvePrimaryEntityId(config, state);
     if (!entityId) return;
     const st = this.app?.entityStates?.[entityId] || {};
     this._showWidgetToggleBadge(widget, Utils.isTruthyState(st.state), st.state);
@@ -1717,7 +1730,7 @@ class ScreenManager {
 
   _closeWidgetPopup() { const o = document.getElementById("widget-popup-overlay"); if (!o) return; o.hidden = true; const b = o.querySelector(".widget-popup-body"); if (b) b.innerHTML = ""; }
   _openCameraFullscreen(config) { this._openWidgetPopup({ ...config, tap_popup_kind: "camera" }); }
-  _popupFriendlyName(config, st) { return this._widgetName(config, st?.attributes?.friendly_name || config.entity_id || config.type || "Widget"); }
+  _popupFriendlyName(config, st) { const eid = this._resolvePrimaryEntityId(config, st); return this._widgetName(config, st?.attributes?.friendly_name || eid || config.type || "Widget"); }
 
   _popupWeatherMarkup(config, st) {
     const attrs = st?.attributes || {};
@@ -1737,7 +1750,7 @@ class ScreenManager {
   }
 
   _popupImageMarkup(config) {
-    const entityId = config.entity_id || config.tap_target_entity || "";
+    const entityId = this._resolvePrimaryEntityId(config, null);
     const st = this.app?.entityStates?.[entityId] || {};
     const attrs = st.attributes || {};
     const src = config.image_url || config.imageUrl || config.url || attrs.entity_picture || attrs.image_url || "";
@@ -1775,7 +1788,7 @@ class ScreenManager {
     const close = () => this._closeWidgetPopup();
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
-    const entityId = config.tap_target_entity || config.entity_id || "";
+    const entityId = this._resolvePrimaryEntityId(config, null);
     const st = this.app.entityStates[entityId] || {};
     const attrs = st.attributes || {};
     const domain = String(entityId || "").split(".")[0] || this._controlDomainFallback(config.type);
@@ -1903,7 +1916,7 @@ class ScreenManager {
 
 
   async _toggleWidgetEntity(widget, config) {
-    const entityId = config.tap_target_entity || config.entity_id;
+    const entityId = this._resolvePrimaryEntityId(config, state);
     if (!entityId) return;
     const ok = await this._invokeToggleAction(entityId, config.toggle_mode || 'toggle');
     if (!ok) return;
