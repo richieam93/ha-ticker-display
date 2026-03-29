@@ -1,10 +1,14 @@
 """Media Manager - handles sounds, fonts, images."""
 
+from __future__ import annotations
+
 import logging
 import shutil
 from pathlib import Path, PurePath
+
 from homeassistant.core import HomeAssistant
-from .const import DOMAIN, DEFAULT_SOUNDS, DEFAULT_FONTS
+
+from .const import DEFAULT_FONTS, DEFAULT_SOUNDS, DOMAIN
 
 SOUND_ALIASES = {
     "alarm_siren": "alarm_critical",
@@ -32,6 +36,9 @@ class MediaManager:
         self._sounds_path = self._media_path / "sounds"
         self._fonts_path = self._media_path / "fonts"
         self._images_path = self._media_path / "images"
+        self._sounds_cache: list[dict] = []
+        self._fonts_cache: list[dict] = []
+        self._images_cache: list[dict] = []
 
     async def async_initialize(self):
         await self.hass.async_add_executor_job(self._initialize_sync)
@@ -47,6 +54,9 @@ class MediaManager:
                     target = dest / f.name
                     if not target.exists():
                         shutil.copy2(f, target)
+        self._sounds_cache = self._build_sounds_sync()
+        self._fonts_cache = self._build_fonts_sync()
+        self._images_cache = self._build_images_sync()
 
     def _resolve_sound_file(self, sound_id: str, declared_filename: str | None = None) -> Path | None:
         sound_id = (sound_id or "").strip()
@@ -61,31 +71,89 @@ class MediaManager:
                 return cand
         return None
 
-    # ── SOUNDS ──
-    def get_sounds(self) -> list[dict]:
+    def _build_sounds_sync(self) -> list[dict]:
         sounds = []
         builtin_stems = set(DEFAULT_SOUNDS.keys())
         for sound_id, info in DEFAULT_SOUNDS.items():
             fp = self._resolve_sound_file(sound_id, info["file"])
             filename = fp.name if fp else info["file"]
-            sounds.append({
-                "id": sound_id,
-                "name": info["name"],
-                "filename": filename,
-                "url": f"/ticker-display/media/sounds/{filename}",
-                "category": info["category"],
-                "builtin": True,
-                "exists": bool(fp),
-                "size": fp.stat().st_size if fp and fp.exists() else 0,
-            })
+            sounds.append(
+                {
+                    "id": sound_id,
+                    "name": info["name"],
+                    "filename": filename,
+                    "url": f"/ticker-display/media/sounds/{filename}",
+                    "category": info["category"],
+                    "builtin": True,
+                    "exists": bool(fp),
+                    "size": fp.stat().st_size if fp and fp.exists() else 0,
+                }
+            )
 
         if self._sounds_path.exists():
             for f in self._sounds_path.iterdir():
                 if f.suffix.lower() in [".mp3", ".wav", ".ogg"] and f.stem not in builtin_stems:
-                    sounds.append({"id": f.stem, "name": f.stem.replace("_", " ").title(),
-                        "filename": f.name, "url": f"/ticker-display/media/sounds/{f.name}",
-                        "category": "custom", "builtin": False, "exists": True, "size": f.stat().st_size})
+                    sounds.append(
+                        {
+                            "id": f.stem,
+                            "name": f.stem.replace("_", " ").title(),
+                            "filename": f.name,
+                            "url": f"/ticker-display/media/sounds/{f.name}",
+                            "category": "custom",
+                            "builtin": False,
+                            "exists": True,
+                            "size": f.stat().st_size,
+                        }
+                    )
         return sounds
+
+    def _build_fonts_sync(self) -> list[dict]:
+        fonts = []
+        for font_id, info in DEFAULT_FONTS.items():
+            files = {}
+            for variant, filename in info["variants"].items():
+                fp = self._fonts_path / filename
+                if fp.exists():
+                    files[variant] = f"/ticker-display/media/fonts/{filename}"
+            fonts.append({"id": font_id, "name": info["name"], "variants": list(files.keys()), "files": files, "builtin": True})
+
+        builtin_files = {filename for info in DEFAULT_FONTS.values() for filename in info["variants"].values()}
+        custom: dict[str, dict] = {}
+        if self._fonts_path.exists():
+            for f in self._fonts_path.iterdir():
+                if f.suffix.lower() in [".woff2", ".ttf", ".otf"] and f.name not in builtin_files:
+                    base = f.stem.rsplit("-", 1)[0] if "-" in f.stem else f.stem
+                    variant = f.stem.rsplit("-", 1)[1] if "-" in f.stem else "regular"
+                    if base not in custom:
+                        custom[base] = {
+                            "id": base,
+                            "name": base.replace("-", " ").title(),
+                            "variants": [],
+                            "files": {},
+                            "builtin": False,
+                        }
+                    custom[base]["variants"].append(variant)
+                    custom[base]["files"][variant] = f"/ticker-display/media/fonts/{f.name}"
+        fonts.extend(custom.values())
+        return fonts
+
+    def _build_images_sync(self) -> list[dict]:
+        images = []
+        if self._images_path.exists():
+            for f in self._images_path.iterdir():
+                if f.suffix.lower() in [".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"]:
+                    images.append(
+                        {
+                            "id": f.stem,
+                            "filename": f.name,
+                            "url": f"/ticker-display/media/images/{f.name}",
+                            "size": f.stat().st_size,
+                        }
+                    )
+        return images
+
+    def get_sounds(self) -> list[dict]:
+        return list(self._sounds_cache)
 
     def get_sound_path(self, filename: str) -> Path | None:
         safe = _safe_filename(filename)
@@ -111,6 +179,7 @@ class MediaManager:
         filename = _safe_filename(filename)
         path = self._sounds_path / filename
         await self.hass.async_add_executor_job(path.write_bytes, data)
+        self._sounds_cache = await self.hass.async_add_executor_job(self._build_sounds_sync)
         return {"id": Path(filename).stem, "filename": filename, "url": f"/ticker-display/media/sounds/{filename}", "size": len(data)}
 
     async def async_delete_sound(self, sound_id: str) -> bool:
@@ -120,36 +189,12 @@ class MediaManager:
             path = self._sounds_path / f"{sound_id}{ext}"
             if path.exists():
                 await self.hass.async_add_executor_job(path.unlink)
+                self._sounds_cache = await self.hass.async_add_executor_job(self._build_sounds_sync)
                 return True
         return False
 
-    # ── FONTS ──
     def get_fonts(self) -> list[dict]:
-        fonts = []
-        for font_id, info in DEFAULT_FONTS.items():
-            files = {}
-            for variant, filename in info["variants"].items():
-                fp = self._fonts_path / filename
-                if fp.exists():
-                    files[variant] = f"/ticker-display/media/fonts/{filename}"
-            fonts.append({"id": font_id, "name": info["name"], "variants": list(files.keys()), "files": files, "builtin": True})
-
-        builtin_files = set()
-        for info in DEFAULT_FONTS.values():
-            builtin_files.update(info["variants"].values())
-
-        if self._fonts_path.exists():
-            custom = {}
-            for f in self._fonts_path.iterdir():
-                if f.suffix.lower() in [".woff2", ".ttf", ".otf"] and f.name not in builtin_files:
-                    base = f.stem.rsplit("-", 1)[0] if "-" in f.stem else f.stem
-                    variant = f.stem.rsplit("-", 1)[1] if "-" in f.stem else "regular"
-                    if base not in custom:
-                        custom[base] = {"id": base, "name": base.replace("-", " ").title(), "variants": [], "files": {}, "builtin": False}
-                    custom[base]["variants"].append(variant)
-                    custom[base]["files"][variant] = f"/ticker-display/media/fonts/{f.name}"
-            fonts.extend(custom.values())
-        return fonts
+        return list(self._fonts_cache)
 
     def get_font_path(self, filename: str) -> Path | None:
         safe = _safe_filename(filename)
@@ -175,6 +220,7 @@ class MediaManager:
         filename = _safe_filename(filename)
         path = self._fonts_path / filename
         await self.hass.async_add_executor_job(path.write_bytes, data)
+        self._fonts_cache = await self.hass.async_add_executor_job(self._build_fonts_sync)
         return {"id": Path(filename).stem, "filename": filename, "url": f"/ticker-display/media/fonts/{filename}"}
 
     async def async_delete_font(self, font_id: str) -> bool:
@@ -185,16 +231,12 @@ class MediaManager:
             if f.stem.startswith(font_id):
                 await self.hass.async_add_executor_job(f.unlink)
                 deleted = True
+        if deleted:
+            self._fonts_cache = await self.hass.async_add_executor_job(self._build_fonts_sync)
         return deleted
 
-    # ── IMAGES ──
     def get_images(self) -> list[dict]:
-        images = []
-        if self._images_path.exists():
-            for f in self._images_path.iterdir():
-                if f.suffix.lower() in [".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"]:
-                    images.append({"id": f.stem, "filename": f.name, "url": f"/ticker-display/media/images/{f.name}", "size": f.stat().st_size})
-        return images
+        return list(self._images_cache)
 
     def get_image_path(self, filename: str) -> Path | None:
         safe = _safe_filename(filename)
@@ -209,11 +251,13 @@ class MediaManager:
         filename = _safe_filename(filename)
         path = self._images_path / filename
         await self.hass.async_add_executor_job(path.write_bytes, data)
+        self._images_cache = await self.hass.async_add_executor_job(self._build_images_sync)
         return {"id": Path(filename).stem, "filename": filename, "url": f"/ticker-display/media/images/{filename}"}
 
     async def async_delete_image(self, image_id: str) -> bool:
         for f in self._images_path.iterdir():
             if f.stem == image_id:
                 await self.hass.async_add_executor_job(f.unlink)
+                self._images_cache = await self.hass.async_add_executor_job(self._build_images_sync)
                 return True
         return False

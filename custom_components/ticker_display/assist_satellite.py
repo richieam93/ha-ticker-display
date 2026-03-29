@@ -81,24 +81,48 @@ async def async_setup_entry(
 
 def _build_assist_configuration() -> AssistSatelliteConfiguration:
     """Build an AssistSatelliteConfiguration compatible with multiple HA versions."""
-    import inspect
+    candidate_kwargs: list[dict[str, Any]] = [
+        {
+            "available_wake_words": [],
+            "active_wake_words": [],
+            "max_active_wake_words": 0,
+            "pipeline_entity_id": None,
+            "vad_sensitivity_entity_id": None,
+            "tts_options": None,
+        },
+        {
+            "available_wake_words": [],
+            "active_wake_words": [],
+            "max_active_wake_words": 0,
+            "pipeline_entity_id": None,
+            "vad_sensitivity_entity_id": None,
+        },
+        {
+            "available_wake_words": [],
+            "active_wake_words": [],
+            "max_active_wake_words": 0,
+        },
+        {
+            "available_wake_words": [],
+            "active_wake_words": [],
+        },
+        {
+            "available_wake_words": [],
+        },
+        {},
+    ]
 
-    kwargs: dict[str, Any] = {
-        "available_wake_words": [],
-        "active_wake_words": [],
-        "max_active_wake_words": 0,
-        "pipeline_entity_id": None,
-        "vad_sensitivity_entity_id": None,
-        "tts_options": None,
-    }
+    last_error: Exception | None = None
+    for kwargs in candidate_kwargs:
+        try:
+            return AssistSatelliteConfiguration(**kwargs)
+        except TypeError as err:
+            last_error = err
+            continue
 
-    try:
-        params = inspect.signature(AssistSatelliteConfiguration).parameters
-    except (TypeError, ValueError):
-        params = {}
-
-    supported_kwargs = {key: value for key, value in kwargs.items() if key in params}
-    return AssistSatelliteConfiguration(**supported_kwargs)
+    if last_error:
+        raise last_error
+    return AssistSatelliteConfiguration()
 
 
 class TickerDisplayAssistSatellite(AssistSatelliteEntity):
@@ -214,7 +238,11 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
 
     async def async_added_to_hass(self) -> None:
         _LOGGER.info("Assist satellite entity added for %s as %s", self._device_id, self.entity_id)
-        self._coordinator.register_update_callback(self._device_id, self._handle_update)
+        remove_cb = remove_cb = self._coordinator.register_update_callback(self._device_id, self._handle_update)
+        if remove_cb:
+            self.async_on_remove(remove_cb)
+        if remove_cb:
+            self.async_on_remove(remove_cb)
 
     def _handle_update(self) -> None:
         if self.state == AssistSatelliteState.IDLE:

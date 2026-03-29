@@ -586,222 +586,44 @@ class TickerDisplayAPI:
             )
 
     async def _fetch_history_states(self, entity_id, start_time, end_time):
-        """Fetch history states with fallback for different HA versions."""
-
-        # ════════════════════════════════════════════════════
-        # Methode 1: Moderner Import (HA 2023.6+)
-        # ════════════════════════════════════════════════════
+        """Fetch history states using recorder-safe APIs without blocking the event loop."""
         try:
-            from homeassistant.components.recorder import (  # noqa: F401
-                history as recorder_history,
-            )
+            from homeassistant.components.recorder import get_instance
+            from homeassistant.components.recorder import history as recorder_history
 
-            # state_changes_during_period braucht hass als 1. Parameter!
-            if hasattr(recorder_history, "state_changes_during_period"):
-                _LOGGER.debug(
-                    "Using recorder_history.state_changes_during_period"
-                )
-                history = await self.hass.async_add_executor_job(
-                    recorder_history.state_changes_during_period,
-                    self.hass,
-                    start_time,
-                    end_time,
-                    entity_id,
-                )
-                result = history.get(entity_id, [])
-                if result:
-                    return result
-
-        except (ImportError, TypeError, AttributeError) as e:
-            _LOGGER.debug("Method 1 (state_changes) failed: %s", e)
-
-        # ════════════════════════════════════════════════════
-        # Methode 2: get_significant_states (HA 2024.x+)
-        # ════════════════════════════════════════════════════
-        try:
-            from homeassistant.components.recorder import (  # noqa: F401
-                history as recorder_history,
-            )
-
-            if hasattr(recorder_history, "get_significant_states"):
-                _LOGGER.debug(
-                    "Using recorder_history.get_significant_states"
-                )
-                history = await self.hass.async_add_executor_job(
-                    recorder_history.get_significant_states,
+            instance = get_instance(self.hass)
+            if hasattr(recorder_history, "async_get_significant_states"):
+                _LOGGER.debug("Using recorder_history.async_get_significant_states")
+                history = await recorder_history.async_get_significant_states(
                     self.hass,
                     start_time,
                     end_time,
                     [entity_id],
+                    include_start_time_state=True,
+                    significant_changes_only=False,
                 )
-                result = history.get(entity_id, [])
-                if result:
-                    return result
+                return history.get(entity_id, [])
 
-        except (ImportError, TypeError, AttributeError) as e:
-            _LOGGER.debug("Method 2 (get_significant_states) failed: %s", e)
+            if hasattr(recorder_history, "get_significant_states") and instance:
+                _LOGGER.debug("Using recorder instance executor + get_significant_states")
 
-        # ════════════════════════════════════════════════════
-        # Methode 3: Async-Variante (neuere HA 2024.4+)
-        # ════════════════════════════════════════════════════
-        try:
-            from homeassistant.components.recorder import (  # noqa: F401
-                history as recorder_history,
-            )
-
-            if hasattr(recorder_history, "async_get_significant_states"):
-                _LOGGER.debug(
-                    "Using recorder_history.async_get_significant_states"
-                )
-                history = (
-                    await recorder_history.async_get_significant_states(
+                def _fetch():
+                    return recorder_history.get_significant_states(
                         self.hass,
                         start_time,
                         end_time,
                         [entity_id],
+                        True,
+                        False,
                     )
-                )
-                result = history.get(entity_id, [])
-                if result:
-                    return result
 
-        except (ImportError, TypeError, AttributeError) as e:
-            _LOGGER.debug("Method 3 (async_get_significant) failed: %s", e)
+                history = await instance.async_add_executor_job(_fetch)
+                return history.get(entity_id, [])
+        except Exception as err:
+            _LOGGER.debug("Recorder history fetch failed: %s", err)
 
-        # ════════════════════════════════════════════════════
-        # Methode 4: get_instance + Session (HA 2024.6+)
-        # ════════════════════════════════════════════════════
-        try:
-            from homeassistant.components.recorder import get_instance
-            from homeassistant.components.recorder.history import (
-                get_significant_states,
-            )
-
-            instance = get_instance(self.hass)
-            if instance:
-                _LOGGER.debug("Using get_instance + get_significant_states")
-
-                def _fetch():
-                    with instance.get_session() as session:
-                        return get_significant_states(
-                            self.hass,
-                            session,
-                            start_time,
-                            end_time,
-                            [entity_id],
-                        )
-
-                history = await self.hass.async_add_executor_job(_fetch)
-                result = history.get(entity_id, [])
-                if result:
-                    return result
-
-        except (ImportError, TypeError, AttributeError) as e:
-            _LOGGER.debug("Method 4 (get_instance) failed: %s", e)
-
-        # ════════════════════════════════════════════════════
-        # Methode 5: Alte Legacy-API (HA < 2023.6)
-        # ════════════════════════════════════════════════════
-        try:
-            _LOGGER.debug("Using legacy self.hass.components.recorder")
-            history = await self.hass.async_add_executor_job(
-                self.hass.components.recorder.history.state_changes_during_period,
-                start_time,
-                end_time,
-                entity_id,
-            )
-            result = history.get(entity_id, [])
-            if result:
-                return result
-
-        except (ImportError, TypeError, AttributeError) as e:
-            _LOGGER.debug("Method 5 (legacy) failed: %s", e)
-
-        # ════════════════════════════════════════════════════
-        # Methode 6: HA History-Komponente direkt
-        # ════════════════════════════════════════════════════
-        try:
-            _LOGGER.debug("Using hass.components.history")
-            history = await self.hass.async_add_executor_job(
-                self.hass.components.history.state_changes_during_period,
-                self.hass,
-                start_time,
-                end_time,
-                entity_id,
-            )
-            result = history.get(entity_id, [])
-            if result:
-                return result
-
-        except (ImportError, TypeError, AttributeError) as e:
-            _LOGGER.debug("Method 6 (components.history) failed: %s", e)
-
-        # ════════════════════════════════════════════════════
-        # Methode 7: Direkte Recorder-DB-Abfrage (Notfall)
-        # ════════════════════════════════════════════════════
-        try:
-            from homeassistant.components.recorder import get_instance
-
-            instance = get_instance(self.hass)
-            if instance and hasattr(instance, "async_add_executor_job"):
-                _LOGGER.debug("Using direct recorder DB query")
-
-                def _direct_query():
-                    from homeassistant.components.recorder.db_schema import (
-                        States,
-                        StatesMeta,
-                    )
-                    from sqlalchemy import select
-
-                    with instance.get_session() as session:
-                        # Finde metadata_id für entity
-                        meta = session.execute(
-                            select(StatesMeta.metadata_id).where(
-                                StatesMeta.entity_id == entity_id
-                            )
-                        ).scalar_one_or_none()
-
-                        if meta is None:
-                            return []
-
-                        rows = session.execute(
-                            select(States)
-                            .where(
-                                States.metadata_id == meta,
-                                States.last_changed_ts >= start_time.timestamp(),
-                                States.last_changed_ts <= end_time.timestamp(),
-                            )
-                            .order_by(States.last_changed_ts)
-                            .limit(500)
-                        ).scalars().all()
-
-                        # Konvertiere zu State-ähnlichen Objekten
-                        class FakeState:
-                            def __init__(self, state_val, ts):
-                                self.state = state_val
-                                self.last_changed = datetime.utcfromtimestamp(ts)
-
-                        return [
-                            FakeState(r.state, r.last_changed_ts)
-                            for r in rows
-                            if r.state is not None and r.last_changed_ts
-                        ]
-
-                return await self.hass.async_add_executor_job(_direct_query)
-
-        except Exception as e:
-            _LOGGER.debug("Method 7 (direct DB) failed: %s", e)
-
-        _LOGGER.warning(
-            "All history methods failed for %s – "
-            "check if recorder integration is loaded",
-            entity_id,
-        )
-        return []
-
-    # ══════════════════════════════════════════════════════
-    # Weather
-    # ══════════════════════════════════════════════════════
+        state = self.hass.states.get(entity_id)
+        return [state] if state is not None else []
 
     async def _weather(self, request):
         entity_id = self._clean_entity_id(request.match_info["entity_id"])
