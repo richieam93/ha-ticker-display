@@ -79,6 +79,28 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
+def _build_assist_configuration() -> AssistSatelliteConfiguration:
+    """Build an AssistSatelliteConfiguration compatible with multiple HA versions."""
+    import inspect
+
+    kwargs: dict[str, Any] = {
+        "available_wake_words": [],
+        "active_wake_words": [],
+        "max_active_wake_words": 0,
+        "pipeline_entity_id": None,
+        "vad_sensitivity_entity_id": None,
+        "tts_options": None,
+    }
+
+    try:
+        params = inspect.signature(AssistSatelliteConfiguration).parameters
+    except (TypeError, ValueError):
+        params = {}
+
+    supported_kwargs = {key: value for key, value in kwargs.items() if key in params}
+    return AssistSatelliteConfiguration(**supported_kwargs)
+
+
 class TickerDisplayAssistSatellite(AssistSatelliteEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -102,13 +124,7 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
             "manufacturer": "Ticker Display",
             "model": "Android Assist Satellite",
         }
-        self._configuration = AssistSatelliteConfiguration(
-            available_wake_words=[],
-            active_wake_words=[],
-            max_active_wake_words=0,
-            pipeline_entity_id=None,
-            vad_sensitivity_entity_id=None,
-        )
+        self._configuration = _build_assist_configuration()
         self._tts_options: dict[str, Any] | None = None
 
     @property
