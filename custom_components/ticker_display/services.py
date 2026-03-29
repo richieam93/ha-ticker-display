@@ -53,8 +53,9 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         return d
     def _assist_entity_ids_for_device(device):
         registry = er.async_get(hass)
+        devices = store.get_devices() or {}
         if device == "all":
-            device_ids = list((store.get_devices() or {}).keys())
+            device_ids = list(devices.keys())
         elif isinstance(device, list):
             device_ids = [str(d) for d in device]
         else:
@@ -62,7 +63,23 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
 
         entity_ids = []
         for device_id in device_ids:
-            entity_id = registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist_satellite") or registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist")
+            entity_id = (
+                registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist_satellite")
+                or registry.async_get_entity_id("assist_satellite", DOMAIN, f"ticker_display_{device_id}_assist")
+            )
+            if not entity_id:
+                cfg = devices.get(device_id) or {}
+                wanted_slug = cfg.get("name", device_id)
+                wanted_slug = wanted_slug.strip().lower().replace(" ", "_")
+                for entry in list(registry.entities.values()):
+                    if entry.platform != DOMAIN or entry.domain != "assist_satellite":
+                        continue
+                    if entry.unique_id and str(device_id) in entry.unique_id:
+                        entity_id = entry.entity_id
+                        break
+                    if entry.entity_id.endswith(f"{wanted_slug}_assist_satellit"):
+                        entity_id = entry.entity_id
+                        break
             if entity_id:
                 entity_ids.append(entity_id)
         return entity_ids

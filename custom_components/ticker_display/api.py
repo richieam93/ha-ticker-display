@@ -616,9 +616,24 @@ class TickerDisplayAPI:
             if instance and hasattr(recorder_history, "state_changes_during_period"):
                 _LOGGER.debug("Using recorder instance executor + state_changes_during_period")
                 def _run():
-                    return recorder_history.state_changes_during_period(
-                        self.hass, start_time, end_time, entity_id, True, False
-                    )
+                    try:
+                        return recorder_history.state_changes_during_period(
+                            self.hass,
+                            start_time,
+                            end_time,
+                            entity_id=entity_id,
+                            include_start_time_state=True,
+                            no_attributes=False,
+                        )
+                    except TypeError:
+                        return recorder_history.state_changes_during_period(
+                            self.hass,
+                            start_time,
+                            end_time,
+                            entity_id,
+                            True,
+                            False,
+                        )
                 history = await instance.async_add_executor_job(_run)
                 if isinstance(history, dict):
                     return history.get(entity_id, []) or []
