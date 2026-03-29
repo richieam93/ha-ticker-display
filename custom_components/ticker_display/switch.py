@@ -9,6 +9,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 
 SWITCHES = {
+    "assist_satellite": ("Assist Satellite", "assist_satellite_enabled"),
+    "microphone": ("Microphone", "microphone_enabled"),
+    "front_camera": ("Front Camera", "front_camera_enabled"),
+    "back_camera": ("Back Camera", "back_camera_enabled"),
     "wake_sound": ("Wake Sound", "assist_wake_sound"),
     "button_click_sounds": ("Button Click Sounds", "assist_button_click_sounds"),
 }

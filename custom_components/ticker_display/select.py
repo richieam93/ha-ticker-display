@@ -60,16 +60,9 @@ def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
         if item and item not in options:
             options.append(item)
 
-    try:
-        storage_path = Path(hass.config.path(".storage/assist_pipeline.pipelines"))
-        if storage_path.exists():
-            raw = json.loads(storage_path.read_text(encoding="utf-8"))
-            for pipeline in ((raw or {}).get("data") or {}).get("items", []) or []:
-                pid = str((pipeline or {}).get("id") or "").strip()
-                if pid and pid not in options:
-                    options.append(pid)
-    except Exception:
-        pass
+    for pid in (hass.data.get(DOMAIN, {}) or {}).get("assist_pipeline_storage_options", []) or []:
+        if pid and pid not in options:
+            options.append(pid)
 
     try:
         for key, value in (hass.data or {}).items():
@@ -98,6 +91,7 @@ def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    hass.data.setdefault(DOMAIN, {})["assist_pipeline_storage_options"] = await hass.async_add_executor_job(_read_assist_storage_options, hass)
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
     store = entry_data["store"]
