@@ -54,6 +54,20 @@ def _collect_pipeline_ids_from_obj(obj, out: list[str], depth: int = 0) -> None:
             _collect_pipeline_ids_from_obj(value, out, depth + 1)
 
 
+
+
+def _read_assist_storage_options(hass: HomeAssistant) -> list[str]:
+    options: list[str] = []
+    try:
+        storage_path = Path(hass.config.path('.storage/assist_pipeline.pipelines'))
+        if not storage_path.exists():
+            return options
+        raw = json.loads(storage_path.read_text(encoding='utf-8'))
+        _collect_pipeline_ids_from_obj(raw, options)
+    except Exception:
+        return options
+    return options
+
 def _discover_assistant_options(hass: HomeAssistant, data: dict) -> list[str]:
     options: list[str] = []
     for item in list(DEFAULT_ASSISTANTS) + [str(x) for x in data.get("assist_available_assistants", []) or []]:

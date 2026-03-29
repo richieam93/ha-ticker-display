@@ -221,6 +221,14 @@ SENSOR_DEFINITIONS = {
         "dc": None,
         "sc": None,
     },
+    "assist_message": {
+        "name": "Assist Message",
+        "key": "assist_message",
+        "icon": "mdi:message-text",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
     "assist_last_stt": {
         "name": "Assist Last Text",
         "key": "assist_last_stt",
