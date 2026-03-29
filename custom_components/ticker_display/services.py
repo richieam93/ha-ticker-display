@@ -1,6 +1,7 @@
 """Services for Ticker Display."""
 
 import logging
+from urllib.parse import urlparse
 from homeassistant.components import tts as ha_tts
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -114,7 +115,16 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
                 options={"preferred_format": "mp3"},
             )
             stream.async_set_message(message)
-            out["tts_url"] = stream.url
+            stream_url = str(stream.url or "").strip()
+            if stream_url:
+                parsed = urlparse(stream_url)
+                filename = parsed.path.rsplit("/", 1)[-1]
+                if filename:
+                    out["tts_url"] = f"/ticker-display/media/tts/{filename}"
+                else:
+                    out["tts_url"] = stream_url
+            else:
+                _LOGGER.warning("HA TTS stream did not return a URL")
         except HomeAssistantError as err:
             _LOGGER.warning("Failed to prepare HA TTS audio: %s", err)
         except Exception as err:  # noqa: BLE001

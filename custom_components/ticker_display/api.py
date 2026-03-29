@@ -57,6 +57,7 @@ class TickerDisplayAPI:
         app.router.add_get(f"{MEDIA_PATH}/sounds/{{filename}}", self._media_file)
         app.router.add_get(f"{MEDIA_PATH}/fonts/{{filename}}", self._media_file)
         app.router.add_get(f"{MEDIA_PATH}/images/{{filename}}", self._media_file)
+        app.router.add_get(f"{MEDIA_PATH}/tts/{{filename}}", self._tts_media_file)
 
         # Media Management
         for res in ["sounds", "fonts", "images"]:
@@ -379,6 +380,19 @@ class TickerDisplayAPI:
         if not path:
             return web.Response(status=404)
 
+        return web.FileResponse(path)
+
+    async def _tts_media_file(self, request):
+        filename = _safe_filename(request.match_info.get("filename", ""))
+        tts_dir = Path(self.hass.config.path("tts"))
+        path = tts_dir / filename
+        try:
+            path.resolve().relative_to(tts_dir.resolve())
+        except Exception:
+            return web.Response(status=400)
+        if not path.exists() or not path.is_file():
+            _LOGGER.warning("Requested TTS file not found: %s", filename)
+            return web.Response(status=404)
         return web.FileResponse(path)
 
     # ══════════════════════════════════════════════════════
