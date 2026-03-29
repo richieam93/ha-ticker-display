@@ -194,12 +194,16 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
 
     async def async_announce(self, announcement, preannounce: bool = True) -> None:
         _LOGGER.debug("Assist announce for %s", self._device_id)
+        message = getattr(announcement, "message", None) or getattr(announcement, "text", None) or getattr(announcement, "plain_text", None)
+        media_url = getattr(announcement, "media_id", None) or getattr(announcement, "url", None)
         payload = {
             "action": "announce",
-            "media_url": getattr(announcement, "media_id", None),
+            "message": message,
+            "media_url": media_url,
             "preannounce_media_url": getattr(announcement, "preannounce_media_id", None) if preannounce else None,
             "volume": 90,
         }
+        _LOGGER.debug("Assist announce payload for %s: message=%s media=%s", self._device_id, bool(message), media_url)
         await self._websocket.send_command(
             self._device_id,
             {"type": "command", "command": "assist_command", "data": payload},
