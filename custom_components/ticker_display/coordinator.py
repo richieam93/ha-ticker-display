@@ -53,6 +53,9 @@ class TickerDisplayCoordinator:
             d["media_state"] = event_data.get("state", "idle")
             d["media_title"] = event_data.get("title", "")
             d["media_url"] = event_data.get("url", "")
+            d["media_announcement_active"] = bool(event_data.get("announcement_active", False))
+            d["media_can_next"] = bool(event_data.get("can_next", False))
+            d["media_can_previous"] = bool(event_data.get("can_previous", False))
             if "volume" in event_data:
                 d["volume_percent"] = event_data.get("volume")
         elif event_type == "assist_state":

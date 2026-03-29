@@ -13,7 +13,7 @@ REGISTERED_SERVICES = [
     "show_template", "show_alert", "show_notification", "show_toast",
     "clear_alert", "send_ticker_message", "set_ticker_entities", "clear_ticker",
     "set_screen_power", "set_brightness", "set_theme", "set_volume",
-    "play_sound", "tts_speak", "stop_audio", "next_screen", "previous_screen",
+    "play_sound", "play_announcement", "tts_speak", "stop_audio", "next_screen", "previous_screen",
     "goto_screen", "pause_rotation", "resume_rotation", "reload_page", "identify_device", "show_alert_template", "show_alert_sequence",
 ]
 
@@ -137,7 +137,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
             return
         await websocket.send_command(device, {
             "type": "audio",
-            "action": "play",
+            "action": "announce",
             "url": url,
             "volume": int((payload or {}).get("volume", 90)),
             "loop": False,
@@ -248,8 +248,19 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not url:
             _LOGGER.error("Failed to prepare HA TTS URL")
             return
-        await websocket.send_command(_dev(call), {"type": "audio", "action": "play",
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "announce",
             "url": url, "volume": call.data.get("volume", 70), "loop": False})
+
+    async def handle_play_announcement(call):
+        url = call.data.get("sound_url") or call.data.get("url")
+        if not url:
+            sound_id = call.data.get("sound", "")
+            url = media_manager.get_sound_url(sound_id)
+        if not url:
+            _LOGGER.error("Announcement audio not found")
+            return
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "announce", "url": url,
+            "volume": call.data.get("volume", 90), "loop": False, "title": call.data.get("title", "Announcement")})
 
     async def handle_stop_audio(call):
         await websocket.send_command(_dev(call), {"type": "audio", "action": "stop"})
@@ -292,7 +303,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         "clear_ticker": handle_clear_ticker,
         "set_screen_power": handle_set_screen_power, "set_brightness": handle_set_brightness,
         "set_theme": handle_set_theme, "set_volume": handle_set_volume,
-        "play_sound": handle_play_sound, "tts_speak": handle_tts_speak, "stop_audio": handle_stop_audio,
+        "play_sound": handle_play_sound, "play_announcement": handle_play_announcement, "tts_speak": handle_tts_speak, "stop_audio": handle_stop_audio,
         "next_screen": handle_next_screen, "previous_screen": handle_previous_screen,
         "goto_screen": handle_goto_screen, "pause_rotation": handle_pause_rotation,
         "resume_rotation": handle_resume_rotation,

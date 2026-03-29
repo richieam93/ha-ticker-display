@@ -361,6 +361,36 @@ play_sound:
       description: Whether the sound should loop.
       example: false
 
+
+play_announcement:
+  name: Play announcement
+  description: Play a short native announcement on one or more devices and then resume normal media.
+  fields:
+    device:
+      name: Device
+      description: Device ID, a list of device IDs, or "all".
+      example: "all"
+    url:
+      name: URL
+      description: Audio URL to announce.
+      example: "https://example.com/announce.mp3"
+    sound_url:
+      name: Sound URL
+      description: Optional local sound URL.
+      example: "/ticker-display/media/sounds/alert.wav"
+    sound:
+      name: Sound
+      description: Optional built-in sound ID.
+      example: "ding"
+    volume:
+      name: Volume
+      description: Announcement volume in percent.
+      example: 90
+    title:
+      name: Title
+      description: Optional label shown as current announcement title.
+      example: "Türgong"
+
 tts_speak:
   name: TTS speak
   description: Speak text on one or more devices.

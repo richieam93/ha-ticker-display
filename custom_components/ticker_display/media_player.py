@@ -42,6 +42,8 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
         | MediaPlayerEntityFeature.PAUSE
         | MediaPlayerEntityFeature.STOP
         | MediaPlayerEntityFeature.VOLUME_SET
+        | MediaPlayerEntityFeature.NEXT_TRACK
+        | MediaPlayerEntityFeature.PREVIOUS_TRACK
     )
 
     def __init__(self, coordinator, websocket, device_id: str, device_name: str) -> None:
@@ -90,15 +92,27 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
     def media_content_type(self) -> str | None:
         return MediaType.MUSIC
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self._coordinator.get_device_data(self._device_id)
+        return {
+            "media_url": data.get("media_url") or "",
+            "announcement_active": bool(data.get("media_announcement_active", False)),
+            "can_next": bool(data.get("media_can_next", False)),
+            "can_previous": bool(data.get("media_can_previous", False)),
+        }
+
     async def async_play_media(self, media_type: str, media_id: str, **kwargs) -> None:
+        extra = kwargs.get("extra", {}) or {}
+        action = "announce" if media_type in {"announcement", "assist", "tts"} or bool(extra.get("announce")) else "play"
         await self._websocket.send_command(
             self._device_id,
             {
                 "type": "audio",
-                "action": "play",
+                "action": action,
                 "url": media_id,
-                "volume": int((kwargs.get("extra", {}) or {}).get("volume", 90)),
-                "loop": bool((kwargs.get("extra", {}) or {}).get("loop", False)),
+                "volume": int(extra.get("volume", 90)),
+                "loop": bool(extra.get("loop", False)),
                 "title": kwargs.get("title") or kwargs.get("media_title") or "",
             },
         )
@@ -118,6 +132,12 @@ class TickerDisplayMediaPlayer(MediaPlayerEntity):
 
     async def async_media_stop(self) -> None:
         await self._websocket.send_command(self._device_id, {"type": "audio", "action": "stop"})
+
+    async def async_media_next_track(self) -> None:
+        await self._websocket.send_command(self._device_id, {"type": "audio", "action": "next"})
+
+    async def async_media_previous_track(self) -> None:
+        await self._websocket.send_command(self._device_id, {"type": "audio", "action": "previous"})
 
     async def async_added_to_hass(self) -> None:
         self._coordinator.register_update_callback(self._device_id, self.async_write_ha_state)
