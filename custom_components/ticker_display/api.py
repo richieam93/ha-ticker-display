@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 import re
+import inspect
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -591,34 +592,41 @@ class TickerDisplayAPI:
             from homeassistant.components.recorder import get_instance
             from homeassistant.components.recorder import history as recorder_history
 
+            def _build_kwargs(func):
+                supported = set(inspect.signature(func).parameters)
+                kwargs = {}
+                if "hass" in supported:
+                    kwargs["hass"] = self.hass
+                if "start_time" in supported:
+                    kwargs["start_time"] = start_time
+                if "end_time" in supported:
+                    kwargs["end_time"] = end_time
+                if "entity_ids" in supported:
+                    kwargs["entity_ids"] = [entity_id]
+                elif "entity_id" in supported:
+                    kwargs["entity_id"] = entity_id
+                if "include_start_time_state" in supported:
+                    kwargs["include_start_time_state"] = True
+                if "significant_changes_only" in supported:
+                    kwargs["significant_changes_only"] = False
+                if "minimal_response" in supported:
+                    kwargs["minimal_response"] = False
+                if "no_attributes" in supported:
+                    kwargs["no_attributes"] = False
+                return kwargs
+
             instance = get_instance(self.hass)
             if hasattr(recorder_history, "async_get_significant_states"):
+                func = recorder_history.async_get_significant_states
                 _LOGGER.debug("Using recorder_history.async_get_significant_states")
-                history = await recorder_history.async_get_significant_states(
-                    self.hass,
-                    start_time,
-                    end_time,
-                    [entity_id],
-                    include_start_time_state=True,
-                    significant_changes_only=False,
-                )
-                return history.get(entity_id, [])
+                history = await func(**_build_kwargs(func))
+                return history.get(entity_id, []) if isinstance(history, dict) else history or []
 
             if hasattr(recorder_history, "get_significant_states") and instance:
+                func = recorder_history.get_significant_states
                 _LOGGER.debug("Using recorder instance executor + get_significant_states")
-
-                def _fetch():
-                    return recorder_history.get_significant_states(
-                        self.hass,
-                        start_time,
-                        end_time,
-                        [entity_id],
-                        True,
-                        False,
-                    )
-
-                history = await instance.async_add_executor_job(_fetch)
-                return history.get(entity_id, [])
+                history = await instance.async_add_executor_job(lambda: func(**_build_kwargs(func)))
+                return history.get(entity_id, []) if isinstance(history, dict) else history or []
         except Exception as err:
             _LOGGER.debug("Recorder history fetch failed: %s", err)
 

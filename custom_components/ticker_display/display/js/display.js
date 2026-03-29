@@ -1328,6 +1328,7 @@ class ScreenManager {
 
       const type = config.type || "mini-graph";
       const chartCfg = this._getChartConfig(type, histories, labels, config);
+      try { const existing = Chart.getChart ? Chart.getChart(canvas) : null; if (existing) existing.destroy(); } catch (e) {}
       const chart = new Chart(canvas, chartCfg);
       canvas.dataset.chartType = type;
       canvas.dataset.entityIds = JSON.stringify(entityIds);
@@ -1622,6 +1623,11 @@ class ScreenManager {
   _gotoTargetScreen(config) { const target = config.tap_screen_id || config.config?.tap_screen_id || ""; if (target) this.goto(target); }
 
   _openWidgetDetail(widget, config) {
+    const popupTypes = new Set(["mini-graph","sparkline","line-chart","area-chart","multi-line-chart","forecast-chart","comparison-chart","energy-flow-mini","timeline-chart","bar-chart","stacked-bar-chart","horizontal-bar-chart","heatmap-mini","bullet-chart","donut-chart","pie-chart","radial-gauge-advanced","polar-area-chart","radar-chart","camera","image","media-player-control","switch-control","light-control","climate-control","cover-control"]);
+    if (popupTypes.has(config?.type) || ["media_player","light","switch","input_boolean","fan","cover","climate","camera","image"].includes(String(config?.entity_id || "").split(".")[0])) {
+      this._openWidgetPopup(config);
+      return;
+    }
     const overlay = document.getElementById("widget-detail-overlay") || this._createWidgetDetailOverlay();
     const body = overlay.querySelector(".widget-detail-body");
     const clone = widget.cloneNode(true);
@@ -1669,9 +1675,12 @@ class ScreenManager {
   }
 
   _popupImageMarkup(config) {
-    const src = config.image_url || config.imageUrl || config.url || "";
+    const entityId = config.entity_id || config.tap_target_entity || "";
+    const st = this.app?.entityStates?.[entityId] || {};
+    const attrs = st.attributes || {};
+    const src = config.image_url || config.imageUrl || config.url || attrs.entity_picture || attrs.image_url || "";
     if (!src) return `<div class="popup-empty">Kein Bild konfiguriert</div>`;
-    return `<div class="popup-hero popup-image"><div class="popup-eyebrow">${Utils.text(this._widgetName(config, "Bild") || "Bild")}</div><img class="popup-camera-image" style="object-fit:contain" src="${src}" alt="Bild"></div>`;
+    return `<div class="popup-hero popup-image"><div class="popup-eyebrow">${Utils.text(this._widgetName(config, attrs.friendly_name || "Bild") || "Bild")}</div><img class="popup-camera-image" style="object-fit:contain" src="${src}" alt="Bild"></div>`;
   }
 
   _renderPopupControlButton(body, label, active, onClick) {
@@ -1708,17 +1717,21 @@ class ScreenManager {
     const st = this.app.entityStates[entityId] || {};
     const attrs = st.attributes || {};
     const domain = String(entityId || "").split(".")[0];
+    const chartTypes = new Set(["mini-graph","sparkline","line-chart","area-chart","multi-line-chart","forecast-chart","comparison-chart","energy-flow-mini","timeline-chart","bar-chart","stacked-bar-chart","horizontal-bar-chart","heatmap-mini","bullet-chart","donut-chart","pie-chart","radial-gauge-advanced","polar-area-chart","radar-chart"]);
     const kind = config.tap_popup_kind || (config.type === "weather" || domain === "weather" ? "weather" : config.type === "camera" ? "camera" : config.type === "image" ? "image" : domain);
     const options = this._controlDisplayOptions(config);
     let html = "";
 
-    if (kind === "weather") html = this._popupWeatherMarkup(config, st);
+    if (chartTypes.has(config.type)) {
+      html = `<div class="popup-hero popup-chart"><div class="popup-eyebrow">${Utils.text(this._popupFriendlyName(config, st) || "Chart")}</div><div class="popup-chart-wrap"><canvas class="chart-canvas popup-chart-canvas"></canvas></div></div>`;
+    }
+    else if (kind === "weather") html = this._popupWeatherMarkup(config, st);
     else if (kind === "camera") html = this._popupCameraMarkup(config);
     else if (kind === "image") html = this._popupImageMarkup(config);
     else if (domain === "media_player") {
       const cover = attrs.entity_picture || "";
       const progress = Number(attrs.media_duration || 0) > 0 ? Math.max(0, Math.min(100, ((Number(attrs.media_position || 0) / Number(attrs.media_duration || 1)) * 100))) : 0;
-      html = `<div class="popup-hero popup-media popup-media-landscape"><div class="popup-media-art-wrap">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}</div><div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-value popup-media-big">${Utils.text(attrs.media_title || st.state || "—")}</div><div class="popup-subtitle">${Utils.text(attrs.media_artist || attrs.source || "")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-mini-grid"><div class="popup-mini-row"><span>Status</span><strong>${Utils.text(st.state || "—")}</strong></div><div class="popup-mini-row"><span>Lautstärke</span><strong>${Math.round(Number(attrs.volume_level || 0) * 100)}%</strong></div></div><div class="popup-controls popup-controls-media"></div></div></div>`;
+      html = `<div class="popup-hero popup-media popup-media-landscape"><div class="popup-media-art-wrap">${cover ? `<img class="popup-media-cover" src="${cover}" alt="Cover">` : `<div class="popup-media-cover placeholder">🎵</div>`}</div><div class="popup-media-info"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-value popup-media-big">${Utils.text(attrs.media_title || attrs.media_channel || st.state || "—")}</div><div class="popup-subtitle popup-media-subtitle">${Utils.text(attrs.media_artist || attrs.app_name || attrs.source || attrs.media_album_name || "Keine Wiedergabe")}</div><div class="popup-media-progress"><span style="width:${progress}%"></span></div><div class="popup-mini-grid"><div class="popup-mini-row"><span>Status</span><strong>${Utils.text(st.state || "—")}</strong></div><div class="popup-mini-row"><span>Lautstärke</span><strong>${Math.round(Number(attrs.volume_level || 0) * 100)}%</strong></div></div><div class="popup-controls popup-controls-media"></div></div></div>`;
     } else if (domain === "light" || domain === "switch" || domain === "input_boolean" || domain === "fan") {
       const summary = this._controlSummary(config, st, this._popupFriendlyName(config, st), config.icon || this._defaultIconForType(config.type));
       html = `<div class="popup-hero popup-control popup-light"><div class="popup-eyebrow">${Utils.text(attrs.friendly_name || entityId)}</div><div class="popup-big-icon">${domain === "light" ? (summary.active ? "💡" : "🔅") : (summary.active ? "🟢" : "⚪")}</div><div class="popup-big-value">${Utils.text(summary.value || "—")}</div><div class="popup-subtitle">${Utils.text(summary.sub || st.state || "—")}</div>${domain === "light" || domain === "fan" ? `<div class="popup-meter"><span style="width:${summary.meter || 0}%"></span></div><div class="popup-mini-row"><span>${domain === "light" ? "Helligkeit" : "Leistung"}</span><strong>${Math.round(summary.meter || 0)}%</strong></div>` : ``}<div class="popup-controls"></div></div>`;
@@ -1741,13 +1754,17 @@ class ScreenManager {
     body.querySelector(".widget-popup-close")?.addEventListener("click", close);
     const hero = body.querySelector(".popup-hero") || body;
     const controls = body.querySelector(".popup-controls");
+    const popupChart = body.querySelector('.popup-chart-canvas');
+    if (popupChart) {
+      requestAnimationFrame(() => this._buildChart(popupChart, config, st, { _chartInstance: null }));
+    }
 
     if (controls && domain === "media_player") {
-      this._renderPopupControlButton(controls, "⏮", false, async () => { await this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⏯", false, async () => { await this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "⏭", false, async () => { await this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }); });
-      this._renderPopupControlButton(controls, "−", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) }); });
-      this._renderPopupControlButton(controls, "+", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) }); });
+      this._renderPopupControlButton(controls, "Zurück", false, async () => { await this.app.callEntityService("media_player", "media_previous_track", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, (String(st.state||"") === "playing") ? "Pause" : "Play", false, async () => { await this.app.callEntityService("media_player", "media_play_pause", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "Weiter", false, async () => { await this.app.callEntityService("media_player", "media_next_track", { entity_id: entityId }); });
+      this._renderPopupControlButton(controls, "Leiser", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.max(0, Number(attrs.volume_level ?? 0) - 0.1) }); });
+      this._renderPopupControlButton(controls, "Lauter", false, async () => { await this.app.callEntityService("media_player", "volume_set", { entity_id: entityId, volume_level: Math.min(1, Number(attrs.volume_level ?? 0) + 0.1) }); });
     } else if (controls && (domain === "switch" || domain === "input_boolean" || domain === "fan" || domain === "valve")) {
       this._renderPopupControlButton(controls, "Ein/Aus", false, async () => { await this._invokeToggleAction(entityId, 'toggle'); close(); });
       if (domain === "fan") {

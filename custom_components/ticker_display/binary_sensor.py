@@ -72,6 +72,20 @@ BINARY_SENSOR_DEFINITIONS = {
         "icon_off": "mdi:microphone-off",
         "dc": None,
     },
+    "front_camera": {
+        "name": "Front Camera",
+        "key": "front_camera_enabled",
+        "icon_on": "mdi:camera-front",
+        "icon_off": "mdi:camera-front-variant",
+        "dc": None,
+    },
+    "back_camera": {
+        "name": "Back Camera",
+        "key": "back_camera_enabled",
+        "icon_on": "mdi:camera-rear",
+        "icon_off": "mdi:camera-rear-variant",
+        "dc": None,
+    },
 }
 
 

@@ -625,3 +625,25 @@
 .toast-message .alert-actions { justify-content:flex-start; margin-top:10px; }
 .toast-message .alert-action-btn { min-height:34px; padding:8px 12px; font-size:12px; }
 @media (max-width: 820px) { .alert-split-main { grid-template-columns:1fr; } .overlay-card-mode { padding:14px; } .alert-card-overlay { width:100%; } .notification-banner { top:10px; width:min(96vw, 96vw); } }
+
+
+/* popup/media/mobile fixes */
+.popup-media-subtitle { white-space: normal; overflow-wrap: anywhere; line-height: 1.35; max-width: 100%; }
+.popup-media .popup-big-value { white-space: normal; overflow-wrap: anywhere; }
+.popup-controls-media { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.popup-controls-media .popup-control-btn { min-height: 46px; font-size: 15px; padding: 10px 12px; }
+.popup-media-landscape { align-items: stretch; gap: 16px; }
+.popup-media-art-wrap { flex: 0 0 140px; }
+.popup-media-cover { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 18px; }
+.popup-media-info { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.popup-camera-image { width: 100%; max-height: 60vh; border-radius: 18px; background: rgba(255,255,255,.04); }
+@media (max-width: 720px) {
+  .widget-popup-sheet { width: min(96vw, 520px); max-height: 84vh; }
+  .popup-media-landscape { flex-direction: column; }
+  .popup-media-art-wrap { flex-basis: auto; width: 100%; max-width: 180px; margin: 0 auto; }
+  .popup-controls-media { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .popup-controls-media .popup-control-btn { font-size: 14px; }
+}
+
+.popup-chart-wrap { min-height: 280px; height: min(52vh, 420px); margin-top: 12px; }
+.popup-chart-canvas { width: 100% !important; height: 100% !important; }

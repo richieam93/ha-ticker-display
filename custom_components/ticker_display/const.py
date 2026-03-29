@@ -47,6 +47,7 @@ SENSOR_KEYS = [
     "storage_used_percent", "cpu_usage", "volume_percent", "ringer_mode",
     "app_version", "webview_url", "orientation", "uptime_seconds",
     "native_media_player_enabled", "assist_satellite_enabled", "microphone_enabled",
+    "front_camera_present", "back_camera_present", "front_camera_enabled", "back_camera_enabled",
 ]
 
 DEFAULT_SOUNDS = {

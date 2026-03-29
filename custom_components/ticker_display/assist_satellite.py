@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,48 +82,30 @@ async def async_setup_entry(
 
 def _build_assist_configuration() -> AssistSatelliteConfiguration:
     """Build an AssistSatelliteConfiguration compatible with multiple HA versions."""
-    candidate_kwargs: list[dict[str, Any]] = [
-        {
-            "available_wake_words": [],
-            "active_wake_words": [],
-            "max_active_wake_words": 0,
-            "pipeline_entity_id": None,
-            "vad_sensitivity_entity_id": None,
-            "tts_options": None,
-        },
-        {
-            "available_wake_words": [],
-            "active_wake_words": [],
-            "max_active_wake_words": 0,
-            "pipeline_entity_id": None,
-            "vad_sensitivity_entity_id": None,
-        },
-        {
-            "available_wake_words": [],
-            "active_wake_words": [],
-            "max_active_wake_words": 0,
-        },
-        {
-            "available_wake_words": [],
-            "active_wake_words": [],
-        },
-        {
-            "available_wake_words": [],
-        },
-        {},
-    ]
-
-    last_error: Exception | None = None
-    for kwargs in candidate_kwargs:
-        try:
-            return AssistSatelliteConfiguration(**kwargs)
-        except TypeError as err:
-            last_error = err
-            continue
-
-    if last_error:
-        raise last_error
-    return AssistSatelliteConfiguration()
+    base_kwargs: dict[str, Any] = {
+        "available_wake_words": [],
+        "active_wake_words": [],
+        "max_active_wake_words": 0,
+        "pipeline_entity_id": None,
+        "vad_sensitivity_entity_id": None,
+        "tts_options": None,
+    }
+    try:
+        supported = set(inspect.signature(AssistSatelliteConfiguration).parameters)
+    except Exception:
+        supported = set(base_kwargs)
+    kwargs = {k: v for k, v in base_kwargs.items() if k in supported}
+    try:
+        return AssistSatelliteConfiguration(**kwargs)
+    except TypeError:
+        # Fall back by gradually trimming optional keys for older HA versions.
+        for key in ["tts_options", "vad_sensitivity_entity_id", "pipeline_entity_id", "max_active_wake_words", "active_wake_words", "available_wake_words"]:
+            kwargs.pop(key, None)
+            try:
+                return AssistSatelliteConfiguration(**kwargs)
+            except TypeError:
+                continue
+        return AssistSatelliteConfiguration()
 
 
 class TickerDisplayAssistSatellite(AssistSatelliteEntity):
@@ -140,8 +123,8 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         self._websocket = websocket
         self._device_id = device_id
         self._attr_unique_id = f"ticker_display_{device_id}_assist_satellite"
-        self.entity_id = f"assist_satellite.{slugify(device_name)}_assist_satellit"
-        self._attr_name = f"{device_name} Assist-Satellit"
+        self._attr_suggested_object_id = f"{slugify(device_name)}_assist_satellit"
+        self._attr_name = "Assist-Satellit"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device_id)},
             "name": device_name,
@@ -237,7 +220,16 @@ class TickerDisplayAssistSatellite(AssistSatelliteEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        _LOGGER.info("Assist satellite entity added for %s as %s", self._device_id, self.entity_id)
+        await super().async_added_to_hass()
+        _LOGGER.warning("Ticker Display assist entity registered for %s as %s", self._device_id, self.entity_id)
+        self._coordinator.register_update_callback(self._device_id, self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        try:
+            self._coordinator.unregister_update_callback(self._device_id, self.async_write_ha_state)
+        except Exception:
+            pass
+        await super().async_will_remove_from_hass()
         remove_cb = remove_cb = self._coordinator.register_update_callback(self._device_id, self._handle_update)
         if remove_cb:
             self.async_on_remove(remove_cb)
