@@ -221,6 +221,14 @@ SENSOR_DEFINITIONS = {
         "dc": None,
         "sc": None,
     },
+    "assist_server_audio_mode": {
+        "name": "Assist Server Audio Mode",
+        "key": "assist_server_audio_mode",
+        "icon": "mdi:server-network",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
     "assist_message": {
         "name": "Assist Message",
         "key": "assist_message",

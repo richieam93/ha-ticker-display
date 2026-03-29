@@ -15,6 +15,7 @@ SWITCHES = {
     "back_camera": ("Back Camera", "back_camera_enabled"),
     "wake_sound": ("Wake Sound", "assist_wake_sound"),
     "button_click_sounds": ("Button Click Sounds", "assist_button_click_sounds"),
+    "server_audio_mode": ("Server Audio Mode", "assist_server_audio_mode"),
 }
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
