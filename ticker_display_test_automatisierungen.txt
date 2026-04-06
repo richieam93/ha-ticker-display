@@ -1,0 +1,513 @@
+Ticker Display 1.9.0 - Test-Automatisierungen / Aktionen
+Gerät in den Beispielen: tablet01
+Hinweis: Jede Aktion im Entwicklerwerkzeug unter "Aktionen" ausführen.
+
+==================================================
+1) DASHBOARD / SCREEN-INHALTE
+==================================================
+
+1. Show dashboard
+action: ticker_display.show_dashboard
+data:
+  device: tablet01
+  dashboard: /lovelace/default_view
+
+2. Show graph
+action: ticker_display.show_graph
+data:
+  device: tablet01
+  entity_id: sensor.stromverbrauch_heute
+
+3. Show graph by saved graph_id
+action: ticker_display.show_graph
+data:
+  device: tablet01
+  graph_id: energy_today
+
+4. Show camera
+action: ticker_display.show_camera
+data:
+  device: tablet01
+  entity_id: camera.front_door
+  title: Haustür
+
+5. Show weather
+action: ticker_display.show_weather
+data:
+  device: tablet01
+  entity_id: weather.home
+
+6. Show single value
+action: ticker_display.show_single_value
+data:
+  device: tablet01
+  entity_id: sensor.wohnzimmer_temperatur
+  label: Wohnzimmer
+
+7. Show clock
+action: ticker_display.show_clock
+data:
+  device: tablet01
+
+8. Show status board
+action: ticker_display.show_status_board
+data:
+  device: tablet01
+  board_id: daily_status
+
+9. Show image
+action: ticker_display.show_image
+data:
+  device: tablet01
+  image_url: /media/local/family.jpg
+  title: Familienfoto
+
+10. Show template
+action: ticker_display.show_template
+data:
+  device: tablet01
+  template_id: template_wohnzimmer
+
+==================================================
+2) ALERTS / BENACHRICHTIGUNGEN / POPUPS
+==================================================
+
+11. Show alert (Fullscreen)
+action: ticker_display.show_alert
+data:
+  device: tablet01
+  title: "Türklingel"
+  message: "Jemand steht vor der Haustür"
+  severity: warning
+  mode: fullscreen
+  color: "#ff9800"
+  duration: 10
+  wake_screen: true
+
+12. Show alert with sound
+action: ticker_display.show_alert
+data:
+  device: tablet01
+  title: Alarm
+  message: Bewegungsmelder ausgelöst
+  severity: critical
+  mode: fullscreen
+  color: "#f44336"
+  sound: alarm
+  volume: 90
+  duration: 12
+  wake_screen: true
+
+13. Show alert with progress
+action: ticker_display.show_alert
+data:
+  device: tablet01
+  title: Backup läuft
+  message: Datensicherung wird durchgeführt
+  severity: info
+  mode: banner
+  color: "#2196f3"
+  progress_value: 65
+  progress_text: "2 von 3 erledigt"
+  duration: 0
+
+14. Show alert with buttons
+action: ticker_display.show_alert
+data:
+  device: tablet01
+  title: Kamera Bewegung
+  message: Bewegung vor der Haustür erkannt
+  severity: warning
+  mode: overlay
+  require_ack: true
+  ack_label: Bestätigen
+  secondary_label: Schließen
+  actions:
+    - id: open_cam
+      label: Kamera
+    - id: dismiss
+      label: Ignorieren
+
+15. Show alert template
+action: ticker_display.show_alert_template
+data:
+  device: tablet01
+  template_id: doorbell
+  title: Haustür
+  message: Paketbote erkannt
+  severity: warning
+  mode: overlay
+
+16. Show alert sequence
+action: ticker_display.show_alert_sequence
+data:
+  device: tablet01
+  alerts:
+    - title: Tür
+      message: Jemand da
+      duration: 5
+    - title: Garage
+      message: Tor offen
+      mode: banner
+      duration: 5
+
+17. Show notification
+action: ticker_display.show_notification
+data:
+  device: tablet01
+  title: Info
+  message: Waschmaschine fertig
+  color: "#2196f3"
+
+18. Show toast
+action: ticker_display.show_toast
+data:
+  device: tablet01
+  title: Info
+  message: Willkommen zuhause
+  duration: 6
+  color: "#111827"
+  text_color: "#f9fafb"
+  accent_color: "#60a5fa"
+  border_radius: 16
+  font_size: 16
+  position: bottom
+  wake_screen: true
+
+19. Clear alert
+action: ticker_display.clear_alert
+data:
+  device: tablet01
+
+20. Clear alert by tag
+action: ticker_display.clear_alert
+data:
+  device: tablet01
+  tag: frontdoor
+
+21. Show popup
+action: ticker_display.show_popup
+data:
+  device: tablet01
+  popup_type: widget
+  entity_id: light.wohnzimmer
+  title: Steuerung
+
+22. Dismiss popup
+action: ticker_display.dismiss_popup
+data:
+  device: tablet01
+
+23. Show silent alert
+action: ticker_display.show_silent_alert
+data:
+  device: tablet01
+  title: Hinweis
+  message: Stille Warnung
+  severity: info
+  mode: banner
+  duration: 5
+
+==================================================
+3) TICKER-LEISTE
+==================================================
+
+24. Send single ticker message
+action: ticker_display.send_ticker_message
+data:
+  device: tablet01
+  message: "Willkommen zuhause 👋"
+
+25. Send ticker message with replace and duration
+action: ticker_display.send_ticker_message
+data:
+  device: tablet01
+  message: "🌡️ Wohnzimmer 22°C"
+  color: "#f3f4f6"
+  icon: "📢"
+  replace: true
+  duration: 15
+
+26. Send multiple ticker messages
+action: ticker_display.send_ticker_message
+data:
+  device: tablet01
+  messages:
+    - text: "🌡️ Wohnzimmer 22°C"
+    - text: "⚡ Strompreis 26 ct/kWh"
+    - text: "🚪 Haustür geschlossen"
+
+27. Set ticker entities
+action: ticker_display.set_ticker_entities
+data:
+  device: tablet01
+  entities:
+    - entity_id: sensor.wohnzimmer_temperatur
+      template: "🌡️ Wohnzimmer: {state} {unit}"
+    - entity_id: sensor.strompreis
+      template: "⚡ Strompreis: {state} ct/kWh"
+
+28. Clear ticker
+action: ticker_display.clear_ticker
+data:
+  device: tablet01
+
+29. Update ticker config
+action: ticker_display.update_ticker_config
+data:
+  device: tablet01
+  enabled: true
+  direction: ltr
+  speed: normal
+  style_template: minimal
+  height: 36
+  font_size: 14
+  auto_hide_seconds: 15
+
+==================================================
+4) DISPLAY / THEMING / POWER
+==================================================
+
+30. Screen on
+action: ticker_display.set_screen_power
+data:
+  device: tablet01
+  power: true
+
+31. Screen off
+action: ticker_display.set_screen_power
+data:
+  device: tablet01
+  power: false
+
+32. Set brightness
+action: ticker_display.set_brightness
+data:
+  device: tablet01
+  brightness: 80
+
+33. Set theme dark
+action: ticker_display.set_theme
+data:
+  device: tablet01
+  mode: dark
+  accent: "#4f46e5"
+
+34. Set theme light
+action: ticker_display.set_theme
+data:
+  device: tablet01
+  mode: light
+  accent: "#0ea5e9"
+
+35. Set screen orientation portrait
+action: ticker_display.set_screen_orientation
+data:
+  device: tablet01
+  orientation: 0
+
+36. Set screen orientation landscape
+action: ticker_display.set_screen_orientation
+data:
+  device: tablet01
+  orientation: 90
+
+==================================================
+5) AUDIO / SOUND / MEDIA / TTS
+==================================================
+
+37. Set volume
+action: ticker_display.set_volume
+data:
+  device: tablet01
+  volume: 50
+
+38. Play internal sound
+action: ticker_display.play_sound
+data:
+  device: tablet01
+  sound: doorbell
+  volume: 100
+
+39. Play sound URL
+action: ticker_display.play_sound
+data:
+  device: tablet01
+  sound_url: /media/local/chime.mp3
+  volume: 80
+  loop: false
+
+40. Play announcement URL
+action: ticker_display.play_announcement
+data:
+  device: tablet01
+  url: /media/local/doorbell.mp3
+  volume: 90
+  title: Türgong
+
+41. Play announcement internal sound
+action: ticker_display.play_announcement
+data:
+  device: tablet01
+  sound: ding
+  volume: 80
+  title: Hinweis
+
+42. TTS speak via ticker_display
+action: ticker_display.tts_speak
+data:
+  device: tablet01
+  message: "Der Geschirrspüler ist fertig."
+  language: de-DE
+  volume: 75
+
+43. TTS speak via HA TTS entity + media player
+action: ticker_display.tts_speak
+data:
+  device: tablet01
+  media_player_entity_id: media_player.tablet01_speaker
+  tts_entity_id: tts.piper_2
+  message: "Der Geschirrspüler ist fertig."
+  language: de-DE
+  volume: 75
+
+44. Stop audio
+action: ticker_display.stop_audio
+data:
+  device: tablet01
+
+45. Play media
+action: ticker_display.play_media
+data:
+  device: tablet01
+  media_url: /media/local/song.mp3
+  volume: 70
+  loop: false
+
+46. Stop media
+action: ticker_display.stop_media
+data:
+  device: tablet01
+
+47. Media next
+action: ticker_display.media_next
+data:
+  device: tablet01
+
+48. Media previous
+action: ticker_display.media_previous
+data:
+  device: tablet01
+
+49. Media pause
+action: ticker_display.media_pause
+data:
+  device: tablet01
+
+50. Media resume
+action: ticker_display.media_resume
+data:
+  device: tablet01
+
+==================================================
+6) SCREEN-NAVIGATION / ROTATION / PAGE
+==================================================
+
+51. Next screen
+action: ticker_display.next_screen
+data:
+  device: tablet01
+
+52. Previous screen
+action: ticker_display.previous_screen
+data:
+  device: tablet01
+
+53. Go to screen by ID
+action: ticker_display.goto_screen
+data:
+  device: tablet01
+  screen_id: screen_3
+
+54. Go to screen by name
+action: ticker_display.goto_screen
+data:
+  device: tablet01
+  screen_id: Screen 3
+
+55. Pause rotation
+action: ticker_display.pause_rotation
+data:
+  device: tablet01
+
+56. Resume rotation
+action: ticker_display.resume_rotation
+data:
+  device: tablet01
+
+57. Reload page
+action: ticker_display.reload_page
+data:
+  device: tablet01
+
+58. Identify device
+action: ticker_display.identify_device
+data:
+  device: tablet01
+
+==================================================
+7) ENTITY-AKTIONEN
+==================================================
+
+59. Entity toggle
+action: ticker_display.entity_toggle
+data:
+  device: tablet01
+  entity_id: light.wohnzimmer
+
+60. Entity turn_on
+action: ticker_display.entity_action
+data:
+  device: tablet01
+  entity_id: light.wohnzimmer
+  action: turn_on
+  data:
+    brightness: 128
+
+61. Entity turn_off
+action: ticker_display.entity_action
+data:
+  device: tablet01
+  entity_id: light.wohnzimmer
+  action: turn_off
+
+==================================================
+8) TESTS FÜR ALLE GERÄTE
+==================================================
+
+62. Ticker to all devices
+action: ticker_display.send_ticker_message
+data:
+  device: all
+  message: "Test an alle Geräte"
+
+63. Alert to all devices
+action: ticker_display.show_alert
+data:
+  device: all
+  title: Sammeltest
+  message: Diese Meldung geht an alle verbundenen Displays
+  severity: info
+  mode: banner
+  duration: 8
+
+==================================================
+9) HINWEISE
+==================================================
+
+- "device" kann Geräte-ID, Gerätename, YAML-Liste oder "all" sein.
+- Für TTS ist in vielen Setups der direkte Weg mit tts_entity_id + media_player_entity_id am zuverlässigsten.
+- Bei goto_screen funktionieren je nach Setup IDs wie screen_1 oder Namen wie "Screen 1".
+- Einige Aktionen benötigen passende vorhandene Entities (z. B. camera.front_door, weather.home, sensor.*).
+- Wenn eine Aktion nicht sichtbar reagiert, zuerst prüfen, ob das Gerät online/verbunden ist.
+
