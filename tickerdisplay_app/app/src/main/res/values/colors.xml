@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="td_bg">#0B1220</color>
+    <color name="td_bg_secondary">#111A2B</color>
+    <color name="td_surface">#162235</color>
+    <color name="td_surface_alt">#1C2A40</color>
+    <color name="td_outline">#2A3B57</color>
+    <color name="td_primary">#59A8FF</color>
+    <color name="td_primary_dark">#2F7DD7</color>
+    <color name="td_success">#4FD1A7</color>
+    <color name="td_warning">#FFB454</color>
+    <color name="td_error">#FF7A90</color>
+    <color name="td_text">#F6F8FC</color>
+    <color name="td_text_secondary">#B8C2D5</color>
+    <color name="td_text_muted">#8A96AE</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

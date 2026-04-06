@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ticker Display</string>
+    <string name="settings_title">Einstellungen</string>
+    <string name="settings_close">Schliessen</string>
+</resources>

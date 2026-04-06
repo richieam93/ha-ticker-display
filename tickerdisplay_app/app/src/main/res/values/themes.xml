@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TickerDisplay" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/td_primary</item>
+        <item name="colorPrimaryVariant">@color/td_primary_dark</item>
+        <item name="colorAccent">@color/td_primary</item>
+        <item name="android:windowBackground">@color/td_bg</item>
+        <item name="android:statusBarColor">@color/td_bg</item>
+        <item name="android:navigationBarColor">@color/td_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+
+    <style name="Theme.TickerDisplay.Fullscreen" parent="Theme.TickerDisplay">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+</resources>

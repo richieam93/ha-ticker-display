@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_app_gradient"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Ticker Display"
+                    android:textColor="@color/td_primary"
+                    android:textStyle="bold"
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Einstellungen"
+                    android:textColor="@color/td_text"
+                    android:textStyle="bold"
+                    android:textSize="24sp"
+                    android:layout_marginTop="4dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Modernere Karten, klarere Hilfen und kompletter TTS-Bereich für Alerts."
+                    android:textColor="@color/td_text_secondary"
+                    android:textSize="13sp"
+                    android:layout_marginTop="6dp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_back"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:minWidth="104dp"
+                android:text="Schliessen"
+                android:textAllCaps="false"
+                android:textColor="@color/td_text"
+                android:background="@drawable/bg_button_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Menü öffnen"
+                android:textColor="@color/td_text"
+                android:textStyle="bold"
+                android:textSize="16sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Empfohlen auf Android 16: Rand-Wischgeste von links oder rechts. Zusätzlich funktionieren 3-Finger-Tap, 5x Lautstärke runter, Eckentap und die Benachrichtigung."
+                android:textColor="@color/td_text_secondary"
+                android:textSize="13sp"
+                android:lineSpacingExtra="3dp"
+                android:layout_marginTop="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Verbindung"
+                android:textColor="@color/td_primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout android:id="@+id/setting_ha_url" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" android:padding="14dp"
+                android:background="@drawable/bg_surface_card_subtle" android:layout_marginBottom="8dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text" android:textSize="14sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text_muted" android:textSize="12sp" android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/setting_device_id" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" android:padding="14dp"
+                android:background="@drawable/bg_surface_card_subtle" android:layout_marginBottom="8dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text" android:textSize="14sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text_muted" android:textSize="12sp" android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/setting_device_name" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" android:padding="14dp"
+                android:background="@drawable/bg_surface_card_subtle" android:layout_marginBottom="8dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text" android:textSize="14sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text_muted" android:textSize="12sp" android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/setting_interval" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" android:padding="14dp"
+                android:background="@drawable/bg_surface_card_subtle">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text" android:textSize="14sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/td_text_muted" android:textSize="12sp" android:layout_marginTop="4dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="App &amp; Kiosk" android:textColor="@color/td_primary" android:textSize="12sp"
+                android:textStyle="bold" android:layout_marginBottom="6dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Diese Optionen steuern das Verhalten der App selbst."
+                android:textColor="@color/td_text_secondary" android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <Switch android:id="@+id/setting_kiosk" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_autostart" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_screen_on" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_burnin" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Sensoren" android:textColor="@color/td_primary" android:textSize="12sp"
+                android:textStyle="bold" android:layout_marginBottom="6dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Hier legst du fest, welche zusätzlichen Smartphone-Werte an Home Assistant gesendet werden."
+                android:textColor="@color/td_text_secondary" android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <Switch android:id="@+id/setting_light" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_motion" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_sensor_battery_details" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_sensor_network_details" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_sensor_storage_details" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_sensor_audio_details" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_front_camera" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_back_camera" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_camera_silent" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <Switch android:id="@+id/setting_camera_manual_only" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:paddingTop="10dp" android:paddingBottom="10dp" android:textColor="@color/td_text" />
+            <LinearLayout android:id="@+id/setting_camera_interval" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/bg_surface_card_subtle"
+                android:padding="12dp" android:layout_marginTop="8dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/td_text" android:textStyle="bold" android:text="Kamera-Intervall" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/td_text_muted" android:text="Intervall zwischen Vorschau-Frames in Sekunden" />
+            </LinearLayout>
+            <Button android:id="@+id/btn_camera_snapshot_now" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Kamera jetzt aktualisieren" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginTop="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Aktionen" android:textColor="@color/td_primary" android:textSize="12sp"
+                android:textStyle="bold" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_change_pin" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="PIN ändern" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_clear_cache" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Cache leeren" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_reload" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Display neu laden" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_restart_app" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="App neu starten" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_reregister" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Display neu anmelden" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_android_settings" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Android Einstellungen öffnen" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" />
+
+            <Button android:id="@+id/btn_reset" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="App komplett zurücksetzen" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary"
+                android:layout_marginTop="12dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_surface_card"
+            android:padding="16dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Geräteinfo"
+                android:textColor="@color/td_primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+            <TextView android:id="@+id/setting_info" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:textColor="@color/td_text_muted" android:textSize="12sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
