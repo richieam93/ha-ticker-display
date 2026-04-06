@@ -313,24 +313,60 @@ class TickerDisplayAPI:
         for key, value in (data or {}).items():
             if key in {"device_id", "timestamp"}:
                 continue
-            if key.startswith(("assist_", "front_camera_", "back_camera_")):
+            if key.startswith(("front_camera_", "back_camera_")):
                 cleaned[key] = value
         if "timestamp" in data:
             cleaned["timestamp"] = data.get("timestamp")
         return cleaned
 
+    async def _async_reload_entries_for_new_device(self):
+        try:
+            for entry in self.hass.config_entries.async_entries(DOMAIN):
+                await self.hass.config_entries.async_reload(entry.entry_id)
+        except Exception:
+            _LOGGER.exception("Failed to reload Ticker Display config entries after new device registration")
+
     async def _device_register(self, request):
         data = await self._parse_json(request)
-        device_id = self._clean_identifier(data.get("device_id"), field="device_id")
+        requested_id = self._clean_identifier(data.get("device_id"), field="device_id")
+        install_id = str(data.get("install_id") or "").strip()
+        requested_name = str(data.get("name") or "").strip()
 
-        existing = self.store.get_device(device_id)
-        await self.store.async_add_device(device_id, data)
+        existing = None
+        device_id = requested_id
+
+        by_install = self.store.find_device_by_install_id(install_id)
+        if by_install is not None:
+            existing = by_install
+            device_id = by_install.get("id", requested_id)
+        elif requested_id:
+            existing = self.store.get_device(requested_id)
+            if existing is not None:
+                device_id = requested_id
+            else:
+                by_name = self.store.find_device_by_name(requested_name)
+                if by_name is not None:
+                    existing = by_name
+                    device_id = by_name.get("id", requested_id)
+                else:
+                    device_id = self.store.reserve_device_id(requested_id, install_id)
+        else:
+            by_name = self.store.find_device_by_name(requested_name)
+            if by_name is not None:
+                existing = by_name
+                device_id = by_name.get("id", requested_id)
+            else:
+                device_id = self.store.reserve_device_id(requested_name or "android_display", install_id)
+
+        created = await self.store.async_add_device(device_id, data)
+        if created:
+            self.hass.async_create_task(self._async_reload_entries_for_new_device())
 
         return web.json_response(
             {
                 "status": "ok",
                 "device_id": device_id,
-                "existing": existing is not None,
+                "existing": existing is not None or not created,
                 "display_url": self._absolute_url(request, f"{API_BASE}/{device_id}"),
                 "ws_url": self._absolute_url(request, f"/ticker-display/ws/{device_id}"),
             }
@@ -359,7 +395,12 @@ class TickerDisplayAPI:
         return web.json_response(config)
 
     async def _device_delete(self, request):
-        await self.store.async_remove_device(request.match_info["device_id"])
+        device_id = request.match_info["device_id"]
+        await self.store.async_remove_device(device_id)
+        self.coordinator._device_data.pop(device_id, None)
+        self.coordinator._last_heartbeat.pop(device_id, None)
+        self.coordinator._last_seen.pop(device_id, None)
+        self.coordinator._update_callbacks.pop(device_id, None)
         return web.json_response({"status": "ok"})
 
     # ══════════════════════════════════════════════════════

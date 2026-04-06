@@ -44,6 +44,13 @@ const TD_CHART_WIDGETS = [
   ["comparison-chart",     "⚖️", "Comparison"],
   ["radial-gauge-advanced","🎛️", "Radial Gauge"],
   ["bullet-chart",         "🎯", "Bullet"],
+  ["candlestick-chart",    "🕯️", "Candlestick / OHLC"],
+  ["histogram-chart",      "📶", "Histogramm"],
+  ["waterfall-chart",      "🪜", "Waterfall"],
+  ["treemap-chart",        "🧩", "Treemap"],
+  ["sunburst-chart",       "🌞", "Sunburst"],
+  ["sankey-chart",         "🔀", "Sankey"],
+  ["boxplot-chart",        "📦", "Boxplot"],
 ];
 
 const TD_CHART_TYPES = new Set(TD_CHART_WIDGETS.map((x) => x[0]));
@@ -73,14 +80,31 @@ const TD_SMART_HOME_WIDGETS = [
   ["cover-control",        "🪟", "Rollladen",    "Position und Schnellaktionen"],
 ];
 
+const TD_LAYOUT_INFO_WIDGETS = [
+  ["text-card",   "📝", "Text / Markdown", "Freier Text, Hinweise, Überschriften oder Beschreibungen"],
+  ["entity-list", "📋", "Entity-Liste",    "Mehrere Entitäten als saubere Liste mit Statuswerten"],
+  ["chip-row",    "🏷️", "Chip-Reihe",      "Kompakte Status-Chips für mehrere Entitäten"],
+  ["divider",     "➖", "Divider",         "Trenner, Kapitelüberschrift oder Abschnitt"],
+  ["spacer",      "⬜", "Spacer",          "Leerer Abstandshalter für saubere Layouts"],
+];
+
+const TD_EMBED_PRESETS = [
+  { id: "overview", icon: "🏠", label: "HA Übersicht", url: "/lovelace", title: "Home Assistant Übersicht" },
+  { id: "energy", icon: "⚡", label: "Energy", url: "/energy", title: "Energy Dashboard" },
+  { id: "map", icon: "🗺️", label: "Karte", url: "/map", title: "Home Assistant Karte" },
+  { id: "media", icon: "🎵", label: "Medien", url: "/media-browser", title: "Media Browser" },
+  { id: "valetudo", icon: "🧹", label: "Valetudo Map", url: "/lovelace/staubsauger", title: "Valetudo Map" },
+];
+
 const TD_WIDGET_TYPE_ICONS = {
   "simple-value": "🔢", "icon-value": "ℹ️", "trend-arrow": "📈",
   "status-dot": "🟢", "gauge": "🎯", "progress-bar": "📊",
   "media-player-control": "🎵", "switch-control": "🎚️", "light-control": "💡",
   "climate-control": "🌡️", "cover-control": "🪟",
+  "text-card": "📝", "entity-list": "📋", "chip-row": "🏷️", "divider": "➖", "spacer": "⬜",
   "camera": "📹", "image": "🖼️", "clock": "🕐", "weather": "🌦️",
   "countdown": "⏱️", "button": "🔘", "color-block": "🟦",
-  "qr-code": "🔳",
+  "qr-code": "🔳", "web-embed": "🌐",
   ...Object.fromEntries(TD_CHART_WIDGETS.map(([t, i]) => [t, i])),
 };
 
@@ -117,6 +141,7 @@ const TD_WIDGET_TYPES_ALL = [
   ...TD_VALUE_STATUS_WIDGETS.map(([v, , l]) => ({ v, l })),
   ...TD_CHART_WIDGETS.map(([v, , l]) => ({ v, l })),
   ...TD_SMART_HOME_WIDGETS.map(([v, , l]) => ({ v, l })),
+  ...TD_LAYOUT_INFO_WIDGETS.map(([v, , l]) => ({ v, l })),
   { v: "camera",      l: "Kamera" },
   { v: "clock",       l: "Uhr" },
   { v: "weather",     l: "Wetter" },
@@ -125,18 +150,20 @@ const TD_WIDGET_TYPES_ALL = [
   { v: "countdown",   l: "Countdown" },
   { v: "button",      l: "Button" },
   { v: "qr-code",     l: "QR-Code" },
+  { v: "web-embed", l: "Webseite / Einbettung" },
 ].filter((item, index, arr) => arr.findIndex((x) => x.v === item.v) === index);
 
 const TD_WIDGET_SETTINGS_GROUPS = [
-  { label: "Werte & Status", items: TD_VALUE_STATUS_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
   { label: "Graphen & Charts", items: TD_CHART_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
   { label: "Steuerung & Smart Home", items: TD_SMART_HOME_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
+  { label: "Text, Listen & Layout", items: TD_LAYOUT_INFO_WIDGETS.map(([type, icon, name]) => ({ type, icon, name })) },
   { label: "Medien & Info", items: [
     { type: "camera", icon: "📹", name: "Kamera" },
     { type: "weather", icon: "🌦️", name: "Wetter" },
     { type: "clock", icon: "🕐", name: "Uhr" },
     { type: "image", icon: "🖼️", name: "Bild" },
     { type: "countdown", icon: "⏱️", name: "Countdown" },
+    { type: "web-embed", icon: "🌐", name: "Webseite / Einbettung" },
     { type: "button", icon: "🔘", name: "Button" },
     { type: "color-block", icon: "🟦", name: "Farbblock" },
     { type: "qr-code", icon: "🔳", name: "QR-Code" },
@@ -144,12 +171,14 @@ const TD_WIDGET_SETTINGS_GROUPS = [
 ];
 
 const TD_NO_MULTI_ENTITY = new Set([
-  "camera", "weather", "clock", "countdown", "qr-code", "button", "color-block",
+  "camera", "weather", "clock", "countdown", "qr-code", "button", "web-embed", "color-block",
+  "text-card", "divider", "spacer",
   "media-player-control", "switch-control", "light-control", "climate-control", "cover-control",
 ]);
 
 const TD_NO_VALUE_FORMAT = new Set([
-  "camera", "weather", "clock", "countdown", "qr-code", "button", "color-block", "image",
+  "camera", "weather", "clock", "countdown", "qr-code", "button", "web-embed", "color-block", "image",
+  "text-card", "entity-list", "chip-row", "divider", "spacer",
   "media-player-control", "switch-control", "light-control", "climate-control", "cover-control",
 ]);
 
@@ -166,6 +195,71 @@ function tdWidgetEnabled(settings = {}, type = "") {
 
 function tdVisibleWidgetOptions(settings = {}, currentType = "") {
   return TD_WIDGET_TYPES_ALL.filter((item) => item.v === currentType || tdWidgetEnabled(settings, item.v));
+}
+
+function tdResolveEmbedUrl(url = "") {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const cleaned = raw.replace(/^\/+/, "");
+  if (cleaned === "overview") return "/lovelace";
+  if (cleaned === "lovelace/overview") return "/lovelace";
+  if (cleaned === "default_view") return "/lovelace";
+  if (cleaned === "lovelace") return "/lovelace";
+  if (raw.startsWith('/')) return raw;
+  return `/${cleaned}`;
+}
+
+function tdCollectEmbedPages(hass) {
+  const out = [];
+  const seen = new Set();
+  const add = (label, url, meta = "") => {
+    const resolved = tdResolveEmbedUrl(url);
+    if (!resolved || seen.has(resolved)) return;
+    seen.add(resolved);
+    out.push({ label, url: resolved, meta });
+  };
+
+  TD_EMBED_PRESETS.forEach((item) => add(item.label, item.url, "Preset"));
+
+  const panels = hass?.panels || {};
+  Object.entries(panels).forEach(([key, panel]) => {
+    const path = panel?.url_path || key;
+    const title = panel?.title || panel?.config?.title || key;
+    const comp = panel?.component_name || panel?.component || "";
+    add(title, `/${path}`, comp || "Panel");
+
+    const views = panel?.config?.views || panel?.views || [];
+    views.forEach((view, idx) => {
+      const viewPath = view?.path || view?.url_path || `${idx}`;
+      const viewTitle = view?.title || viewPath || `Ansicht ${idx + 1}`;
+      if (viewPath) add(`${title} · ${viewTitle}`, `/${path}/${viewPath}`, "Ansicht");
+    });
+  });
+
+  const dashboards = hass?.lovelace?.dashboards || hass?.connection?._lovelaceDashboards || [];
+  (Array.isArray(dashboards) ? dashboards : Object.values(dashboards || {})).forEach((dash, idx) => {
+    const slug = dash?.url_path || dash?.urlPath || dash?.path || dash?.id || (idx === 0 ? 'lovelace' : `dashboard-${idx + 1}`);
+    const title = dash?.title || dash?.name || dash?.id || (idx === 0 ? 'Lovelace' : `Dashboard ${idx + 1}`);
+    const base = slug === 'lovelace' ? '/lovelace' : `/lovelace-${slug}`;
+    add(title, base, 'Dashboard');
+
+    const views = dash?.views || dash?.config?.views || [];
+    views.forEach((view, viewIdx) => {
+      const viewPath = view?.path || view?.url_path || `${viewIdx}`;
+      const viewTitle = view?.title || viewPath || `Ansicht ${viewIdx + 1}`;
+      add(`${title} · ${viewTitle}`, `${base}/${viewPath}`, 'View');
+    });
+  });
+
+  const currentDashboards = hass?.states ? Object.keys(hass.states)
+    .filter((eid) => eid.startsWith('update.') || eid.startsWith('sensor.')).length : 0;
+  if (currentDashboards >= 0) {
+    add('Lovelace', '/lovelace', 'Standard');
+    add('Lovelace · Übersicht', '/lovelace/default_view', 'View');
+  }
+
+  return out.sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'de', { sensitivity: 'base' }));
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -282,11 +376,52 @@ function tdColorWithAlpha(color, alpha = null) {
 }
 
 function tdWidgetPreviewStyle(widget = {}) {
-  const bg = tdColorWithAlpha(widget.bgColor || widget.background_color || "#1E1E1E", widget.bgOpacity ?? widget.background_opacity ?? 0.75);
+  const cfg = widget.config || {};
+  const bgBase = widget.bgColor || widget.background_color || "#1E1E1E";
+  const opacity = widget.bgOpacity ?? widget.background_opacity ?? 0.75;
+  const bg = tdColorWithAlpha(bgBase, opacity);
   const radius = Number(widget.borderRadius ?? widget.border_radius ?? 12);
   const blur = Number(widget.blur || 0);
   const text = widget.textColor || widget.text_color || "";
-  return `${bg ? `background:${bg};` : ""}${Number.isFinite(radius) ? `border-radius:${radius}px;` : ""}${blur ? `backdrop-filter:blur(${blur}px);-webkit-backdrop-filter:blur(${blur}px);` : ""}${text ? `color:${text};` : ""}`;
+  const borderWidth = Number(widget.borderWidth ?? widget.border_width ?? 1);
+  const borderColor = widget.borderColor || widget.border_color || "rgba(255,255,255,.08)";
+  const borderStyle = cfg.border_style || "solid";
+  const padX = Number(cfg.padding_x ?? 14);
+  const padY = Number(cfg.padding_y ?? 14);
+  const gap = Number(cfg.inner_gap ?? 10);
+  const minHeight = Number(cfg.min_height ?? 0);
+  const textAlign = cfg.text_align || "center";
+  const valueSize = Number(cfg.value_size || 0);
+  const nameSize = Number(cfg.name_size || 0);
+  const subtitleSize = Number(cfg.subtitle_size || 0);
+  const iconSize = Number(cfg.icon_size || 0);
+  const shadowPreset = cfg.shadow_preset || "soft";
+  const gradientTo = cfg.gradient_enabled && cfg.gradient_to_color ? cfg.gradient_to_color : "";
+  const gradientAngle = Number(cfg.gradient_angle || 135);
+  const shadowMap = {
+    none: "none",
+    soft: "0 10px 24px rgba(0,0,0,.18)",
+    medium: "0 14px 32px rgba(0,0,0,.24)",
+    strong: "0 18px 42px rgba(0,0,0,.32)",
+    glow: `0 0 0 1px ${tdColorWithAlpha(borderColor, .32)}, 0 0 28px ${tdColorWithAlpha(borderColor, .22)}`,
+  };
+  const background = gradientTo
+    ? `linear-gradient(${gradientAngle}deg, ${tdColorWithAlpha(bgBase, opacity)} 0%, ${tdColorWithAlpha(gradientTo, opacity)} 100%)`
+    : bg;
+  return `${background ? `background:${background};` : ""}`
+    + `${Number.isFinite(radius) ? `border-radius:${radius}px;` : ""}`
+    + `${blur ? `backdrop-filter:blur(${blur}px);-webkit-backdrop-filter:blur(${blur}px);` : ""}`
+    + `${text ? `color:${text};` : ""}`
+    + `border:${borderWidth}px ${borderStyle} ${borderColor};`
+    + `${shadowMap[shadowPreset] ? `box-shadow:${shadowMap[shadowPreset]};` : ""}`
+    + `padding:${padY}px ${padX}px;gap:${gap}px;text-align:${textAlign};`
+    + `${minHeight ? `min-height:${minHeight}px;` : ""}`
+    + `${cfg.widget_opacity != null ? `opacity:${Number(cfg.widget_opacity)};` : ""}`
+    + `${valueSize ? `--pv-value-size:${valueSize}px;` : ""}`
+    + `${nameSize ? `--pv-title-size:${nameSize}px;` : ""}`
+    + `${subtitleSize ? `--pv-subtitle-size:${subtitleSize}px;` : ""}`
+    + `${iconSize ? `--pv-icon-size:${iconSize}px;` : ""}`
+    + `--td-preview-text-align:${textAlign};`;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -315,6 +450,32 @@ function tdDefaultTapActionForWidget(type = "") {
   return "none";
 }
 
+function tdDefaultChartConfig(settings = {}, existing = {}) {
+  const d = tdNormalizedDefaults(settings);
+  return {
+    hours: Number(existing.hours ?? d.default_chart_hours ?? 24),
+    chart_use_history: existing.chart_use_history !== false,
+    chart_animation: existing.chart_animation ?? (d.default_chart_widget_animations !== false),
+    chart_max_points: Number(existing.chart_max_points ?? 48),
+    chart_palette: existing.chart_palette || "default",
+    chart_line_width: Number(existing.chart_line_width ?? 2),
+    chart_tension: Number(existing.chart_tension ?? 0.35),
+    chart_fill_opacity: Number(existing.chart_fill_opacity ?? 0.22),
+    chart_curve_mode: existing.chart_curve_mode || "default",
+    chart_point_style: existing.chart_point_style || "circle",
+    chart_begin_at_zero: existing.chart_begin_at_zero === true,
+    chart_legend_position: existing.chart_legend_position || "top",
+    chart_show_legend: existing.chart_show_legend !== false,
+    chart_show_axes: existing.chart_show_axes !== false,
+    chart_show_grid: existing.chart_show_grid !== false,
+    chart_show_points: existing.chart_show_points !== false,
+    chart_stacked: existing.chart_stacked === true,
+    chart_mobile_compact: existing.chart_mobile_compact === true,
+    entities: Array.isArray(existing.entities) ? existing.entities : [],
+    chart_entities: Array.isArray(existing.chart_entities) ? existing.chart_entities : [],
+  };
+}
+
 function tdCreateWidget(type, col, row, settings = {}) {
   const d = tdNormalizedDefaults(settings);
   const tapAction = tdDefaultTapActionForWidget(type);
@@ -341,10 +502,7 @@ function tdCreateWidget(type, col, row, settings = {}) {
     locked: false,
     config: {
       camera_source: d.default_camera_source,
-      hours: d.default_chart_hours,
-      chart_use_history: true,
-      chart_animation: d.default_chart_widget_animations !== false,
-      chart_max_points: 48,
+      ...tdDefaultChartConfig(settings),
       value_decimals: 1,
       extra_value_decimals: 1,
       trim_trailing_zeros: false,
@@ -364,13 +522,72 @@ function tdCreateWidget(type, col, row, settings = {}) {
       control_show_popup_modes: true,
       control_show_popup_presets: true,
       control_show_popup_fan_modes: true,
+      embed_page_id: "",
+      embed_url: "/lovelace",
+      embed_height: 350,
+      embed_interactive: true,
+      embed_fullscreen: true,
+      embed_kiosk: true,
+      embed_title: "Webseite / Einbettung",
     },
   };
 }
 
 function tdNormalizeWidgetRuntime(widget = {}) {
   const w = deepClone(widget);
-  w.config = { ...(w.config || {}) };
+  w.config = {
+    subtitle_text: "",
+    hide_if_unavailable: false,
+    fallback_text: "",
+    text_align: "center",
+    content_align: "center",
+    content_justify: "center",
+    inner_gap: 10,
+    icon_size: 0,
+    value_size: 0,
+    name_size: 0,
+    unit_size: 0,
+    subtitle_size: 0,
+    padding_x: 14,
+    padding_y: 14,
+    min_height: 0,
+    border_style: "solid",
+    gradient_enabled: false,
+    gradient_to_color: "",
+    gradient_angle: 135,
+    shadow_preset: "soft",
+    widget_opacity: 1,
+    text_content: "",
+    text_markdown: true,
+    text_show_entity: false,
+    list_show_icons: true,
+    list_show_values: true,
+    list_show_names: true,
+    list_show_units: true,
+    list_max_items: 8,
+    list_dense: false,
+    chip_show_icons: true,
+    chip_show_values: true,
+    chip_show_names: true,
+    chip_style: "glass",
+    chip_wrap: true,
+    divider_label: "",
+    divider_style: "solid",
+    divider_align: "center",
+    divider_thickness: 1,
+    divider_color: "",
+    histogram_bins: 8,
+    chart_y_min: "",
+    chart_y_max: "",
+    chart_x_tick_limit: "",
+    chart_y_tick_limit: "",
+    chart_cutout: 68,
+    chart_bar_radius: 8,
+    chart_goal_value: "",
+    chart_bubble_scale: 8,
+    embed_mode: "page",
+    ...(w.config || {})
+  };
 
   if (w.bgColor != null && w.background_color == null) w.background_color = w.bgColor;
   if (w.bgOpacity != null && w.background_opacity == null) w.background_opacity = Number(w.bgOpacity);
@@ -410,6 +627,9 @@ function tdNormalizeWidgetRuntime(widget = {}) {
     if (w.config.metric_graph == null) w.config.metric_graph = true;
     if (w.config.metric_graph_hours == null && w.config.hours != null) w.config.metric_graph_hours = w.config.hours;
     if (w.config.metric_graph_points == null) w.config.metric_graph_points = 18;
+  }
+  if (TD_CHART_TYPES.has(w.type)) {
+    w.config = { ...w.config, ...tdDefaultChartConfig({}, w.config) };
   }
   return w;
 }
@@ -483,9 +703,7 @@ function tdHydrateScreenPresetEntities(screen, hass) {
       if (!w.entity_id) w.entity_id = list[0]?.entity_id || "";
       w.config = {
         ...(w.config || {}),
-        chart_use_history: w.config?.chart_use_history !== false,
-        hours: w.config?.hours || 24,
-        chart_max_points: w.config?.chart_max_points || 48,
+        ...tdDefaultChartConfig({}, w.config || {}),
         entities: (w.config?.entities?.length ? w.config.entities : list.slice(1, 4).map((e) => e.entity_id)),
       };
     }
@@ -562,6 +780,182 @@ function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
           mk("status-dot", 0, 0, { name: "Alarm", icon: "🛡️" }),
           mk("camera",     1, 0, { colspan: 2, rowspan: 2, name: "Kamera" }),
           mk("status-dot", 0, 1, { name: "Kontakte", icon: "🚪" }),
+        ],
+      };
+    case "chart-line":
+      return {
+        ...base,
+        name: `Linien ${index + 1}`,
+        widgets: [
+          mk("line-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Linienchart" }),
+          mk("mini-graph", 2, 0, { name: "Mini Graph" }),
+          mk("sparkline", 2, 1, { name: "Sparkline" }),
+        ],
+      };
+    case "chart-bars":
+      return {
+        ...base,
+        name: `Balken ${index + 1}`,
+        widgets: [
+          mk("bar-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Balkendiagramm" }),
+          mk("horizontal-bar-chart", 2, 0, { name: "Horizontal" }),
+          mk("bullet-chart", 2, 1, { name: "Bullet" }),
+        ],
+      };
+    case "chart-area":
+      return {
+        ...base,
+        name: `Fläche ${index + 1}`,
+        widgets: [
+          mk("area-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Area Chart" }),
+          mk("forecast-chart", 2, 0, { name: "Forecast" }),
+          mk("trend-arrow", 2, 1, { name: "Trend" }),
+        ],
+      };
+    case "chart-donut":
+      return {
+        ...base,
+        name: `Anteile ${index + 1}`,
+        widgets: [
+          mk("donut-chart", 0, 0, { name: "Donut" }),
+          mk("pie-chart", 1, 0, { name: "Pie" }),
+          mk("radar-chart", 2, 0, { name: "Radar" }),
+          mk("polar-area-chart", 0, 1, { name: "Polar Area" }),
+          mk("comparison-chart", 1, 1, { colspan: 2, name: "Vergleich" }),
+        ],
+      };
+    case "chart-gauges":
+      return {
+        ...base,
+        name: `Gauges ${index + 1}`,
+        widgets: [
+          mk("gauge", 0, 0, { name: "Gauge" }),
+          mk("radial-gauge-advanced", 1, 0, { name: "Radial Gauge" }),
+          mk("progress-bar", 2, 0, { name: "Progress" }),
+          mk("simple-value", 0, 1, { name: "KPI" }),
+          mk("bullet-chart", 1, 1, { colspan: 2, name: "Bullet KPI" }),
+        ],
+      };
+    case "chart-timeline":
+      return {
+        ...base,
+        name: `Timeline ${index + 1}`,
+        widgets: [
+          mk("timeline-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Timeline" }),
+          mk("heatmap-mini", 2, 0, { name: "Heatmap" }),
+          mk("sparkline", 2, 1, { name: "Sparkline" }),
+        ],
+      };
+    case "chart-scatter":
+      return {
+        ...base,
+        name: `Scatter ${index + 1}`,
+        widgets: [
+          mk("scatter-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Scatter" }),
+          mk("bubble-chart", 2, 0, { name: "Bubble" }),
+          mk("comparison-chart", 2, 1, { name: "Vergleich" }),
+        ],
+      };
+    case "chart-mixed":
+      return {
+        ...base,
+        name: `Mixed ${index + 1}`,
+        widgets: [
+          mk("multi-line-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Multi-Line" }),
+          mk("bar-chart", 2, 0, { name: "Bars" }),
+          mk("donut-chart", 2, 1, { name: "Donut" }),
+        ],
+      };
+    case "chart-heatmap":
+      return {
+        ...base,
+        name: `Heatmap ${index + 1}`,
+        widgets: [
+          mk("heatmap-mini", 0, 0, { colspan: 2, rowspan: 2, name: "Heatmap" }),
+          mk("mini-graph", 2, 0, { name: "Mini Graph" }),
+          mk("status-dot", 2, 1, { name: "Status" }),
+        ],
+      };
+    case "chart-kpi":
+      return {
+        ...base,
+        name: `KPI ${index + 1}`,
+        widgets: [
+          mk("simple-value", 0, 0, { name: "KPI" }),
+          mk("icon-value", 1, 0, { name: "Info" }),
+          mk("trend-arrow", 2, 0, { name: "Trend" }),
+          mk("comparison-chart", 0, 1, { colspan: 2, name: "Vergleich" }),
+          mk("bullet-chart", 2, 1, { name: "Bullet" }),
+        ],
+      };
+    case "chart-candlestick":
+      return {
+        ...base,
+        name: `Candlestick ${index + 1}`,
+        widgets: [
+          mk("candlestick-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Candlestick" }),
+          mk("comparison-chart", 2, 0, { name: "Vergleich" }),
+          mk("trend-arrow", 2, 1, { name: "Trend" }),
+        ],
+      };
+    case "chart-histogram":
+      return {
+        ...base,
+        name: `Histogramm ${index + 1}`,
+        widgets: [
+          mk("histogram-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Histogramm" }),
+          mk("boxplot-chart", 2, 0, { name: "Boxplot" }),
+          mk("simple-value", 2, 1, { name: "Mittelwert" }),
+        ],
+      };
+    case "chart-waterfall":
+      return {
+        ...base,
+        name: `Waterfall ${index + 1}`,
+        widgets: [
+          mk("waterfall-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Waterfall" }),
+          mk("bar-chart", 2, 0, { name: "Balken" }),
+          mk("comparison-chart", 2, 1, { name: "Vergleich" }),
+        ],
+      };
+    case "chart-treemap":
+      return {
+        ...base,
+        name: `Treemap ${index + 1}`,
+        widgets: [
+          mk("treemap-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Treemap" }),
+          mk("sunburst-chart", 2, 0, { name: "Sunburst" }),
+          mk("donut-chart", 2, 1, { name: "Anteile" }),
+        ],
+      };
+    case "chart-sunburst":
+      return {
+        ...base,
+        name: `Sunburst ${index + 1}`,
+        widgets: [
+          mk("sunburst-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Sunburst" }),
+          mk("treemap-chart", 2, 0, { name: "Treemap" }),
+          mk("simple-value", 2, 1, { name: "KPI" }),
+        ],
+      };
+    case "chart-sankey":
+      return {
+        ...base,
+        name: `Sankey ${index + 1}`,
+        widgets: [
+          mk("sankey-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Sankey" }),
+          mk("timeline-chart", 2, 0, { name: "Timeline" }),
+          mk("simple-value", 2, 1, { name: "Flow" }),
+        ],
+      };
+    case "chart-boxplot":
+      return {
+        ...base,
+        name: `Boxplot ${index + 1}`,
+        widgets: [
+          mk("boxplot-chart", 0, 0, { colspan: 2, rowspan: 2, name: "Boxplot" }),
+          mk("histogram-chart", 2, 0, { name: "Histogramm" }),
+          mk("scatter-chart", 2, 1, { name: "Ausreißer" }),
         ],
       };
     default:
@@ -1973,12 +2367,23 @@ class TdDeviceEditor extends LitElement {
         <!-- Preset Buttons -->
         <div class="add-row">
           ${[
-            ["blank",    "➕ Leer"],
-            ["weather",  "🌤️ Wetter"],
-            ["camera",   "📹 Kamera"],
-            ["charts",   "📈 Charts"],
-            ["energy",   "⚡ Energie"],
-            ["security", "🛡️ Sicherheit"],
+            ["chart-line", "📈 Linie"],
+            ["chart-bars", "📊 Balken"],
+            ["chart-area", "🌊 Fläche"],
+            ["chart-donut", "🍩 Donut"],
+            ["chart-gauges", "🎛️ Gauges"],
+            ["chart-timeline", "🕒 Timeline"],
+            ["chart-scatter", "✳️ Scatter"],
+            ["chart-mixed", "🧩 Mixed"],
+            ["chart-heatmap", "🔥 Heatmap"],
+            ["chart-kpi", "📌 KPI+Trend"],
+            ["chart-candlestick", "🕯️ Candlestick"],
+            ["chart-histogram", "📶 Histogramm"],
+            ["chart-waterfall", "🪜 Waterfall"],
+            ["chart-treemap", "🧩 Treemap"],
+            ["chart-sunburst", "🌞 Sunburst"],
+            ["chart-sankey", "🔀 Sankey"],
+            ["chart-boxplot", "📦 Boxplot"],
           ].map(([preset, label]) => html`
             <button class="add-btn"
                     @click=${() => this._emit("add-screen-preset", { preset })}>
@@ -2029,6 +2434,10 @@ class TdDeviceEditor extends LitElement {
       <!-- ═══ Ticker ═══ -->
       ${this._renderSection("ticker", "📰 Ticker-Leiste", html`
         ${this._renderTickerConfig()}
+      `)}
+
+      ${this._renderSection("toast", "💬 Toasts & Popups", html`
+        ${this._renderToastConfig()}
       `)}
 
       <!-- ═══ Save Bar ═══ -->
@@ -2195,6 +2604,17 @@ class TdDeviceEditor extends LitElement {
           </select>
         </div>
         <div class="f">
+          <label>Stil-Vorlage</label>
+          <select .value=${t.style_template || "classic"}
+                  @change=${(e) => this._applyTickerTemplate(e.target.value)}>
+            <option value="classic">Classic</option>
+            <option value="glass">Glass</option>
+            <option value="alert">Alert</option>
+            <option value="minimal">Minimal</option>
+          </select>
+          <div class="hint">Setzt passende Farben, Radius und Gewicht</div>
+        </div>
+        <div class="f">
           <label>Geschwindigkeit</label>
           <select .value=${t.speed || "normal"}
                   @change=${(e) => this._setNested("ticker", "speed", e.target.value)}>
@@ -2212,15 +2632,46 @@ class TdDeviceEditor extends LitElement {
           </select>
         </div>
         <div class="f">
+          <label>Liste verwenden</label>
+          <select .value=${t.show_list !== false ? "on" : "off"}
+                  @change=${(e) => this._setNested("ticker", "show_list", e.target.value === "on")}>
+            <option value="on">Ein</option>
+            <option value="off">Aus</option>
+          </select>
+          <div class="hint">Feste Meldungen, Entities und Regeln dauerhaft anzeigen</div>
+        </div>
+        <div class="f">
+          <label>Ausblenden wenn leer</label>
+          <select .value=${t.hide_when_empty !== false ? "on" : "off"}
+                  @change=${(e) => this._setNested("ticker", "hide_when_empty", e.target.value === "on")}>
+            <option value="on">Ein</option>
+            <option value="off">Aus</option>
+          </select>
+        </div>
+        <div class="f">
+          <label>Bei neuer Meldung einblenden</label>
+          <select .value=${t.auto_show_on_message ? "on" : "off"}
+                  @change=${(e) => this._setNested("ticker", "auto_show_on_message", e.target.value === "on")}>
+            <option value="on">Ein</option>
+            <option value="off">Aus</option>
+          </select>
+        </div>
+        <div class="f">
+          <label>Auto-Hide nach (s)</label>
+          <input type="number" min="2" max="600"
+                 .value=${t.auto_hide_seconds || 15}
+                 @change=${(e) => this._setNested("ticker", "auto_hide_seconds", +e.target.value)}>
+        </div>
+        <div class="f">
           <label>Höhe (px)</label>
           <input type="number" min="24" max="120"
-                 .value=${t.height || 36}
+                 .value=${t.height || d.default_ticker_height || 36}
                  @change=${(e) => this._setNested("ticker", "height", +e.target.value)}>
         </div>
         <div class="f">
           <label>Schriftgröße (px)</label>
           <input type="number" min="10" max="40"
-                 .value=${t.font_size || 14}
+                 .value=${t.font_size || 12}
                  @change=${(e) => this._setNested("ticker", "font_size", +e.target.value)}>
         </div>
         <div class="f">
@@ -2232,7 +2683,7 @@ class TdDeviceEditor extends LitElement {
         <div class="f">
           <label>Transparenz</label>
           <input type="number" min="0.1" max="1" step="0.05"
-                 .value=${t.opacity || 1}
+                 .value=${t.opacity ?? 1}
                  @change=${(e) => this._setNested("ticker", "opacity", +e.target.value)}>
         </div>
         <div class="f">
@@ -2241,19 +2692,25 @@ class TdDeviceEditor extends LitElement {
                  @change=${(e) => this._setNested("ticker", "separator", e.target.value || "│")}>
         </div>
         <div class="f">
-          <label>Textfarbe</label>
-          <input .value=${t.text_color || "#e8eef7"}
-                 @change=${(e) => this._setNested("ticker", "text_color", e.target.value)}>
+          <td-color-picker
+            .value=${t.text_color || "#f3f4f6"}
+            label="Textfarbe"
+            @value-changed=${(e) => this._setNested("ticker", "text_color", e.detail.value)}>
+          </td-color-picker>
         </div>
         <div class="f">
-          <label>Hintergrund</label>
-          <input .value=${t.background_color || "rgba(12,18,28,.72)"}
-                 @change=${(e) => this._setNested("ticker", "background_color", e.target.value)}>
+          <td-color-picker
+            .value=${t.background_color || "rgba(12,18,28,.72)"}
+            label="Hintergrund"
+            @value-changed=${(e) => this._setNested("ticker", "background_color", e.detail.value)}>
+          </td-color-picker>
         </div>
         <div class="f">
-          <label>Akzentfarbe</label>
-          <input .value=${t.accent_color || "#4fc3f7"}
-                 @change=${(e) => this._setNested("ticker", "accent_color", e.target.value)}>
+          <td-color-picker
+            .value=${t.accent_color || "#9ca3af"}
+            label="Akzentfarbe"
+            @value-changed=${(e) => this._setNested("ticker", "accent_color", e.detail.value)}>
+          </td-color-picker>
         </div>
         <div class="f">
           <label>Radius (px)</label>
@@ -2261,25 +2718,93 @@ class TdDeviceEditor extends LitElement {
                  .value=${t.border_radius || 0}
                  @change=${(e) => this._setNested("ticker", "border_radius", +e.target.value)}>
         </div>
-        <div class="f full">
-          <label>Feste Meldungen</label>
-          <input .value=${(t.fixed_messages || []).join(" | ")}
-                 placeholder="Text 1 | Text 2 | Text 3"
-                 @change=${(e) => this._setNested("ticker", "fixed_messages",
-                   String(e.target.value || "").split("|").map((x) => x.trim()).filter(Boolean)
-                 )}>
-          <div class="hint">Mehrere Meldungen mit | trennen</div>
+        <div class="f">
+          <label>Schriftgewicht</label>
+          <input type="number" min="300" max="900" step="100"
+                 .value=${t.font_weight || 500}
+                 @change=${(e) => this._setNested("ticker", "font_weight", +e.target.value)}>
         </div>
         <div class="f full">
-          <label>Stil-Vorlage</label>
-          <select .value=${t.style_template || "classic"}
-                  @change=${(e) => this._applyTickerTemplate(e.target.value)}>
-            <option value="classic">Classic</option>
-            <option value="glass">Glass</option>
-            <option value="alert">Alert</option>
-            <option value="minimal">Minimal</option>
+          <label>Feste Meldungen</label>
+          <textarea rows="4"
+                 .value=${(t.fixed_messages || []).join("\n")}
+                 placeholder="Eine Meldung pro Zeile"
+                 @change=${(e) => this._setNested("ticker", "fixed_messages",
+                   String(e.target.value || "").split(/\n+/).map((x) => x.trim()).filter(Boolean)
+                 )}></textarea>
+          <div class="hint">Eine Meldung pro Zeile für bessere Übersicht im Editor</div>
+        </div>
+        <div class="f full">
+          <label>Ticker-Regeln (JSON)</label>
+          <textarea rows="5"
+                .value=${JSON.stringify(t.rules || [], null, 2)}
+                @change=${(e) => {
+                  const parsed = safeJsonParse(e.target.value, null);
+                  if (parsed) this._setNested("ticker", "rules", parsed);
+                }}
+                placeholder='[{"priority":10,"domain":"binary_sensor","condition":"state=on","template":"⚠️ {friendly_name}"}]'></textarea>
+        </div>
+      </div>
+    `;
+  }
+
+
+  _renderToastConfig() {
+    const d = this._ed;
+    const t = d.toast || {};
+    return html`
+      <div class="ticker-grid">
+        <div class="f">
+          <label>Toasts aktiviert</label>
+          <select .value=${t.enabled !== false ? "on" : "off"}
+                  @change=${(e) => this._setNested("toast", "enabled", e.target.value === "on")}>
+            <option value="on">Aktiviert</option>
+            <option value="off">Deaktiviert</option>
           </select>
-          <div class="hint">Setzt passende Farben, Radius und Gewicht</div>
+        </div>
+        <div class="f">
+          <label>Position</label>
+          <select .value=${t.position || "bottom"}
+                  @change=${(e) => this._setNested("toast", "position", e.target.value)}>
+            <option value="bottom">Unten</option>
+            <option value="top">Oben</option>
+            <option value="center">Mitte</option>
+          </select>
+        </div>
+        <div class="f">
+          <label>Anzeigedauer (s)</label>
+          <input type="number" min="1" max="120" .value=${t.duration || 6}
+                 @change=${(e) => this._setNested("toast", "duration", +e.target.value)}>
+        </div>
+        <div class="f">
+          <label>Schriftgröße (px)</label>
+          <input type="number" min="10" max="40" .value=${t.font_size || 16}
+                 @change=${(e) => this._setNested("toast", "font_size", +e.target.value)}>
+        </div>
+        <div class="f">
+          <label>Radius (px)</label>
+          <input type="number" min="0" max="40" .value=${t.border_radius || 16}
+                 @change=${(e) => this._setNested("toast", "border_radius", +e.target.value)}>
+        </div>
+        <div class="f">
+          <label>Display aufwecken</label>
+          <select .value=${t.wake_screen !== false ? "on" : "off"}
+                  @change=${(e) => this._setNested("toast", "wake_screen", e.target.value === "on")}>
+            <option value="on">Ein</option>
+            <option value="off">Aus</option>
+          </select>
+        </div>
+        <div class="f">
+          <td-color-picker .value=${t.color || "#111827"} label="Hintergrund"
+            @value-changed=${(e) => this._setNested("toast", "color", e.detail.value)}></td-color-picker>
+        </div>
+        <div class="f">
+          <td-color-picker .value=${t.text_color || "#f9fafb"} label="Textfarbe"
+            @value-changed=${(e) => this._setNested("toast", "text_color", e.detail.value)}></td-color-picker>
+        </div>
+        <div class="f">
+          <td-color-picker .value=${t.accent_color || "#60a5fa"} label="Akzentfarbe"
+            @value-changed=${(e) => this._setNested("toast", "accent_color", e.detail.value)}></td-color-picker>
         </div>
       </div>
     `;
@@ -2741,7 +3266,7 @@ class TdScreenEditor extends LitElement {
         font-size: 9px; color: rgba(255,255,255,.62);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
       }
-      .wb .pv-icon { font-size: 16px; opacity: .9; flex-shrink: 0; }
+      .wb .pv-icon { font-size: var(--pv-icon-size, 16px); opacity: .9; flex-shrink: 0; }
       .wb .pv-value {
         font-size: 18px; font-weight: 700; color: #fff; line-height: 1.05;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -3226,11 +3751,30 @@ class TdScreenEditor extends LitElement {
       }));
 
     const raw = [
-      { name: "📁 Werte & Status", items: enabled(
-        TD_VALUE_STATUS_WIDGETS.map(([type, icon, label, desc]) => ({ type, icon, label, desc }))
-      )},
       { name: "📁 Graphen & Charts", items: enabled(
-        TD_CHART_WIDGETS.map(([type, icon, label]) => ({ type, icon, label, desc: "Chart.js Widget" }))
+        TD_CHART_WIDGETS.map(([type, icon, label]) => ({ type, icon, label, desc: "Chart.js Widget mit erweiterten Optionen" }))
+      )},
+      { name: "📁 Chart-Vorlagen", items: [
+        { type: "chart-line",     icon: "📈", label: "Linien-Dashboard",  desc: "Großer Verlauf mit Nebenwerten" },
+        { type: "chart-bars",     icon: "📊", label: "Balken-Dashboard",  desc: "Balken, Vergleich und Bullet" },
+        { type: "chart-area",     icon: "🌊", label: "Area-Dashboard",    desc: "Fläche, Forecast und Trend" },
+        { type: "chart-donut",    icon: "🍩", label: "Donut-Dashboard",   desc: "Anteile, Radar und Polar Area" },
+        { type: "chart-gauges",   icon: "🎛️", label: "Gauge-Dashboard",   desc: "Gauge, Radial Gauge und KPI" },
+        { type: "chart-timeline", icon: "🕒", label: "Timeline-Dashboard",desc: "Timeline, Heatmap und Sparkline" },
+        { type: "chart-scatter",  icon: "✳️", label: "Scatter-Dashboard", desc: "Scatter, Bubble und Vergleich" },
+        { type: "chart-mixed",    icon: "🧩", label: "Mixed-Dashboard",   desc: "Mehrere Chart-Arten kombiniert" },
+        { type: "chart-heatmap",  icon: "🔥", label: "Heatmap-Dashboard", desc: "Heatmap, Mini-Graph und Trends" },
+        { type: "chart-kpi",      icon: "📌", label: "KPI-Dashboard",     desc: "Werte, Trend und Bullet Chart" },
+        { type: "chart-candlestick", icon: "🕯️", label: "Candlestick-Dashboard", desc: "OHLC, Vergleich und Trend" },
+        { type: "chart-histogram",   icon: "📶", label: "Histogramm-Dashboard", desc: "Verteilung, Boxplot und KPI" },
+        { type: "chart-waterfall",   icon: "🪜", label: "Waterfall-Dashboard",  desc: "Beiträge, Summen und Vergleich" },
+        { type: "chart-treemap",     icon: "🧩", label: "Treemap-Dashboard",    desc: "Hierarchie, Sunburst und Donut" },
+        { type: "chart-sunburst",    icon: "🌞", label: "Sunburst-Dashboard",   desc: "Sunburst, Treemap und KPIs" },
+        { type: "chart-sankey",      icon: "🔀", label: "Sankey-Dashboard",     desc: "Flows, Timeline und Werte" },
+        { type: "chart-boxplot",     icon: "📦", label: "Boxplot-Dashboard",    desc: "Streuung, Histogramm und Ausreißer" },
+      ]},
+      { name: "📁 Text, Listen & Layout", items: enabled(
+        TD_LAYOUT_INFO_WIDGETS.map(([type, icon, label, desc]) => ({ type, icon, label, desc }))
       )},
       { name: "📁 Steuerung & Smart Home", items: enabled(
         TD_SMART_HOME_WIDGETS.map(([type, icon, label, desc]) => ({ type, icon, label, desc }))
@@ -3245,28 +3789,9 @@ class TdScreenEditor extends LitElement {
         { type: "countdown", icon: "⏱️", label: "Countdown", desc: "Ereignis oder Zielzeit" },
         { type: "qr-code",   icon: "🔳", label: "QR-Code",   desc: "Link, Text oder WLAN" },
         { type: "button",    icon: "🔘", label: "Button",    desc: "Touch-Aktion, Screen oder URL" },
+        { type: "web-embed", icon: "🌐", label: "Webseite / Einbettung", desc: "Home-Assistant-Seite oder URL direkt im Display einbetten" },
         { type: "color-block", icon: "🟦", label: "Farbblock", desc: "Dekorativer Block / Platzhalter" },
       ])},
-      { name: "📁 HA Presets", items: [
-        { type: "preset-energy",  icon: "⚡", label: "Energie",  desc: "Leistungs- oder Energiesensor" },
-        { type: "preset-person",  icon: "👤", label: "Personen", desc: "Anwesenheit und Status" },
-        { type: "preset-doors",   icon: "🚪", label: "Türen",    desc: "Öffnungssensoren" },
-        { type: "preset-battery", icon: "🔋", label: "Batterie", desc: "Akkustand" },
-        { type: "preset-media",   icon: "🎵", label: "Medien",   desc: "Titel und Wiedergabe" },
-        { type: "preset-climate", icon: "🌡️", label: "Klima",    desc: "Thermostat / Temperatur" },
-        { type: "preset-light",   icon: "💡", label: "Licht",    desc: "Lichtstatus und Helligkeit" },
-        { type: "preset-alarm",   icon: "🛡️", label: "Alarm",    desc: "Sicherheitsstatus" },
-        { type: "preset-cover",   icon: "🪟", label: "Rollladen",desc: "Cover-Position" },
-        { type: "preset-vacuum",  icon: "🧹", label: "Sauger",   desc: "Roboterstatus" },
-        { type: "preset-network", icon: "📶", label: "Netzwerk", desc: "WLAN, Ping, Router" },
-      ]},
-      { name: "📁 Screen-Vorlagen", items: [
-        { type: "ha-template-home",     icon: "🏠", label: "Home",       desc: "Wetter, Uhr, Status" },
-        { type: "ha-template-energy",   icon: "⚡", label: "Energie",    desc: "Verbrauchsübersicht" },
-        { type: "ha-template-security", icon: "🚨", label: "Sicherheit", desc: "Kontakte, Alarm" },
-        { type: "ha-template-family",   icon: "👨‍👩‍👧", label: "Familie",  desc: "Personen, Kalender" },
-        { type: "ha-template-media",    icon: "📺", label: "Medien",     desc: "Player und Cover" },
-      ]},
     ];
 
     if (userTemplates.length) {
@@ -3585,6 +4110,42 @@ class TdScreenEditor extends LitElement {
       return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">${icon}</span></div><div class="pv-value">${valText}</div>${this._renderEditorMetricChart(w)}<div class="pv-sub">${extras.length ? `+ ${extras.join(" · ")}` : (attrs.friendly_name || w.entity_id || "")}</div></div>`;
     }
 
+
+
+
+    if (w.type === "text-card") {
+      const body = (w.config?.text_content || w.config?.subtitle_text || "Text hinzufügen…").trim();
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">📝</span></div><div class="pv-sub" style="white-space:pre-wrap">${body.slice(0, 180)}</div>${w.config?.text_show_entity && w.entity_id ? html`<div class="pv-value">${valText}</div>` : ""}</div>`;
+    }
+
+    if (w.type === "entity-list") {
+      const ids = [w.entity_id, ...((w.config?.entities || []).filter(Boolean))].filter(Boolean).slice(0, Number(w.config?.list_max_items || 8));
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">📋</span></div><div class="pv-sub">${ids.length || 0} Einträge</div><div class="pv-action-row">${ids.slice(0, 3).map((id) => html`<span class="pv-action grow">${String(id).split('.').slice(1).join('.')}</span>`)}</div></div>`;
+    }
+
+    if (w.type === "chip-row") {
+      const ids = [w.entity_id, ...((w.config?.entities || []).filter(Boolean))].filter(Boolean).slice(0, 4);
+      return html`<div class="pv"><div class="pv-head"><span class="pv-title">${fallbackTitle}</span><span class="pv-icon">🏷️</span></div><div class="pv-action-row">${ids.length ? ids.map((id) => html`<span class="pv-chip on">${String(id).split('.').slice(1).join('.')}</span>`) : html`<span class="pv-chip off">Keine Entities</span>`}</div></div>`;
+    }
+
+    if (w.type === "divider") {
+      const label = w.config?.divider_label || fallbackTitle || "Abschnitt";
+      return html`<div class="pv"><div class="pv-sub" style="display:flex;align-items:center;gap:8px;width:100%"><span style="flex:1;height:${Number(w.config?.divider_thickness || 1)}px;background:rgba(255,255,255,.18)"></span><strong>${label}</strong><span style="flex:1;height:${Number(w.config?.divider_thickness || 1)}px;background:rgba(255,255,255,.18)"></span></div></div>`;
+    }
+
+    if (w.type === "spacer") {
+      return html`<div class="pv"><div class="pv-placeholder">⬜</div><div class="pv-sub">Leerraum / Spacer</div></div>`;
+    }
+
+    if (w.type === "web-embed") {
+      const title = w.config?.embed_title || fallbackTitle || "Webseite / Einbettung";
+      const embedUrl = tdResolveEmbedUrl(w.config?.embed_url || w.config?.page_url || "/lovelace");
+      const height = Number(w.config?.embed_height || 350);
+      const interactive = w.config?.embed_interactive !== false;
+      const fullscreen = w.config?.embed_fullscreen !== false;
+      return html`<div class="pv pv-control-card"><div class="pv-control-top"><div class="pv-control-icon">🌐</div><div class="pv-control-main"><div class="pv-title">${title}</div><div class="pv-value">${embedUrl || "Keine URL gewählt"}</div><div class="pv-sub">${fullscreen ? "Vollbild auf dem Display" : (interactive ? "Interaktiv auf dem Display" : "Nur Vorschau / nicht interaktiv")}</div></div><div class="pv-chip on">Embed</div></div><iframe src=${embedUrl || "about:blank"} style="width:100%;height:${fullscreen ? 520 : Math.max(180, Math.min(height, 420))}px;border:0;border-radius:14px;background:#0b1220;margin-top:10px;" loading="lazy"></iframe></div>`;
+    }
+
     if (w.type === "media-player-control") {
       const compact = (w.config?.control_layout || "compact") !== "card";
       const showIcon = w.config?.control_show_icon !== false;
@@ -3811,7 +4372,7 @@ class TdScreenEditor extends LitElement {
     const ws = [...(this._cfg.widgets || [])];
     const nw = tdCreateWidget(type, c, r, this.globalSettings || {});
     if (TD_CHART_TYPES.has(type)) {
-      nw.config = { ...(nw.config || {}), chart_use_history: true, hours: 24, chart_max_points: 48 };
+      nw.config = { ...(nw.config || {}), ...tdDefaultChartConfig(this.globalSettings || {}, nw.config || {}) };
     }
     ws.push(nw);
     this._cfg = { ...this._cfg, widgets: ws };
@@ -3831,7 +4392,7 @@ class TdScreenEditor extends LitElement {
     const ws = [...(this._cfg.widgets || [])];
     const nw = tdCreateWidget(this._dwt, col, row, this.globalSettings || {});
     if (TD_CHART_TYPES.has(this._dwt)) {
-      nw.config = { ...(nw.config || {}), chart_use_history: true, hours: 24, chart_max_points: 48 };
+      nw.config = { ...(nw.config || {}), ...tdDefaultChartConfig(this.globalSettings || {}, nw.config || {}) };
     }
     ws.push(nw);
     this._cfg = { ...this._cfg, widgets: ws };
@@ -5099,6 +5660,243 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
     `);
   }
 
+
+  if (w.type === "web-embed") {
+    const pages = tdCollectEmbedPages(this.hass);
+    const currentUrl = tdResolveEmbedUrl(w.config?.embed_url || "/lovelace");
+    parts.push(html`
+      <div class="pg4">Webseite / Einbettung</div>
+      <div class="pf2">
+        <label>Verfügbare Seiten</label>
+        <select .value=${currentUrl}
+                @change=${(e) => {
+                  this._setWidgetConfig("embed_page_id", e.target.value);
+                  this._setWidgetConfig("embed_url", e.target.value);
+                }}>
+          <option value="">— Seite auswählen —</option>
+          ${pages.map((page) => html`<option value=${page.url}>${page.label}${page.meta ? ` · ${page.meta}` : ""}</option>`)}
+        </select>
+      </div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>URL / Pfad</label>
+          <input .value=${w.config?.embed_url || "/lovelace"}
+                 placeholder="/lovelace oder https://…"
+                 @input=${(e) => this._setWidgetConfig("embed_url", e.target.value)}>
+        </div>
+        <div class="pf2">
+          <label>Iframe-Höhe</label>
+          <input type="number"
+                 .value=${Number(w.config?.embed_height || 350)}
+                 min="120" max="1200" step="10"
+                 @input=${(e) => this._setWidgetConfig("embed_height", Number(e.target.value || 350))}>
+        </div>
+      </div>
+      <div class="tog-grid">
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.config?.embed_fullscreen !== false}
+                 @change=${(e) => this._setWidgetConfig("embed_fullscreen", e.target.checked)}>
+          <span>Vollbild auf dem Display</span>
+        </label>
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.config?.embed_interactive !== false}
+                 @change=${(e) => this._setWidgetConfig("embed_interactive", e.target.checked)}>
+          <span>Interaktiv auf dem Display</span>
+        </label>
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.config?.embed_kiosk !== false}
+                 @change=${(e) => this._setWidgetConfig("embed_kiosk", e.target.checked)}>
+          <span>Kiosk / ohne HA-Menüleisten</span>
+        </label>
+      </div>
+      <div class="pf2-hint">Du wählst eine vorhandene Home-Assistant-Seite aus oder trägst direkt eine URL/einen Pfad ein. Diese Seite wird auf dem Display eingebettet. Im Kiosk-Modus blendet das Display bei eingebetteten HA-Seiten Kopf- und Seitenleisten aus.</div>
+      <div class="pf2" style="margin-top:12px;">
+        <label>Vorschau</label>
+        <iframe src=${tdResolveEmbedUrl(w.config?.embed_url || "/lovelace") || "about:blank"}
+                style="width:100%;height:${w.config?.embed_fullscreen !== false ? 640 : Math.max(180, Math.min(Number(w.config?.embed_height || 350), 520))}px;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:#0b1220;"
+                loading="lazy"></iframe>
+      </div>
+    `);
+  }
+
+  if (w.type === "text-card") {
+    parts.push(html`
+      <div class="pg4">Text</div>
+      <div class="pf2">
+        <label>Textinhalt</label>
+        <textarea rows="8"
+                  .value=${w.config?.text_content || ""}
+                  placeholder="Eigener Text, Hinweise, Markdown oder kurze Anleitungen"
+                  @input=${(e) => this._setWidgetConfig("text_content", e.target.value)}></textarea>
+      </div>
+      <div class="tog-grid">
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.config?.text_markdown !== false}
+                 @change=${(e) => this._setWidgetConfig("text_markdown", e.target.checked)}>
+          <span>Markdown vereinfachen</span>
+        </label>
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.config?.text_show_entity === true}
+                 @change=${(e) => this._setWidgetConfig("text_show_entity", e.target.checked)}>
+          <span>Entity-Wert zusätzlich zeigen</span>
+        </label>
+      </div>
+    `);
+  }
+
+  if (w.type === "entity-list") {
+    parts.push(html`
+      <div class="pg4">Entity-Liste</div>
+      <div class="pf2">
+        <td-entity-multi-picker
+          .hass=${this.hass}
+          .value=${(w.config?.entities || []).filter((id) => id !== w.entity_id)}
+          label="Zusätzliche List-Entities"
+          @value-changed=${(e) => this._setWidgetConfig("entities", e.detail.value)}>
+        </td-entity-multi-picker>
+      </div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Max. Einträge</label>
+          <input type="number" min="1" max="30"
+                 .value=${Number(w.config?.list_max_items || 8)}
+                 @change=${(e) => this._setWidgetConfig("list_max_items", +e.target.value)}>
+        </div>
+        <div class="pf2">
+          <label>Darstellung</label>
+          <select .value=${w.config?.list_dense ? "dense" : "comfortable"}
+                  @change=${(e) => this._setWidgetConfig("list_dense", e.target.value === "dense")}>
+            <option value="comfortable">Komfortabel</option>
+            <option value="dense">Kompakt</option>
+          </select>
+        </div>
+      </div>
+      <div class="tog-grid">
+        ${[
+          ["list_show_icons", "Icons", true],
+          ["list_show_names", "Namen", true],
+          ["list_show_values", "Werte", true],
+          ["list_show_units", "Units", true],
+        ].map(([key, label, defaultVal]) => html`
+          <label class="tog">
+            <input type="checkbox"
+                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
+                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
+            <span>${label}</span>
+          </label>
+        `)}
+      </div>
+    `);
+  }
+
+  if (w.type === "chip-row") {
+    parts.push(html`
+      <div class="pg4">Chip-Reihe</div>
+      <div class="pf2">
+        <td-entity-multi-picker
+          .hass=${this.hass}
+          .value=${(w.config?.entities || []).filter((id) => id !== w.entity_id)}
+          label="Zusätzliche Chip-Entities"
+          @value-changed=${(e) => this._setWidgetConfig("entities", e.detail.value)}>
+        </td-entity-multi-picker>
+      </div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Chip-Stil</label>
+          <select .value=${w.config?.chip_style || "glass"}
+                  @change=${(e) => this._setWidgetConfig("chip_style", e.target.value)}>
+            <option value="glass">Glass</option>
+            <option value="solid">Solid</option>
+            <option value="outline">Outline</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </div>
+        <div class="pf2">
+          <label>Umbruch</label>
+          <select .value=${w.config?.chip_wrap === false ? "single" : "wrap"}
+                  @change=${(e) => this._setWidgetConfig("chip_wrap", e.target.value !== "single")}>
+            <option value="wrap">Mehrzeilig</option>
+            <option value="single">Einzeilig</option>
+          </select>
+        </div>
+      </div>
+      <div class="tog-grid">
+        ${[
+          ["chip_show_icons", "Icons", true],
+          ["chip_show_names", "Namen", true],
+          ["chip_show_values", "Werte", true],
+        ].map(([key, label, defaultVal]) => html`
+          <label class="tog">
+            <input type="checkbox"
+                   .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
+                   @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
+            <span>${label}</span>
+          </label>
+        `)}
+      </div>
+    `);
+  }
+
+  if (w.type === "divider") {
+    parts.push(html`
+      <div class="pg4">Divider</div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Beschriftung</label>
+          <input .value=${w.config?.divider_label || ""}
+                 placeholder="Abschnitt / Kapitel"
+                 @input=${(e) => this._setWidgetConfig("divider_label", e.target.value)}>
+        </div>
+        <div class="pf2">
+          <label>Ausrichtung</label>
+          <select .value=${w.config?.divider_align || "center"}
+                  @change=${(e) => this._setWidgetConfig("divider_align", e.target.value)}>
+            <option value="left">Links</option>
+            <option value="center">Zentriert</option>
+            <option value="right">Rechts</option>
+          </select>
+        </div>
+      </div>
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Stil</label>
+          <select .value=${w.config?.divider_style || "solid"}
+                  @change=${(e) => this._setWidgetConfig("divider_style", e.target.value)}>
+            <option value="solid">Solid</option>
+            <option value="dashed">Dashed</option>
+            <option value="glow">Glow</option>
+            <option value="double">Double</option>
+          </select>
+        </div>
+        <div class="pf2">
+          <label>Linienstärke</label>
+          <input type="number" min="1" max="8"
+                 .value=${Number(w.config?.divider_thickness || 1)}
+                 @change=${(e) => this._setWidgetConfig("divider_thickness", +e.target.value)}>
+        </div>
+      </div>
+      <div class="pf2">
+        <td-color-picker
+          .value=${w.config?.divider_color || "#ffffff"}
+          label="Linienfarbe"
+          @value-changed=${(e) => this._setWidgetConfig("divider_color", e.detail.value)}>
+        </td-color-picker>
+      </div>
+    `);
+  }
+
+  if (w.type === "spacer") {
+    parts.push(html`
+      <div class="pg4">Spacer</div>
+      <div class="pf2-hint">Spacer-Widgets sind für Abstand und Layout gedacht. Die Höhe steuerst du bequem über <strong>Min-Höhe</strong> im Style-Tab.</div>
+    `);
+  }
+
   // Countdown
   if (w.type === "countdown") {
     parts.push(html`
@@ -5117,21 +5915,23 @@ TdScreenEditor.prototype._renderTypeSpecific = function (w) {
 
 /* ────── Chart Config ────── */
 TdScreenEditor.prototype._renderChartConfig = function (w) {
+  const type = w.type || "line-chart";
+  const isCircular = ["donut-chart", "pie-chart", "radial-gauge-advanced", "polar-area-chart", "treemap-chart", "sunburst-chart"].includes(type);
+  const isBarLike = ["bar-chart", "stacked-bar-chart", "horizontal-bar-chart", "bullet-chart", "heatmap-mini", "histogram-chart", "waterfall-chart", "candlestick-chart", "boxplot-chart", "sankey-chart"].includes(type);
   return html`
     <div class="pg4">Chart</div>
 
-    <!-- Time range -->
     <div class="pf2-row">
       <div class="pf2">
-        <label>Zeitraum (h)</label>
+        <label>Chart Zeitraum (h)</label>
         <input type="number" min="1" max="168"
                .value=${w.config?.hours || 24}
                @change=${(e) => this._setWidgetConfig("hours", +e.target.value)}>
       </div>
       <div class="pf2">
         <label>Max. Punkte</label>
-        <input type="number" min="8" max="120"
-               .value=${w.config?.chart_max_points || 36}
+        <input type="number" min="8" max="180"
+               .value=${w.config?.chart_max_points || 48}
                @change=${(e) => this._setWidgetConfig("chart_max_points", +e.target.value)}>
       </div>
     </div>
@@ -5144,7 +5944,6 @@ TdScreenEditor.prototype._renderChartConfig = function (w) {
       `)}
     </div>
 
-    <!-- Extra entities for chart -->
     <div class="pf2">
       <td-entity-multi-picker
         .hass=${this.hass}
@@ -5154,31 +5953,61 @@ TdScreenEditor.prototype._renderChartConfig = function (w) {
       </td-entity-multi-picker>
     </div>
 
-    <div class="tog">
-      <input type="checkbox"
-             .checked=${w.config?.chart_use_history !== false}
-             @change=${(e) => this._setWidgetConfig("chart_use_history", e.target.checked)}>
-      <span>History verwenden</span>
+    <div class="tog-grid">
+      ${[
+        ["chart_use_history", "History verwenden", true],
+        ["chart_animation", "Animation", true],
+        ["chart_show_legend", "Legende", true],
+        ["chart_show_axes", "Achsen", true],
+        ["chart_show_grid", "Grid", true],
+        ["chart_show_points", "Punkte", true],
+        ["chart_stacked", "Gestapelt", false],
+        ["chart_mobile_compact", "Kompakt", false],
+      ].map(([key, label, defaultVal]) => html`
+        <label class="tog">
+          <input type="checkbox"
+                 .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
+                 @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
+          <span>${label}</span>
+        </label>
+      `)}
     </div>
 
-    <!-- Visual -->
     <div class="pf2-row">
       <div class="pf2">
         <label>Farbpalette</label>
         <select .value=${w.config?.chart_palette || "default"}
                 @change=${(e) => this._setWidgetConfig("chart_palette", e.target.value)}>
-          ${["default","ocean","sunset","neon","mono"].map((p) => html`
-            <option value=${p}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>
-          `)}
+          ${["default","ocean","sunset","neon","mono"].map((p) => html`<option value=${p}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>`)}
         </select>
       </div>
       <div class="pf2">
+        <label>Legende</label>
+        <select .value=${w.config?.chart_legend_position || "top"}
+                @change=${(e) => this._setWidgetConfig("chart_legend_position", e.target.value)}>
+          <option value="top">Oben</option>
+          <option value="bottom">Unten</option>
+          <option value="left">Links</option>
+          <option value="right">Rechts</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="pf2-row">
+      <div class="pf2">
         <label>Linienstärke</label>
-        <input type="number" min="1" max="8"
+        <input type="number" min="1" max="10"
                .value=${w.config?.chart_line_width || 2}
                @change=${(e) => this._setWidgetConfig("chart_line_width", +e.target.value)}>
       </div>
+      <div class="pf2">
+        <label>Bar-Radius</label>
+        <input type="number" min="0" max="24"
+               .value=${Number(w.config?.chart_bar_radius || 8)}
+               @change=${(e) => this._setWidgetConfig("chart_bar_radius", +e.target.value)}>
+      </div>
     </div>
+
     <div class="pf2-row">
       <div class="pf2">
         <label>Glättung</label>
@@ -5193,6 +6022,7 @@ TdScreenEditor.prototype._renderChartConfig = function (w) {
                @change=${(e) => this._setWidgetConfig("chart_fill_opacity", +e.target.value)}>
       </div>
     </div>
+
     <div class="pf2-row">
       <div class="pf2">
         <label>Kurvenmodus</label>
@@ -5214,6 +6044,7 @@ TdScreenEditor.prototype._renderChartConfig = function (w) {
         </select>
       </div>
     </div>
+
     <div class="pf2-row">
       <div class="pf2">
         <label>Y bei 0 starten</label>
@@ -5224,63 +6055,82 @@ TdScreenEditor.prototype._renderChartConfig = function (w) {
         </select>
       </div>
       <div class="pf2">
-        <label>Legende</label>
-        <select .value=${w.config?.chart_legend_position || "top"}
-                @change=${(e) => this._setWidgetConfig("chart_legend_position", e.target.value)}>
-          <option value="top">Oben</option>
-          <option value="bottom">Unten</option>
-          <option value="left">Links</option>
-          <option value="right">Rechts</option>
-        </select>
+        <label>Histogramm-Bins</label>
+        <input type="number" min="4" max="24"
+               .value=${Number(w.config?.histogram_bins || 8)}
+               @change=${(e) => this._setWidgetConfig("histogram_bins", +e.target.value)}>
       </div>
     </div>
 
-    <!-- Toggle grid -->
-    <div class="tog-grid">
-      ${[
-        ["chart_animation",   "Animation", true],
-        ["chart_show_legend", "Legende", true],
-        ["chart_show_axes",   "Achsen",  true],
-        ["chart_show_grid",   "Grid",    true],
-        ["chart_show_points", "Punkte",  true],
-        ["chart_stacked",     "Gestapelt", false],
-        ["chart_mobile_compact", "Kompakt", false],
-      ].map(([key, label, defaultVal]) => html`
-        <label class="tog">
-          <input type="checkbox"
-                 .checked=${w.config?.[key] !== undefined ? w.config[key] : defaultVal}
-                 @change=${(e) => this._setWidgetConfig(key, e.target.checked)}>
-          <span>${label}</span>
-        </label>
-      `)}
+    <div class="pg4">Achsen & Grenzen</div>
+    <div class="pf2-row">
+      <div class="pf2">
+        <label>Y-Min</label>
+        <input .value=${w.config?.chart_y_min ?? ""}
+               placeholder="auto"
+               @input=${(e) => this._setWidgetConfig("chart_y_min", e.target.value)}>
+      </div>
+      <div class="pf2">
+        <label>Y-Max</label>
+        <input .value=${w.config?.chart_y_max ?? ""}
+               placeholder="auto"
+               @input=${(e) => this._setWidgetConfig("chart_y_max", e.target.value)}>
+      </div>
+    </div>
+    <div class="pf2-row">
+      <div class="pf2">
+        <label>X-Ticks max</label>
+        <input .value=${w.config?.chart_x_tick_limit ?? ""}
+               placeholder="auto"
+               @input=${(e) => this._setWidgetConfig("chart_x_tick_limit", e.target.value)}>
+      </div>
+      <div class="pf2">
+        <label>Y-Ticks max</label>
+        <input .value=${w.config?.chart_y_tick_limit ?? ""}
+               placeholder="auto"
+               @input=${(e) => this._setWidgetConfig("chart_y_tick_limit", e.target.value)}>
+      </div>
     </div>
 
-    <!-- Type-specific chart options -->
-    ${w.type === "radial-gauge-advanced" || w.type === "bullet-chart" ? html`
+    ${isCircular ? html`
+      <div class="pg4">Kreis-Chart</div>
       <div class="pf2-row">
         <div class="pf2">
-          <label>Min</label>
-          <input type="number" .value=${w.config?.min || 0}
-                 @change=${(e) => this._setWidgetConfig("min", +e.target.value)}>
+          <label>Cutout (%)</label>
+          <input type="number" min="0" max="95"
+                 .value=${Number(w.config?.chart_cutout || 68)}
+                 @change=${(e) => this._setWidgetConfig("chart_cutout", +e.target.value)}>
         </div>
         <div class="pf2">
-          <label>Max</label>
-          <input type="number" .value=${w.config?.max || 100}
-                 @change=${(e) => this._setWidgetConfig("max", +e.target.value)}>
+          <label>Zielwert / Max</label>
+          <input .value=${w.config?.max ?? w.config?.chart_goal_value ?? ""}
+                 placeholder="100"
+                 @input=${(e) => this._setWidgetConfig(type === "radial-gauge-advanced" ? "max" : "chart_goal_value", e.target.value)}>
         </div>
       </div>
     ` : ""}
 
-    ${w.type === "heatmap-mini" ? html`
+    ${type === "bubble-chart" ? html`
+      <div class="pg4">Bubble</div>
       <div class="pf2">
-        <label>Heatmap-Modus</label>
-        <select .value=${w.config?.heatmap_mode || "intensity"}
-                @change=${(e) => this._setWidgetConfig("heatmap_mode", e.target.value)}>
-          <option value="intensity">Intensität</option>
-          <option value="zones">Zonen</option>
-        </select>
+        <label>Bubble-Skalierung</label>
+        <input type="number" min="2" max="30"
+               .value=${Number(w.config?.chart_bubble_scale || 8)}
+               @change=${(e) => this._setWidgetConfig("chart_bubble_scale", +e.target.value)}>
       </div>
     ` : ""}
+
+    ${(type === "bullet-chart" || type === "waterfall-chart") ? html`
+      <div class="pg4">Zielwert</div>
+      <div class="pf2">
+        <label>Vergleich / Ziel</label>
+        <input .value=${w.config?.chart_goal_value ?? ""}
+               placeholder="z. B. 100"
+               @input=${(e) => this._setWidgetConfig("chart_goal_value", e.target.value)}>
+      </div>
+    ` : ""}
+
+    <div class="pf2-hint">Auch Spezial-Charts nutzen jetzt dieselben Kern-Einstellungen: Zeitraum, Max. Punkte, Legende, Achsen, Grid, Glättung, Radius und Grenzen.</div>
   `;
 };
 
@@ -5388,19 +6238,65 @@ TdScreenEditor.prototype._renderScreenTickerConfig = function () {
   return html`
     <div class="pg4">Ticker-Leiste (Screen-Override)</div>
 
-    <div class="pf2">
-      <label>Stil-Vorlage</label>
-      <select .value=${ts.style_template || "classic"}
-              @change=${(e) => this._setScreen("ticker_style", {
-                ...ts,
-                style_template: e.target.value,
-                ...this._tickerPreset(e.target.value),
-              })}>
-        <option value="classic">Classic</option>
-        <option value="glass">Glass</option>
-        <option value="alert">Alert</option>
-        <option value="minimal">Minimal</option>
-      </select>
+    <div class="pf2-row">
+      <div class="pf2">
+        <label>Stil-Vorlage</label>
+        <select .value=${ts.style_template || "minimal"}
+                @change=${(e) => this._setScreen("ticker_style", {
+                  ...ts,
+                  style_template: e.target.value,
+                  ...this._tickerPreset(e.target.value),
+                })}>
+          <option value="classic">Classic</option>
+          <option value="glass">Glass</option>
+          <option value="alert">Alert</option>
+          <option value="minimal">Minimal</option>
+        </select>
+      </div>
+      <div class="pf2">
+        <label>Geschwindigkeit</label>
+        <select .value=${ts.speed || "normal"}
+                @change=${(e) => this._setScreen("ticker_style", { ...ts, speed: e.target.value })}>
+          <option value="slow">Langsam</option>
+          <option value="normal">Normal</option>
+          <option value="fast">Schnell</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="pf2-row">
+      <div class="pf2">
+        <label>Richtung</label>
+        <select .value=${ts.direction || "ltr"}
+                @change=${(e) => this._setScreen("ticker_style", { ...ts, direction: e.target.value })}>
+          <option value="ltr">Links → Rechts</option>
+          <option value="rtl">Rechts → Links</option>
+        </select>
+      </div>
+      <div class="pf2">
+        <label>Neue Meldung ersetzt alte</label>
+        <select .value=${ts.replace_on_new_message !== false ? "on" : "off"}
+                @change=${(e) => this._setScreen("ticker_style", { ...ts, replace_on_new_message: e.target.value === "on" })}>
+          <option value="on">Ein</option>
+          <option value="off">Aus</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="pf2-row">
+      <div class="pf2">
+        <label>Position</label>
+        <select .value=${ts.position || "bottom"}
+                @change=${(e) => this._setScreen("ticker_style", { ...ts, position: e.target.value })}>
+          <option value="bottom">Unten</option>
+          <option value="top">Oben</option>
+        </select>
+      </div>
+      <div class="pf2">
+        <label>Trennzeichen</label>
+        <input .value=${ts.separator || "│"}
+               @change=${(e) => this._setScreen("ticker_style", { ...ts, separator: e.target.value || "│" })}>
+      </div>
     </div>
 
     <div class="pf2-row">
@@ -5420,18 +6316,64 @@ TdScreenEditor.prototype._renderScreenTickerConfig = function () {
 
     <div class="pf2-row">
       <div class="pf2">
+        <label>Padding X</label>
+        <input type="number" min="4" max="40"
+               .value=${ts.item_padding_x || 22}
+               @change=${(e) => this._setScreen("ticker_style", { ...ts, item_padding_x: +e.target.value })}>
+      </div>
+      <div class="pf2">
+        <label>Transparenz</label>
+        <input type="number" min="0.1" max="1" step="0.05"
+               .value=${ts.opacity ?? 1}
+               @change=${(e) => this._setScreen("ticker_style", { ...ts, opacity: +e.target.value })}>
+      </div>
+    </div>
+
+    <div class="pf2-row">
+      <div class="pf2">
         <td-color-picker
-          .value=${ts.text_color || "#e8eef7"}
+          .value=${ts.text_color || "#f3f4f6"}
           label="Textfarbe"
           @value-changed=${(e) => this._setScreen("ticker_style", { ...ts, text_color: e.detail.value })}>
         </td-color-picker>
       </div>
       <div class="pf2">
         <td-color-picker
-          .value=${ts.accent_color || "#40c4ff"}
+          .value=${ts.background_color || "rgba(0,0,0,.22)"}
+          label="Hintergrund"
+          @value-changed=${(e) => this._setScreen("ticker_style", { ...ts, background_color: e.detail.value })}>
+        </td-color-picker>
+      </div>
+    </div>
+
+    <div class="pf2-row">
+      <div class="pf2">
+        <td-color-picker
+          .value=${ts.accent_color || "#9ca3af"}
           label="Akzent"
           @value-changed=${(e) => this._setScreen("ticker_style", { ...ts, accent_color: e.detail.value })}>
         </td-color-picker>
+      </div>
+      <div class="pf2">
+        <label>Radius (px)</label>
+        <input type="number" min="0" max="40"
+               .value=${ts.border_radius || 0}
+               @change=${(e) => this._setScreen("ticker_style", { ...ts, border_radius: +e.target.value })}>
+      </div>
+    </div>
+
+    <div class="pf2-row">
+      <div class="pf2">
+        <label>Schriftgewicht</label>
+        <input type="number" min="300" max="900" step="100"
+               .value=${ts.font_weight || 500}
+               @change=${(e) => this._setScreen("ticker_style", { ...ts, font_weight: +e.target.value })}>
+      </div>
+      <div class="pf2">
+        <label>Optionale Quelle</label>
+        <input .value=${ts.source || ""}
+               placeholder="z.B. News / System"
+               @change=${(e) => this._setScreen("ticker_style", { ...ts, source: e.target.value })}>
       </div>
     </div>
 
@@ -6370,6 +7312,186 @@ customElements.define("td-template-editor", TdTemplateEditor);
 /* ══════════════════════════════════════════════════════════
    ALERT LIST
    ══════════════════════════════════════════════════════════ */
+
+class TdMessageStudio extends LitElement {
+  static get properties() {
+    return { hass: { type: Object }, devices: { type: Array } };
+  }
+
+  constructor() {
+    super();
+    this.devices = [];
+    this._target = "all";
+    this._tickerMessage = "Willkommen zuhause 👋";
+    this._tickerDuration = 15;
+    this._tickerColor = "#9ca3af";
+    this._toastMessage = "Geschirrspüler ist fertig";
+    this._toastDuration = 6;
+    this._toastColor = "#111827";
+    this._bannerTitle = "Info";
+    this._bannerMessage = "Fenster im Büro ist noch offen";
+    this._bannerColor = "#2196F3";
+    this._alertTitle = "Türklingel";
+    this._alertMessage = "Jemand steht vor der Haustür";
+    this._alertColor = "#ff9800";
+  }
+
+  static get styles() {
+    return css`
+      :host { display:block; }
+      .wrap { display:grid; gap:16px; }
+      .note { font-size:13px; color:var(--secondary-text-color); line-height:1.5; }
+      .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+      .card { border:1px solid var(--divider-color); border-radius:14px; padding:14px; background:var(--card-background-color); display:grid; gap:10px; }
+      .card h4 { margin:0; font-size:16px; }
+      .f { display:grid; gap:6px; }
+      .f label { font-size:12px; color:var(--secondary-text-color); }
+      .f input, .f select, .f textarea { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid var(--divider-color); border-radius:10px; background:var(--primary-background-color); color:var(--primary-text-color); }
+      .code { background:#0b1020; color:#dbeafe; padding:12px; border-radius:12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; white-space:pre-wrap; word-break:break-word; }
+      .row { display:flex; gap:8px; flex-wrap:wrap; }
+      button { padding:8px 12px; border:1px solid var(--divider-color); border-radius:10px; background:none; color:var(--primary-text-color); cursor:pointer; }
+      button.primary { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
+      .preview-wrap { border:1px dashed var(--divider-color); border-radius:14px; padding:12px; background:rgba(255,255,255,.02); }
+      .ticker-preview { display:flex; align-items:center; width:100%; min-height:36px; padding:0 14px; border-radius:10px; color:#fff; overflow:hidden; white-space:nowrap; }
+      .toast-preview { display:inline-flex; align-items:center; min-height:44px; padding:0 16px; border-radius:16px; color:#fff; }
+      .banner-preview { display:grid; gap:4px; min-height:60px; padding:12px 14px; border-radius:12px; color:#fff; }
+      .alert-preview { display:grid; place-items:center; min-height:140px; border-radius:18px; color:#fff; text-align:center; padding:20px; }
+      .subgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      @media (max-width: 900px){ .subgrid { grid-template-columns:1fr; } }
+    `;
+  }
+
+  _copy(text) {
+    navigator.clipboard?.writeText(text);
+  }
+
+  _yaml(obj) {
+    return obj;
+  }
+
+  _deviceOptions() {
+    const items = Array.isArray(this.devices) ? this.devices : [];
+    return [
+      { id: 'all', name: 'Alle Geräte' },
+      ...items.map((d) => ({ id: d.id || d.device_id || d.name, name: `${d.name || d.id} (${d.id || d.device_id || d.name})` }))
+    ];
+  }
+
+  _tickerYaml() {
+    return `action: ticker_display.send_ticker_message
+data:
+  device: ${this._target}
+  message: "${this._tickerMessage}"
+  duration: ${this._tickerDuration}
+  replace: true
+  color: "${this._tickerColor}"`;
+  }
+
+  _toastYaml() {
+    return `action: ticker_display.show_toast
+data:
+  device: ${this._target}
+  message: "${this._toastMessage}"
+  duration: ${this._toastDuration}
+  color: "${this._toastColor}"`;
+  }
+
+  _bannerYaml() {
+    return `action: ticker_display.show_banner
+data:
+  device: ${this._target}
+  title: "${this._bannerTitle}"
+  message: "${this._bannerMessage}"
+  color: "${this._bannerColor}"`;
+  }
+
+  _alertYaml() {
+    return `action: ticker_display.show_alert
+data:
+  device: ${this._target}
+  title: "${this._alertTitle}"
+  message: "${this._alertMessage}"
+  severity: warning
+  mode: fullscreen
+  color: "${this._alertColor}"
+  duration: 10`;
+  }
+
+  render() {
+    const devs = this._deviceOptions();
+    return html`
+      <div class="wrap">
+        <div class="card">
+          <h4>📰 Ticker & Popups</h4>
+          <div class="note">Hier findest du getrennte Bereiche für Live-Ticker, feste Liste, Toast, Banner und Alert – jeweils mit Vorschau und kopierbarer Beispiel-Aktion für das Entwicklerwerkzeug.</div>
+          <div class="f">
+            <label>Zielgerät für Beispiele</label>
+            <select .value=${this._target} @change=${(e) => { this._target = e.target.value; this.requestUpdate(); }}>
+              ${devs.map((d) => html`<option value=${d.id}>${d.name}</option>`)}
+            </select>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <h4>▶️ Live-Ticker</h4>
+            <div class="subgrid">
+              <div class="f"><label>Nachricht</label><input .value=${this._tickerMessage} @input=${(e)=>{this._tickerMessage=e.target.value;this.requestUpdate();}}></div>
+              <div class="f"><label>Dauer (s)</label><input type="number" min="1" max="120" .value=${this._tickerDuration} @input=${(e)=>{this._tickerDuration=Number(e.target.value||15);this.requestUpdate();}}></div>
+            </div>
+            <div class="f"><label>Akzent/Farbe</label><input .value=${this._tickerColor} @input=${(e)=>{this._tickerColor=e.target.value;this.requestUpdate();}}></div>
+            <div class="preview-wrap"><div class="ticker-preview" style=${`background: linear-gradient(90deg, ${this._tickerColor}, rgba(0,0,0,.65));`}>${this._tickerMessage}</div></div>
+            <div class="code">${this._tickerYaml()}</div>
+            <div class="row"><button class="primary" @click=${() => this._copy(this._tickerYaml())}>Aktion kopieren</button></div>
+          </div>
+
+          <div class="card">
+            <h4>🗂️ Feste Tickerliste</h4>
+            <div class="note">Mehrere feste Meldungen pflegst du direkt im Screen-Editor unter <b>Feste Meldungen</b>. Eine Meldung pro Zeile.</div>
+            <div class="code">Ticker-Leiste → Feste Meldungen
+- Erste Meldung
+- Zweite Meldung
+- Dritte Meldung</div>
+            <div class="preview-wrap"><div class="ticker-preview" style="background:rgba(12,18,28,.78)">Erste Meldung │ Zweite Meldung │ Dritte Meldung</div></div>
+          </div>
+
+          <div class="card">
+            <h4>💬 Toast</h4>
+            <div class="subgrid">
+              <div class="f"><label>Nachricht</label><input .value=${this._toastMessage} @input=${(e)=>{this._toastMessage=e.target.value;this.requestUpdate();}}></div>
+              <div class="f"><label>Dauer (s)</label><input type="number" min="1" max="60" .value=${this._toastDuration} @input=${(e)=>{this._toastDuration=Number(e.target.value||6);this.requestUpdate();}}></div>
+            </div>
+            <div class="f"><label>Farbe</label><input .value=${this._toastColor} @input=${(e)=>{this._toastColor=e.target.value;this.requestUpdate();}}></div>
+            <div class="preview-wrap"><div class="toast-preview" style=${`background:${this._toastColor};`}>${this._toastMessage}</div></div>
+            <div class="code">${this._toastYaml()}</div>
+            <div class="row"><button class="primary" @click=${() => this._copy(this._toastYaml())}>Aktion kopieren</button></div>
+          </div>
+
+          <div class="card">
+            <h4>📣 Banner</h4>
+            <div class="f"><label>Titel</label><input .value=${this._bannerTitle} @input=${(e)=>{this._bannerTitle=e.target.value;this.requestUpdate();}}></div>
+            <div class="f"><label>Nachricht</label><textarea rows="3" @input=${(e)=>{this._bannerMessage=e.target.value;this.requestUpdate();}}>${this._bannerMessage}</textarea></div>
+            <div class="f"><label>Farbe</label><input .value=${this._bannerColor} @input=${(e)=>{this._bannerColor=e.target.value;this.requestUpdate();}}></div>
+            <div class="preview-wrap"><div class="banner-preview" style=${`background:${this._bannerColor};`}><strong>${this._bannerTitle}</strong><span>${this._bannerMessage}</span></div></div>
+            <div class="code">${this._bannerYaml()}</div>
+            <div class="row"><button class="primary" @click=${() => this._copy(this._bannerYaml())}>Aktion kopieren</button></div>
+          </div>
+
+          <div class="card">
+            <h4>🚨 Alert</h4>
+            <div class="f"><label>Titel</label><input .value=${this._alertTitle} @input=${(e)=>{this._alertTitle=e.target.value;this.requestUpdate();}}></div>
+            <div class="f"><label>Nachricht</label><textarea rows="3" @input=${(e)=>{this._alertMessage=e.target.value;this.requestUpdate();}}>${this._alertMessage}</textarea></div>
+            <div class="f"><label>Farbe</label><input .value=${this._alertColor} @input=${(e)=>{this._alertColor=e.target.value;this.requestUpdate();}}></div>
+            <div class="preview-wrap"><div class="alert-preview" style=${`background:${this._alertColor};`}><div><div style="font-size:24px;font-weight:700;">${this._alertTitle}</div><div style="margin-top:8px;">${this._alertMessage}</div></div></div></div>
+            <div class="code">${this._alertYaml()}</div>
+            <div class="row"><button class="primary" @click=${() => this._copy(this._alertYaml())}>Aktion kopieren</button></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+customElements.define("td-message-studio", TdMessageStudio);
 
 class TdAlertList extends LitElement {
   static get properties() {
@@ -8392,16 +9514,6 @@ class TdGlobalSettings extends LitElement {
                  .value=${d.default_widget_radius || 12}
                  @input=${(e) => this._set("default_widget_radius", +e.target.value)}>
         </div>
-
-        <div class="f slider-field">
-          <label>
-            Ticker-Höhe
-            <span class="value-display">${d.default_ticker_height || 36}px</span>
-          </label>
-          <input type="range" min="24" max="80" step="2"
-                 .value=${d.default_ticker_height || 36}
-                 @input=${(e) => this._set("default_ticker_height", +e.target.value)}>
-        </div>
       </div>
 
       <div class="sec">
@@ -8983,6 +10095,7 @@ class TickerDisplayPanel extends LitElement {
         @identify-device=${(e) => this.hass.callService("ticker_display", "identify_device", { device: e.detail.deviceId })}
         @delete-device=${(e) => this._deleteDevice(e.detail.deviceId)}
         @copy-link=${(e) => this._copyDeviceLink(e.detail.url || e.detail.deviceId)}
+        @copy-device-id=${(e) => this._copyDeviceLink(e.detail.deviceId)}
         @create-virtual-device=${() => this._createVirtualDevice()}
         @refresh=${() => this._loadAll()}>
       </td-device-list>
@@ -8995,6 +10108,7 @@ class TickerDisplayPanel extends LitElement {
       <div class="subtabs">
         ${[
           ["templates", "📋 Vorlagen"],
+          ["tickerpopups", "📰 Ticker & Popups"],
           ["alerts",    "🔔 Alerts"],
           ["themes",    "🎨 Themes"],
         ].map(([id, label]) => html`
@@ -9010,6 +10124,9 @@ class TickerDisplayPanel extends LitElement {
 
   _renderLibraryContent() {
     switch (this._libraryTab) {
+      case "tickerpopups": return html`
+        <td-message-studio .hass=${this.hass} .devices=${this._devices}></td-message-studio>`;
+
       case "alerts": return html`
         <td-alert-list .hass=${this.hass} .alertTemplates=${this._alertTemplates} .sounds=${this._sounds}
           @create-alert=${() => { this._alertId = null; this._page = "alert-editor"; }}

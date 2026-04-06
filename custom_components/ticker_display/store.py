@@ -35,6 +35,8 @@ class TickerDisplayStore:
                 "default_widget_radius": 12,
                 "default_background_color": "#121212",
                 "default_ticker_height": 36,
+                "default_ticker_direction": "ltr",
+                "default_toast_duration": 6,
                 "widget_feature_flags": {},
                 "device_groups": {},
             },
@@ -69,7 +71,7 @@ class TickerDisplayStore:
     def get_device(self, device_id: str) -> dict | None:
         return self._data.get("devices", {}).get(device_id)
 
-    async def async_add_device(self, device_id: str, device_info: dict):
+    async def async_add_device(self, device_id: str, device_info: dict) -> bool:
         devices = self._data.setdefault("devices", {})
 
         if device_id in devices:
@@ -89,12 +91,15 @@ class TickerDisplayStore:
                         "screen_resolution",
                         existing.get("screen_resolution", ""),
                     ),
+                    "install_id": device_info.get("install_id", existing.get("install_id", "")),
+                    "app_version": device_info.get("app_version", existing.get("app_version", "")),
+                    "updated_at": datetime.utcnow().isoformat(),
                 }
             )
 
             await self.async_save()
             _LOGGER.info("Device metadata updated: %s", device_id)
-            return
+            return False
 
         devices[device_id] = {
             "id": device_id,
@@ -102,21 +107,80 @@ class TickerDisplayStore:
             "model": device_info.get("model", "Unknown"),
             "android_version": device_info.get("android_version", ""),
             "screen_resolution": device_info.get("screen_resolution", ""),
+            "install_id": device_info.get("install_id", ""),
+            "app_version": device_info.get("app_version", ""),
             "screens": [],
             "rotation": {"enabled": True, "transition": "fade"},
             "ticker": {
                 "enabled": True,
                 "position": "bottom",
                 "speed": "normal",
+                "direction": "ltr",
+                "replace_on_new_message": True,
+                "auto_show_on_message": True,
+                "hide_when_empty": True,
+                "auto_hide_seconds": 15,
                 "entities": [],
                 "messages": [],
+            },
+            "toast": {
+                "enabled": True,
+                "position": "bottom",
+                "duration": 6,
+                "color": "#111827",
+                "text_color": "#f9fafb",
+                "accent_color": "#60a5fa",
+                "border_radius": 16,
+                "font_size": 16,
+                "width": "content",
+                "wake_screen": True,
             },
             "theme": DEFAULT_THEME,
             "font": "roboto",
             "created_at": None,
+            "updated_at": datetime.utcnow().isoformat(),
         }
         await self.async_save()
         _LOGGER.info("Device registered: %s", device_id)
+        return True
+
+
+    def find_device_by_install_id(self, install_id: str) -> dict | None:
+        install_id = str(install_id or "").strip()
+        if not install_id:
+            return None
+        for device in self._data.get("devices", {}).values():
+            if str(device.get("install_id") or "").strip() == install_id:
+                return device
+        return None
+
+    def find_device_by_name(self, name: str) -> dict | None:
+        needle = str(name or "").strip().casefold()
+        if not needle:
+            return None
+        matches = [
+            device
+            for device in self._data.get("devices", {}).values()
+            if str(device.get("name") or "").strip().casefold() == needle
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def reserve_device_id(self, requested_id: str, install_id: str | None = None) -> str:
+        requested_id = str(requested_id or "").strip()
+        if not requested_id:
+            requested_id = "android_display"
+        devices = self._data.get("devices", {})
+        existing = devices.get(requested_id)
+        if existing is None:
+            return requested_id
+        if install_id and str(existing.get("install_id") or "").strip() == str(install_id).strip():
+            return requested_id
+        idx = 2
+        while f"{requested_id}_{idx}" in devices:
+            idx += 1
+        return f"{requested_id}_{idx}"
 
     async def async_update_device(self, device_id: str, config: dict):
         if not isinstance(config, dict):
@@ -160,6 +224,11 @@ class TickerDisplayStore:
                         "enabled": True,
                         "position": "bottom",
                         "speed": "normal",
+                        "direction": "ltr",
+                        "replace_on_new_message": True,
+                        "auto_show_on_message": True,
+                        "hide_when_empty": True,
+                        "auto_hide_seconds": 15,
                         "entities": [],
                         "messages": [],
                     },

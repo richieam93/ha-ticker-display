@@ -1,4 +1,4 @@
-"""Switch entities for Ticker Display assist toggles."""
+"""Switch entities for Ticker Display device controls."""
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
@@ -9,13 +9,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 
 SWITCHES = {
-    "assist_satellite": ("Assist Satellite", "assist_satellite_enabled"),
-    "microphone": ("Microphone", "microphone_enabled"),
     "front_camera": ("Front Camera", "front_camera_enabled"),
     "back_camera": ("Back Camera", "back_camera_enabled"),
-    "wake_sound": ("Wake Sound", "assist_wake_sound"),
-    "button_click_sounds": ("Button Click Sounds", "assist_button_click_sounds"),
-    "server_audio_mode": ("Server Audio Mode", "assist_server_audio_mode"),
 }
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -26,10 +21,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities = []
     for device_id, device_config in store.get_devices().items():
         for key in SWITCHES:
-            entities.append(TickerDisplayAssistSwitch(coordinator, websocket, device_id, device_config.get("name", device_id), key))
+            entities.append(TickerDisplayDeviceSwitch(coordinator, websocket, device_id, device_config.get("name", device_id), key))
     async_add_entities(entities)
 
-class TickerDisplayAssistSwitch(SwitchEntity):
+class TickerDisplayDeviceSwitch(SwitchEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
@@ -42,7 +37,7 @@ class TickerDisplayAssistSwitch(SwitchEntity):
         self._data_key = data_key
         self._attr_unique_id = f"ticker_display_{device_id}_{key}"
         self._attr_name = label
-        self._attr_device_info = {"identifiers": {(DOMAIN, device_id)}, "name": device_name, "manufacturer": "Ticker Display", "model": "Android Assist Satellite"}
+        self._attr_device_info = {"identifiers": {(DOMAIN, device_id)}, "name": device_name, "manufacturer": "Ticker Display", "model": "Android Display"}
 
     @property
     def is_on(self):
@@ -50,11 +45,11 @@ class TickerDisplayAssistSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._coordinator.update_device_data(self._device_id, {self._data_key: True})
-        await self._websocket.send_command(self._device_id, {"type": "command", "command": "assist_command", "data": {"action": "set_option", "key": self._switch_key, "value": "true"}})
+        await self._websocket.send_command(self._device_id, {"type": "command", "command": self._switch_key, "enabled": True})
 
     async def async_turn_off(self, **kwargs):
         self._coordinator.update_device_data(self._device_id, {self._data_key: False})
-        await self._websocket.send_command(self._device_id, {"type": "command", "command": "assist_command", "data": {"action": "set_option", "key": self._switch_key, "value": "false"}})
+        await self._websocket.send_command(self._device_id, {"type": "command", "command": self._switch_key, "enabled": False})
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()

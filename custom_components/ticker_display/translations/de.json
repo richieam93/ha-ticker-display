@@ -3,7 +3,250 @@
     "step": {
       "user": {
         "title": "Ticker Display Einrichtung",
-        "description": "Ticker Display einrichten. Nach der Installation findest du den Editor in der Seitenleiste."
+        "description": "Ticker Display einrichten. Nach der Installation findest du den Editor in der Seitenleiste.",
+        "data": {
+          "title": "Anzeigename",
+          "description": "Name für dieses Display"
+        }
+      },
+      "options": {
+        "title": "Optionen",
+        "description": "Display-Optionen konfigurieren"
+      }
+    },
+    "abort": {
+      "already_configured": "Dieses Gerät ist bereits konfiguriert"
+    },
+    "error": {
+      "already_configured": "Bereits konfiguriert",
+      "invalid_discovery": "Ungültige Konfiguration"
+    }
+  },
+  "services": {
+    "show_dashboard": {
+      "name": "Dashboard anzeigen",
+      "description": "Zeigt den Dashboard-Screen an"
+    },
+    "show_graph": {
+      "name": "Graph anzeigen",
+      "description": "Zeigt einen Graph-/Chart-Screen an"
+    },
+    "show_camera": {
+      "name": "Kamera anzeigen",
+      "description": "Zeigt einen Kamera-Screen an"
+    },
+    "show_weather": {
+      "name": "Wetter anzeigen",
+      "description": "Zeigt einen Wetter-Screen an"
+    },
+    "show_single_value": {
+      "name": "Einzelwert anzeigen",
+      "description": "Zeigt einen Einzelwert-Screen an"
+    },
+    "show_clock": {
+      "name": "Uhr anzeigen",
+      "description": "Zeigt den Uhr-Screen an"
+    },
+    "show_status_board": {
+      "name": "Status-Board anzeigen",
+      "description": "Zeigt ein Status-Board an"
+    },
+    "show_image": {
+      "name": "Bild anzeigen",
+      "description": "Zeigt einen Bild-Screen an"
+    },
+    "show_template": {
+      "name": "Vorlage anzeigen",
+      "description": "Zeigt eine gespeicherte Vorlage an"
+    },
+    "show_alert": {
+      "name": "Alert anzeigen",
+      "description": "Zeigt einen Alert auf dem Display"
+    },
+    "show_notification": {
+      "name": "Benachrichtigung",
+      "description": "Zeigt eine Benachrichtigung an"
+    },
+    "show_toast": {
+      "name": "Toast-Nachricht",
+      "description": "Zeigt eine kurze Toast-Nachricht"
+    },
+    "clear_alert": {
+      "name": "Alert löschen",
+      "description": "Löscht alle aktiven Alerts"
+    },
+    "send_ticker_message": {
+      "name": "Ticker-Nachricht",
+      "description": "Sendet eine Nachricht an die Ticker-Leiste"
+    },
+    "set_ticker_entities": {
+      "name": "Ticker-Entities setzen",
+      "description": "Setzt Entity-Templates für die Ticker-Leiste"
+    },
+    "clear_ticker": {
+      "name": "Ticker leeren",
+      "description": "Löscht alle Ticker-Nachrichten"
+    },
+    "set_screen_power": {
+      "name": "Bildschirm an/aus",
+      "description": "Schaltet den Bildschirm ein oder aus"
+    },
+    "set_brightness": {
+      "name": "Helligkeit setzen",
+      "description": "Setzt die Bildschirmhelligkeit"
+    },
+    "set_theme": {
+      "name": "Theme setzen",
+      "description": "Setzt das Display-Theme"
+    },
+    "set_volume": {
+      "name": "Lautstärke",
+      "description": "Setzt die Lautstärke"
+    },
+    "play_sound": {
+      "name": "Sound abspielen",
+      "description": "Spielt einen Sound ab"
+    },
+    "play_announcement": {
+      "name": "Durchsage",
+      "description": "Spielt eine Durchsage ab"
+    },
+    "tts_speak": {
+      "name": "Text-to-Speech",
+      "description": "Spricht einen Text"
+    },
+    "stop_audio": {
+      "name": "Audio stoppen",
+      "description": "Stoppt alle Audio-Wiedergabe"
+    },
+    "next_screen": {
+      "name": "Nächster Screen",
+      "description": "Zeigt den nächsten Screen"
+    },
+    "previous_screen": {
+      "name": "Vorheriger Screen",
+      "description": "Zeigt den vorherigen Screen"
+    },
+    "goto_screen": {
+      "name": "Zu Screen gehen",
+      "description": "Geht zu einem bestimmten Screen"
+    },
+    "pause_rotation": {
+      "name": "Rotation pausieren",
+      "description": "Pausiert die automatische Rotation"
+    },
+    "resume_rotation": {
+      "name": "Rotation fortsetzen",
+      "description": "Setzt die Rotation fort"
+    },
+    "reload_page": {
+      "name": "Seite neu laden",
+      "description": "Lädt die Seite neu"
+    },
+    "identify_device": {
+      "name": "Gerät identifizieren",
+      "description": "Identifiziert das Gerät visuell"
+    },
+    "entity_toggle": {
+      "name": "Entity schalten",
+      "description": "Schaltet eine Entity ein/aus"
+    },
+    "entity_action": {
+      "name": "Entity-Aktion",
+      "description": "Führt eine Aktion auf einer Entity aus"
+    },
+    "show_popup": {
+      "name": "Popup anzeigen",
+      "description": "Zeigt ein Popup-Fenster"
+    },
+    "dismiss_popup": {
+      "name": "Popup schließen",
+      "description": "Schließt ein Popup"
+    },
+    "show_silent_alert": {
+      "name": "Stiller Alert",
+      "description": "Alert ohne Sound"
+    },
+    "update_ticker_config": {
+      "name": "Ticker-Config",
+      "description": "Aktualisiert die Ticker-Konfiguration"
+    },
+    "set_screen_orientation": {
+      "name": "Ausrichtung",
+      "description": "Setzt die Bildschirmausrichtung"
+    },
+    "play_media": {
+      "name": "Medien abspielen",
+      "description": "Spielt eine Mediendatei ab"
+    },
+    "stop_media": {
+      "name": "Medien stoppen",
+      "description": "Stoppt die Medien-Wiedergabe"
+    },
+    "media_next": {
+      "name": "Nächster Track",
+      "description": "Nächster Medien-Track"
+    },
+    "media_previous": {
+      "name": "Vorheriger Track",
+      "description": "Vorheriger Medien-Track"
+    },
+    "media_pause": {
+      "name": "Pause",
+      "description": "Pausiert die Wiedergabe"
+    },
+    "media_resume": {
+      "name": "Fortsetzen",
+      "description": "Setzt die Wiedergabe fort"
+    }
+  },
+  "common": {
+    "device": "Gerät",
+    "device_id": "Geräte-ID",
+    "entity_id": "Entity",
+    "title": "Titel",
+    "message": "Nachricht",
+    "severity": "Schweregrad",
+    "mode": "Modus",
+    "duration": "Dauer",
+    "enabled": "Aktiviert",
+    "direction": "Richtung",
+    "speed": "Geschwindigkeit",
+    "volume": "Lautstärke",
+    "brightness": "Helligkeit",
+    "orientation": "Ausrichtung",
+    "all": "Alle Geräte",
+    "info": "Info",
+    "warning": "Warnung",
+    "critical": "Kritisch",
+    "success": "Erfolg",
+    "fullscreen": "Vollbild",
+    "banner": "Banner",
+    "overlay": "Overlay",
+    "toast": "Toast",
+    "ltr": "Links nach Rechts",
+    "rtl": "Rechts nach Links",
+    "slow": "Langsam",
+    "normal": "Normal",
+    "fast": "Schnell",
+    "classic": "Klassisch",
+    "glass": "Glas",
+    "alert": "Alarm",
+    "minimal": "Minimal"
+  },
+  "entity": {
+    "step": {
+      "user": {
+        "title": "Entity hinzufügen",
+        "description": "Fügt eine neue Entity zum Display hinzu"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Optionen",
+        "description": "Display-Optionen anpassen"
       }
     }
   }

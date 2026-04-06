@@ -70,20 +70,7 @@ class TickerDisplayCoordinator:
             d["media_can_previous"] = bool(event_data.get("can_previous", False))
             if "volume" in event_data:
                 d["volume_percent"] = event_data.get("volume")
-        elif event_type == "assist_state":
-            d["assist_state"] = event_data.get("state", "idle")
-            d["assist_message"] = event_data.get("message") or event_data.get("text") or ""
-            if "trigger_source" in event_data:
-                d["assist_trigger_source"] = event_data.get("trigger_source")
-            if "pipeline_id" in event_data:
-                d["assist_pipeline_used"] = event_data.get("pipeline_id")
-        elif event_type == "assist_stt":
-            d["assist_last_stt"] = event_data.get("text", "")
-        elif event_type == "assist_reply":
-            d["assist_reply_text"] = event_data.get("text", "")
-            d["assist_tts_url"] = event_data.get("url", "")
-            d["assist_pipeline_used"] = event_data.get("pipeline_id", d.get("assist_pipeline_used", ""))
-            d["assist_trigger_source"] = event_data.get("trigger_source", d.get("assist_trigger_source", ""))
+
 
         self.hass.bus.async_fire(
             f"ticker_display_{event_type}",

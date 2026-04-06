@@ -84,6 +84,28 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
                 entity_ids.append(entity_id)
         return entity_ids
 
+
+    def _speaker_entity_ids_for_device(device):
+        registry = er.async_get(hass)
+        devices = store.get_devices() or {}
+        if device == "all":
+            device_ids = list(devices.keys())
+        elif isinstance(device, list):
+            device_ids = [str(d) for d in device]
+        else:
+            device_ids = [str(device)]
+
+        entity_ids = []
+        for device_id in device_ids:
+            entity_id = registry.async_get_entity_id("media_player", DOMAIN, f"ticker_display_{device_id}_speaker")
+            if entity_id:
+                entity_ids.append(entity_id)
+        return entity_ids
+
+    def _default_tts_entity_id():
+        ids = sorted(hass.states.async_entity_ids("tts"))
+        return ids[0] if ids else None
+
     async def _assist_announce(device, *, message=None, media_id=None, preannounce=False):
         entity_ids = _assist_entity_ids_for_device(device)
         if not entity_ids:
@@ -220,7 +242,9 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         await websocket.send_command(_dev(call), {"type": "alert", "data": {**_data(call), "mode": "notification"}})
 
     async def handle_show_toast(call):
-        await websocket.send_command(_dev(call), {"type": "alert", "data": {**_data(call), "mode": "toast"}})
+        d = _data(call)
+        await websocket.send_command(_dev(call), {"type": "alert", "data": {**d, "mode": "toast"}})
+        await _send_alert_tts(_dev(call), _apply_ha_tts(d))
 
     async def handle_clear_alert(call):
         await websocket.send_command(_dev(call), {"type": "command", "command": "clear_alert", "data": _data(call)})
@@ -296,6 +320,23 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         if not message:
             _LOGGER.error("message required for tts_speak")
             return
+
+        media_player_entity_ids = call.data.get("media_player_entity_id") or _speaker_entity_ids_for_device(device)
+        tts_entity_id = call.data.get("tts_entity_id") or _default_tts_entity_id()
+        if media_player_entity_ids and tts_entity_id:
+            svc_data = {
+                "media_player_entity_id": media_player_entity_ids if isinstance(media_player_entity_ids, list) else [media_player_entity_ids],
+                "message": message,
+            }
+            language = call.data.get("language")
+            if language:
+                svc_data["language"] = language
+            options = call.data.get("options")
+            if isinstance(options, dict) and options:
+                svc_data["options"] = options
+            await hass.services.async_call("tts", "speak", svc_data, target={"entity_id": tts_entity_id}, blocking=True)
+            return
+
         if await _assist_announce(device, message=message, preannounce=False):
             return
         data = await _resolve_ha_tts_url({
@@ -350,26 +391,161 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     async def handle_identify_device(call):
         await websocket.send_command(_dev(call), {"type": "command", "command": "identify"})
 
+    # ══════════════════════════════════════════════════════════
+    # NEUE ERWEITERTE HANDLER
+    # ══════════════════════════════════════════════════════════
+    
+    async def handle_entity_toggle(call):
+        """Toggle an entity"""
+        d = _data(call)
+        entity_id = d.get("entity_id")
+        if not entity_id:
+            _LOGGER.warning("entity_toggle: no entity_id provided")
+            return
+        device = _dev(call)
+        # Use API to toggle
+        await websocket.send_command(device, {
+            "type": "command", 
+            "command": "entity_action", 
+            "data": {"entity_id": entity_id, "action": "toggle"}
+        })
+
+    async def handle_entity_action(call):
+        """Execute entity action"""
+        d = _data(call)
+        entity_id = d.get("entity_id")
+        action = d.get("action", "toggle")
+        if not entity_id:
+            _LOGGER.warning("entity_action: no entity_id provided")
+            return
+        device = _dev(call)
+        await websocket.send_command(device, {
+            "type": "command", 
+            "command": "entity_action", 
+            "data": {
+                "entity_id": entity_id, 
+                "action": action,
+                "data": d.get("data", {})
+            }
+        })
+
+    async def handle_show_popup(call):
+        """Show popup"""
+        d = _data(call)
+        await websocket.send_command(_dev(call), {
+            "type": "command", 
+            "command": "show_popup", 
+            "data": d
+        })
+
+    async def handle_dismiss_popup(call):
+        """Dismiss popup"""
+        await websocket.send_command(_dev(call), {
+            "type": "command", 
+            "command": "dismiss_popup", 
+            "data": {}
+        })
+
+    async def handle_show_silent_alert(call):
+        """Silent alert without sound"""
+        d = _data(call)
+        d["silent"] = True
+        await websocket.send_command(_dev(call), {"type": "alert", "data": d})
+
+    async def handle_update_ticker_config(call):
+        """Update ticker configuration"""
+        d = _data(call)
+        await websocket.send_command(_dev(call), {
+            "type": "command", 
+            "command": "update_ticker_config", 
+            "data": d
+        })
+
+    async def handle_set_screen_orientation(call):
+        """Set screen orientation"""
+        d = _data(call)
+        orientation = d.get("orientation", 0)
+        await websocket.send_command(_dev(call), {
+            "type": "display_control", 
+            "orientation": orientation
+        })
+
+    # ═════════════════════════════════════════════════════════��
+    # MEDIA HANDLER - ERWEITERT
+    # ══════════════════════════════════════════════════════════
+
+    async def handle_play_media(call):
+        """Play media"""
+        d = _data(call)
+        url = d.get("media_url") or d.get("url")
+        if not url:
+            _LOGGER.warning("play_media: no media_url provided")
+            return
+        await websocket.send_command(_dev(call), {
+            "type": "audio",
+            "action": "play",
+            "url": url,
+            "volume": d.get("volume", 70),
+            "loop": d.get("loop", False)
+        })
+
+    async def handle_stop_media(call):
+        """Stop media"""
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "stop"})
+
+    async def handle_media_next(call):
+        """Media next track"""
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "next"})
+
+    async def handle_media_previous(call):
+        """Media previous track"""
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "previous"})
+
+    async def handle_media_pause(call):
+        """Media pause"""
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "pause"})
+
+    async def handle_media_resume(call):
+        """Media resume"""
+        await websocket.send_command(_dev(call), {"type": "audio", "action": "resume"})
+
     # ── Register all ──
     services = {
+        # Screen services
         "show_dashboard": handle_show_dashboard, "show_graph": handle_show_graph,
         "show_camera": handle_show_camera, "show_weather": handle_show_weather,
         "show_single_value": handle_show_single_value, "show_clock": handle_show_clock,
         "show_status_board": handle_show_status_board, "show_image": handle_show_image,
         "show_template": handle_show_template,
+        # Alert services
         "show_alert": handle_show_alert, "show_alert_template": handle_show_alert_template,
         "show_alert_sequence": handle_show_alert_sequence,
         "show_notification": handle_show_notification,
         "show_toast": handle_show_toast, "clear_alert": handle_clear_alert,
+        "show_silent_alert": handle_show_silent_alert,
+        # Ticker services
         "send_ticker_message": handle_send_ticker, "set_ticker_entities": handle_set_ticker_entities,
-        "clear_ticker": handle_clear_ticker,
+        "clear_ticker": handle_clear_ticker, "update_ticker_config": handle_update_ticker_config,
+        # Display control
         "set_screen_power": handle_set_screen_power, "set_brightness": handle_set_brightness,
         "set_theme": handle_set_theme, "set_volume": handle_set_volume,
-        "play_sound": handle_play_sound, "play_announcement": handle_play_announcement, "tts_speak": handle_tts_speak, "stop_audio": handle_stop_audio,
+        "set_screen_orientation": handle_set_screen_orientation,
+        # Audio
+        "play_sound": handle_play_sound, "play_announcement": handle_play_announcement, 
+        "tts_speak": handle_tts_speak, "stop_audio": handle_stop_audio,
+        "play_media": handle_play_media, "stop_media": handle_stop_media,
+        "media_next": handle_media_next, "media_previous": handle_media_previous,
+        "media_pause": handle_media_pause, "media_resume": handle_media_resume,
+        # Navigation
         "next_screen": handle_next_screen, "previous_screen": handle_previous_screen,
         "goto_screen": handle_goto_screen, "pause_rotation": handle_pause_rotation,
         "resume_rotation": handle_resume_rotation,
+        # Management
         "reload_page": handle_reload_page, "identify_device": handle_identify_device,
+        # Entity control (NEW)
+        "entity_toggle": handle_entity_toggle, "entity_action": handle_entity_action,
+        # Popup (NEW)
+        "show_popup": handle_show_popup, "dismiss_popup": handle_dismiss_popup,
     }
 
     for name, handler in services.items():

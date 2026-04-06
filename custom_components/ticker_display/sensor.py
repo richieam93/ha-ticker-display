@@ -213,110 +213,6 @@ SENSOR_DEFINITIONS = {
         "dc": None,
         "sc": None,
     },
-    "assist_state": {
-        "name": "Assist State",
-        "key": "assist_state",
-        "icon": "mdi:microphone-message",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_server_audio_mode": {
-        "name": "Assist Server Audio Mode",
-        "key": "assist_server_audio_mode",
-        "icon": "mdi:server-network",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_message": {
-        "name": "Assist Message",
-        "key": "assist_message",
-        "icon": "mdi:message-text",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_last_stt": {
-        "name": "Assist Last Text",
-        "key": "assist_last_stt",
-        "icon": "mdi:text-recognition",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_reply_text": {
-        "name": "Assist Reply Text",
-        "key": "assist_reply_text",
-        "icon": "mdi:message-reply-text",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_tts_url": {
-        "name": "Assist TTS URL",
-        "key": "assist_tts_url",
-        "icon": "mdi:link-variant",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_pipeline_used": {
-        "name": "Assist Pipeline Used",
-        "key": "assist_pipeline_used",
-        "icon": "mdi:source-branch",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_trigger_source": {
-        "name": "Assist Trigger Source",
-        "key": "assist_trigger_source",
-        "icon": "mdi:ray-start-arrow",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_wake_word": {
-        "name": "Assist Wake Word",
-        "key": "assist_wake_word",
-        "icon": "mdi:account-voice",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_wake_word_2": {
-        "name": "Assist Wake Word 2",
-        "key": "assist_wake_word_2",
-        "icon": "mdi:account-voice-outline",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_assistant": {
-        "name": "Assist Assistant",
-        "key": "assist_assistant",
-        "icon": "mdi:assistant",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_assistant_2": {
-        "name": "Assist Assistant 2",
-        "key": "assist_assistant_2",
-        "icon": "mdi:assistant",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
-    "assist_vad_mode": {
-        "name": "Assist Speech Pause Detection",
-        "key": "assist_vad_mode",
-        "icon": "mdi:waveform",
-        "unit": None,
-        "dc": None,
-        "sc": None,
-    },
     "app_version": {
         "name": "App Version",
         "key": "app_version",
@@ -395,7 +291,15 @@ class TickerDisplaySensor(SensorEntity):
         value = data.get(self._data_key)
         if self._sensor_key == "uptime" and value is not None:
             return round(value / 60, 1)
+        if isinstance(value, str) and len(value) > 250:
+            return value[:247] + "..."
         return value
+
+    @property
+    def extra_state_attributes(self):
+        data = self._coordinator.get_device_data(self._device_id)
+        value = data.get(self._data_key)
+        return None
 
     @property
     def available(self) -> bool:

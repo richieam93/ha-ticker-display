@@ -58,20 +58,6 @@ BINARY_SENSOR_DEFINITIONS = {
         "icon_off": "mdi:speaker-off",
         "dc": None,
     },
-    "assist_satellite": {
-        "name": "Assist Satellite",
-        "key": "assist_satellite_enabled",
-        "icon_on": "mdi:microphone",
-        "icon_off": "mdi:microphone-off",
-        "dc": None,
-    },
-    "microphone": {
-        "name": "Microphone",
-        "key": "microphone_enabled",
-        "icon_on": "mdi:microphone",
-        "icon_off": "mdi:microphone-off",
-        "dc": None,
-    },
     "front_camera": {
         "name": "Front Camera",
         "key": "front_camera_enabled",

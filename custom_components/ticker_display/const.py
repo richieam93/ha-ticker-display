@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-PLATFORMS = ["sensor", "binary_sensor", "media_player", "assist_satellite", "camera", "select", "switch", "button"]
+PLATFORMS = ["sensor", "binary_sensor", "switch", "media_player", "camera"]
 
 API_BASE = "/ticker-display"
 WS_PATH = f"{API_BASE}/ws"
@@ -47,13 +47,8 @@ SENSOR_KEYS = [
     "memory_free_mb", "memory_total_mb", "storage_free_mb", "storage_total_mb",
     "storage_used_percent", "cpu_usage", "volume_percent", "ringer_mode",
     "app_version", "webview_url", "orientation", "uptime_seconds",
-    "native_media_player_enabled", "assist_satellite_enabled", "microphone_enabled",
+    "native_media_player_enabled",
     "front_camera_present", "back_camera_present", "front_camera_enabled", "back_camera_enabled",
-    "assist_wake_word", "assist_wake_word_2", "assist_assistant", "assist_assistant_2",
-    "assist_vad_mode", "assist_wake_sound", "assist_button_click_sounds", "assist_server_audio_mode",
-    "assist_state", "assist_last_stt", "assist_message",
-    "assist_available_wake_words", "assist_available_assistants",
-    "assist_active_wake_words", "assist_max_active_wake_words", "assist_language",
 ]
 
 DEFAULT_SOUNDS = {

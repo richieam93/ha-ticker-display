@@ -1,6 +1,7 @@
 /**
- * Ticker Display – Enhanced Display Engine v2
- * Fixed: Charts, missing methods, history formats, animations
+ * Ticker Display – Enhanced Display Engine v3
+ * Komplett überarbeitet: Bugfixes, Ticker-Leiste, Charts, Animationen,
+ * Fehlerbehandlung, Memory-Management, Lokalisierung
  */
 
 /* ══════════════════════════════════════════════════════════
@@ -8,6 +9,13 @@
    ══════════════════════════════════════════════════════════ */
 
 const Utils = {
+  /** Locale für Datums-/Zeitformatierung (konfigurierbar) */
+  _locale: navigator.language || "de-DE",
+
+  setLocale(locale) {
+    if (locale && typeof locale === "string") Utils._locale = locale;
+  },
+
   formatNumber(v, d = 1) {
     const n = parseFloat(v);
     return Number.isNaN(n) ? v : n.toFixed(d);
@@ -16,15 +24,31 @@ const Utils = {
   relativeTime(iso) {
     if (!iso) return "";
     const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 0) return "in der Zukunft";
     if (diff < 60) return "gerade eben";
-    if (diff < 3600) return `vor ${Math.floor(diff / 60)} Min`;
-    if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std`;
-    return `vor ${Math.floor(diff / 86400)} Tagen`;
+    if (diff < 3600) {
+      const mins = Math.floor(diff / 60);
+      return `vor ${mins} Min`;
+    }
+    if (diff < 86400) {
+      const hrs = Math.floor(diff / 3600);
+      return `vor ${hrs} Std`;
+    }
+    const days = Math.floor(diff / 86400);
+    return `vor ${days} ${days === 1 ? "Tag" : "Tagen"}`;
   },
 
   debounce(fn, ms) {
     let t;
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  },
+
+  throttle(fn, ms) {
+    let last = 0;
+    return (...a) => {
+      const now = Date.now();
+      if (now - last >= ms) { last = now; fn(...a); }
+    };
   },
 
   clamp(v, min, max) { return Math.max(min, Math.min(max, v)); },
@@ -36,6 +60,15 @@ const Utils = {
     return String(v);
   },
 
+  escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  },
+
   toNumber(v, fallback = 0) {
     const n = parseFloat(v);
     return Number.isNaN(n) ? fallback : n;
@@ -44,7 +77,7 @@ const Utils = {
   formatValue(v, opts = {}) {
     if (v === null || v === undefined || v === "") return opts.fallback ?? "—";
     const raw = String(v).trim();
-    const numeric = Number.parseFloat(raw);
+    const numeric = Number.parseFloat(raw.replace(',', '.'));
     if (!Number.isFinite(numeric) || !/^[-+]?\d+(?:[\.,]\d+)?$/.test(raw.replace(',', '.'))) return raw;
     let decimals = opts.decimals;
     if (decimals === undefined || decimals === null || decimals === "") return String(numeric);
@@ -64,13 +97,26 @@ const Utils = {
   },
 
   isTruthyState(v) {
-    return ["on", "true", "home", "open", "detected", "playing"].includes(String(v).toLowerCase());
+    return ["on", "true", "home", "open", "detected", "playing", "active", "unlocked", "armed"].includes(String(v).toLowerCase());
+  },
+
+  isFalsyState(v) {
+    return ["off", "false", "away", "closed", "not_home", "idle", "standby", "unavailable", "unknown", "locked", "disarmed"].includes(String(v).toLowerCase());
   },
 
   shortDateTime(iso) {
     try {
       const d = new Date(iso);
-      return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleTimeString(Utils._locale, { hour: "2-digit", minute: "2-digit" });
+    } catch (e) { return ""; }
+  },
+
+  fullDateTime(iso) {
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleString(Utils._locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     } catch (e) { return ""; }
   },
 
@@ -144,54 +190,93 @@ class DataManager {
   constructor(apiBase) {
     this.apiBase = apiBase;
     this._cache = {};
+    this._cacheMaxAge = 60000; // 60 Sekunden Standard-Cache
+    this._maxCacheEntries = 200;
+    this._pendingRequests = new Map();
+  }
+
+  /** Cache aufräumen wenn zu viele Einträge */
+  _pruneCache() {
+    const keys = Object.keys(this._cache);
+    if (keys.length <= this._maxCacheEntries) return;
+    const sorted = keys.sort((a, b) => (this._cache[a]?.t || 0) - (this._cache[b]?.t || 0));
+    const toRemove = sorted.slice(0, keys.length - this._maxCacheEntries);
+    for (const key of toRemove) delete this._cache[key];
   }
 
   async _fetchJson(path, options = {}) {
-    const response = await fetch(`${this.apiBase}${path}`, {
-      credentials: "same-origin",
-      cache: "no-store",
-      ...options,
-    });
-    if (!response.ok) {
-      throw new Error(`${path}: ${response.status}`);
+    const url = `${this.apiBase}${path}`;
+    try {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: options.signal || AbortSignal.timeout?.(15000),
+        ...options,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} für ${path}`);
+      }
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        console.warn(`Unerwarteter Content-Type für ${path}: ${contentType}`);
+      }
+      return response.json();
+    } catch (e) {
+      if (e.name === "AbortError") {
+        console.warn(`Timeout für ${path}`);
+      }
+      throw e;
     }
-    return response.json();
   }
 
   async fetchHistory(entityId, hours = 24) {
+    if (!entityId) return { entity_id: entityId, data: [] };
     const key = `h_${entityId}_${hours}`;
     const cached = this._cache[key];
-    if (cached && Date.now() - cached.t < 60000) return cached.d;
+    if (cached && Date.now() - cached.t < this._cacheMaxAge) return cached.d;
 
-    try {
-      const raw = await this._fetchJson(`/api/history/${encodeURIComponent(entityId)}?hours=${encodeURIComponent(hours)}`);
-
-      let data = [];
-
-      // Format A: {entity_id, data: [{x, y}]}
-      if (raw?.data && Array.isArray(raw.data)) {
-        data = this._convertHistoryPoints(raw.data);
-      }
-      // Format B: HA-Standard – Array von Arrays [[{state, last_changed}]]
-      else if (Array.isArray(raw) && Array.isArray(raw[0])) {
-        data = this._convertHistoryPoints(raw[0]);
-      }
-      // Format C: Flaches Array [{state, last_changed}] oder [{x, y}]
-      else if (Array.isArray(raw)) {
-        data = this._convertHistoryPoints(raw);
-      }
-      // Format D: Objekt mit data-Property
-      else if (raw?.data) {
-        data = this._convertHistoryPoints(Utils.safeArray(raw.data));
-      }
-
-      const result = { entity_id: entityId, data };
-      this._cache[key] = { d: result, t: Date.now() };
-      return result;
-    } catch (e) {
-      console.warn("fetchHistory failed:", entityId, e);
-      return { entity_id: entityId, data: [] };
+    // Deduplizierung: Wenn bereits ein Request für denselben Key läuft, darauf warten
+    if (this._pendingRequests.has(key)) {
+      return this._pendingRequests.get(key);
     }
+
+    const promise = (async () => {
+      try {
+        const raw = await this._fetchJson(`/api/history/${encodeURIComponent(entityId)}?hours=${encodeURIComponent(hours)}`);
+
+        let data = [];
+
+        // Format A: {entity_id, data: [{x, y}]}
+        if (raw?.data && Array.isArray(raw.data)) {
+          data = this._convertHistoryPoints(raw.data);
+        }
+        // Format B: HA-Standard – Array von Arrays [[{state, last_changed}]]
+        else if (Array.isArray(raw) && Array.isArray(raw[0])) {
+          data = this._convertHistoryPoints(raw[0]);
+        }
+        // Format C: Flaches Array [{state, last_changed}] oder [{x, y}]
+        else if (Array.isArray(raw)) {
+          data = this._convertHistoryPoints(raw);
+        }
+        // Format D: Objekt mit data-Property (nicht-Array)
+        else if (raw && typeof raw === "object" && raw.data) {
+          data = this._convertHistoryPoints(Utils.safeArray(raw.data));
+        }
+
+        const result = { entity_id: entityId, data };
+        this._cache[key] = { d: result, t: Date.now() };
+        this._pruneCache();
+        return result;
+      } catch (e) {
+        console.warn("fetchHistory fehlgeschlagen:", entityId, e.message || e);
+        return { entity_id: entityId, data: [] };
+      } finally {
+        this._pendingRequests.delete(key);
+      }
+    })();
+
+    this._pendingRequests.set(key, promise);
+    return promise;
   }
 
   _convertHistoryPoints(arr) {
@@ -361,12 +446,20 @@ class WebSocketClient {
     this._manuallyClosed = false;
     const seq = ++this._connectSeq;
 
+    if (!this.app.wsUrl) {
+      console.warn("⚠️ Keine WebSocket-URL konfiguriert");
+      return Promise.reject(new Error("No WebSocket URL"));
+    }
+
     return new Promise((resolve, reject) => {
       try {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) { resolve(); return; }
+        // Alte Verbindung sauber schließen
+        if (this.ws) { try { this.ws.close(); } catch (e) {} this.ws = null; }
 
         const ws = new WebSocket(this.app.wsUrl);
         this.ws = ws;
+        let resolved = false;
 
         ws.onopen = () => {
           if (seq !== this._connectSeq || ws !== this.ws) { try { ws.close(); } catch (e) {} return; }
@@ -377,30 +470,41 @@ class WebSocketClient {
           const offline = document.getElementById("offline-screen");
           if (offline) offline.hidden = true;
           this.send({ type: "subscribe", entities: this.app.neededEntities || [] });
-          resolve();
+          if (!resolved) { resolved = true; resolve(); }
         };
 
         ws.onmessage = (e) => {
           if (seq !== this._connectSeq || ws !== this.ws) return;
-          try { this._handleMessage(JSON.parse(e.data)); } catch (err) { console.error("WebSocket parse error:", err); }
+          try {
+            const msg = JSON.parse(e.data);
+            this._handleMessage(msg);
+          } catch (err) {
+            console.error("WebSocket parse error:", err);
+          }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           if (seq !== this._connectSeq || ws !== this.ws) return;
           this._connected = false;
+          console.log(`🔌 WebSocket geschlossen (Code: ${event.code}, Grund: ${event.reason || "keine"})`);
           const offline = document.getElementById("offline-screen");
           if (offline) {
             if (this.app?.isPreview) offline.hidden = true;
             else offline.hidden = !this._hadSuccessfulConnection;
           }
           if (!this._manuallyClosed) this._scheduleReconnect();
+          if (!resolved) { resolved = true; reject(new Error(`WebSocket closed: ${event.code}`)); }
         };
 
         ws.onerror = (err) => {
           if (seq !== this._connectSeq || ws !== this.ws) return;
-          reject(err);
+          console.warn("⚠️ WebSocket Fehler:", err);
+          if (!resolved) { resolved = true; reject(err); }
         };
-      } catch (e) { reject(e); }
+      } catch (e) {
+        console.error("❌ WebSocket Verbindungsfehler:", e);
+        reject(e);
+      }
     });
   }
 
@@ -420,17 +524,39 @@ class WebSocketClient {
   isConnected() { return this._connected; }
 
   _handleMessage(msg) {
+    console.log("📡 WS Nachricht:", msg.type, msg);
     switch (msg.type) {
-      case "state_changed": this.app.onEntityStateChanged(msg.entity_id, msg.new_state); break;
-      case "command": this.app.onCommand(msg.command, msg.data || {}); break;
-      case "alert": this.app.onAlert(msg.data || {}); break;
-      case "ticker": this.app.onTickerMessages(msg.messages || []); break;
-      case "display_control": this.app.onDisplayControl(msg); break;
-      case "audio": this.app.onAudio(msg); break;
-      case "navigate": this.app.onNavigate(msg); break;
-      case "config_changed": this.app.onConfigChanged(msg.config); break;
-      case "theme_changed": this.app.onThemeChanged(msg.theme || msg); break;
-      case "reload": location.reload(); break;
+      case "state_changed": 
+        this.app.onEntityStateChanged(msg.entity_id, msg.new_state); 
+        break;
+      case "command": 
+        this.app.onCommand(msg.command, msg.data || {}); 
+        break;
+      case "alert": 
+        this.app.onAlert(msg.data || {}); 
+        break;
+      case "ticker": 
+        console.log("📨 Ticker Nachricht empfangen:", msg.messages);
+        this.app.onTickerMessages(msg.messages || []); 
+        break;
+      case "display_control": 
+        this.app.onDisplayControl(msg); 
+        break;
+      case "audio": 
+        this.app.onAudio(msg); 
+        break;
+      case "navigate": 
+        this.app.onNavigate(msg); 
+        break;
+      case "config_changed": 
+        this.app.onConfigChanged(msg.config); 
+        break;
+      case "theme_changed": 
+        this.app.onThemeChanged(msg.theme || msg); 
+        break;
+      case "reload": 
+        location.reload(); 
+        break;
     }
   }
 
@@ -467,55 +593,109 @@ class ScreenManager {
     this._chartInstances = [];
   }
 
-  /* ────── FEHLENDE METHODE: _applyCommonWidgetStyle ────── */
-  _applyCommonWidgetStyle(widget, config) {
-    const backgroundColor = config.background_color || config.bgColor || config.config?.background_color || config.config?.bgColor || "";
-    const backgroundOpacity = config.background_opacity ?? config.bgOpacity ?? config.config?.background_opacity ?? config.config?.bgOpacity ?? config.config?.opacity ?? null;
-    const resolvedBackground = backgroundColor ? Utils.applyAlpha(backgroundColor, backgroundOpacity) : "";
-    const borderColor = config.border_color || config.borderColor || config.config?.border_color || config.config?.borderColor || "";
-    const borderWidth = config.border_width ?? config.borderWidth ?? config.config?.border_width ?? config.config?.borderWidth;
-    const borderRadius = config.border_radius ?? config.borderRadius ?? config.config?.border_radius ?? config.config?.borderRadius;
-    const textColor = config.text_color || config.textColor || config.config?.text_color || config.config?.textColor || "";
-    const fontSize = config.font_size ?? config.fontSize ?? config.config?.font_size ?? config.config?.fontSize;
-    const fontFamily = config.font_family || config.font || config.config?.font_family || config.config?.font || "";
-    const blur = config.blur ?? config.backdrop_blur ?? config.config?.blur ?? config.config?.backdrop_blur ?? 0;
-    const customCss = config.custom_css || config.customCss || config.config?.custom_css || config.config?.customCss || "";
 
-    if (resolvedBackground) widget.style.background = resolvedBackground;
-    if (backgroundOpacity !== null && backgroundOpacity !== undefined) {
-      widget.classList.add("widget-translucent");
-      widget.style.setProperty("--td-widget-bg-opacity", String(Utils.clamp(Number(backgroundOpacity), 0, 1)));
-    }
-    if (config.background_image || config.bgImage) {
-      const widgetBg = Utils.applyAlpha(backgroundColor || "rgba(30,30,30,1)", backgroundOpacity ?? 1);
-      const imageUrl = config.background_image || config.bgImage;
-      widget.style.backgroundImage = `linear-gradient(${widgetBg}, ${widgetBg}), url(${imageUrl})`;
-      widget.style.backgroundSize = `100% 100%, ${config.background_size || config.background_image_size || config.bgImageSize || "cover"}`;
-      widget.style.backgroundPosition = "center center, center center";
-      widget.style.backgroundRepeat = "no-repeat, no-repeat";
-    }
-    if (borderColor) widget.style.borderColor = borderColor;
-    if (borderWidth !== undefined && borderWidth !== null && borderWidth !== "") {
-      widget.style.borderWidth = `${Number(borderWidth)}px`;
-      widget.style.borderStyle = "solid";
-    }
-    if (borderRadius !== undefined && borderRadius !== null && borderRadius !== "") widget.style.borderRadius = `${Number(borderRadius)}px`;
-    if (textColor) widget.style.color = textColor;
-    if (fontSize !== undefined && fontSize !== null && fontSize !== "") widget.style.fontSize = `${Number(fontSize)}px`;
-    if (fontFamily) widget.style.fontFamily = `'${String(fontFamily)}', var(--td-font-main, "Roboto", sans-serif)`;
-    if (blur) {
-      widget.style.backdropFilter = `blur(${Number(blur)}px) saturate(1.08)`;
-      widget.style.webkitBackdropFilter = `blur(${Number(blur)}px) saturate(1.08)`;
-    }
-    if (config.css_class) widget.classList.add(...String(config.css_class).split(/\s+/).filter(Boolean));
-    if (config.glass || config.config?.glass) widget.classList.add("widget-glass");
-    if (config.glow || config.config?.glow) widget.classList.add("widget-glow");
-    if (config.shadow === "none") widget.style.boxShadow = "none";
-    else if (config.shadow === "elevated") widget.classList.add("widget-elevated");
-    if (config.padding !== undefined) widget.style.padding = typeof config.padding === "number" ? `${config.padding}px` : config.padding;
-    if (config.z_index) widget.style.zIndex = String(config.z_index);
-    if (customCss) widget.style.cssText += `;${customCss}`;
+/* ────── FEHLENDE METHODE: _applyCommonWidgetStyle ────── */
+_applyCommonWidgetStyle(widget, config) {
+  const cfg = config?.config || {};
+  const backgroundColor = config.background_color || config.bgColor || cfg.background_color || cfg.bgColor || "";
+  const backgroundOpacity = config.background_opacity ?? config.bgOpacity ?? cfg.background_opacity ?? cfg.bgOpacity ?? cfg.opacity ?? null;
+  const gradientEnabled = cfg.gradient_enabled === true && cfg.gradient_to_color;
+  const gradientAngle = Number(cfg.gradient_angle || 135);
+  const resolvedBackground = backgroundColor
+    ? (gradientEnabled
+        ? `linear-gradient(${gradientAngle}deg, ${Utils.applyAlpha(backgroundColor, backgroundOpacity ?? 1)} 0%, ${Utils.applyAlpha(cfg.gradient_to_color, backgroundOpacity ?? 1)} 100%)`
+        : Utils.applyAlpha(backgroundColor, backgroundOpacity))
+    : "";
+  const borderColor = config.border_color || config.borderColor || cfg.border_color || cfg.borderColor || "rgba(255,255,255,.08)";
+  const borderWidth = config.border_width ?? config.borderWidth ?? cfg.border_width ?? cfg.borderWidth ?? 1;
+  const borderRadius = config.border_radius ?? config.borderRadius ?? cfg.border_radius ?? cfg.borderRadius;
+  const borderStyle = cfg.border_style || "solid";
+  const textColor = config.text_color || config.textColor || cfg.text_color || cfg.textColor || "";
+  const fontSize = config.font_size ?? config.fontSize ?? cfg.font_size ?? cfg.fontSize;
+  const fontFamily = config.font_family || config.font || cfg.font_family || cfg.font || "";
+  const blur = config.blur ?? config.backdrop_blur ?? cfg.blur ?? cfg.backdrop_blur ?? 0;
+  const customCss = config.custom_css || config.customCss || cfg.custom_css || cfg.customCss || "";
+  const padX = cfg.padding_x ?? config.padding_x;
+  const padY = cfg.padding_y ?? config.padding_y;
+  const innerGap = cfg.inner_gap ?? config.inner_gap;
+  const minHeight = cfg.min_height ?? config.min_height;
+  const iconSize = cfg.icon_size ?? config.icon_size;
+  const valueSize = cfg.value_size ?? config.value_size;
+  const nameSize = cfg.name_size ?? config.name_size;
+  const unitSize = cfg.unit_size ?? config.unit_size;
+  const subtitleSize = cfg.subtitle_size ?? config.subtitle_size;
+  const textAlign = cfg.text_align || config.text_align || "center";
+  const contentAlign = cfg.content_align || config.content_align || "center";
+  const contentJustify = cfg.content_justify || config.content_justify || "center";
+  const widgetOpacity = cfg.widget_opacity ?? config.widget_opacity;
+  const shadowPreset = cfg.shadow_preset || config.shadow_preset || config.shadow || "soft";
+  const shadowMap = {
+    none: "none",
+    soft: "0 1px 2px rgba(0,0,0,.08), 0 10px 24px rgba(0,0,0,.14)",
+    medium: "0 1px 2px rgba(0,0,0,.12), 0 14px 32px rgba(0,0,0,.20)",
+    strong: "0 6px 16px rgba(0,0,0,.22), 0 20px 44px rgba(0,0,0,.28)",
+    glow: `0 0 0 1px ${Utils.applyAlpha(borderColor || backgroundColor || '#40c4ff', .36)}, 0 0 28px ${Utils.applyAlpha(borderColor || backgroundColor || '#40c4ff', .24)}`,
+  };
+  const alignMap = { left: "flex-start", center: "center", right: "flex-end" };
+  const justifyMap = { start: "flex-start", center: "center", end: "flex-end", between: "space-between" };
+
+  if (resolvedBackground) widget.style.background = resolvedBackground;
+  if (backgroundOpacity !== null && backgroundOpacity !== undefined) {
+    widget.classList.add("widget-translucent");
+    widget.style.setProperty("--td-widget-bg-opacity", String(Utils.clamp(Number(backgroundOpacity), 0, 1)));
   }
+  if (config.background_image || config.bgImage) {
+    const widgetBg = gradientEnabled
+      ? `linear-gradient(${gradientAngle}deg, ${Utils.applyAlpha(backgroundColor || 'rgba(30,30,30,1)', backgroundOpacity ?? 1)} 0%, ${Utils.applyAlpha(cfg.gradient_to_color, backgroundOpacity ?? 1)} 100%)`
+      : Utils.applyAlpha(backgroundColor || "rgba(30,30,30,1)", backgroundOpacity ?? 1);
+    const imageUrl = config.background_image || config.bgImage;
+    widget.style.backgroundImage = `linear-gradient(${widgetBg}, ${widgetBg}), url(${imageUrl})`;
+    widget.style.backgroundSize = `100% 100%, ${config.background_size || config.background_image_size || config.bgImageSize || "cover"}`;
+    widget.style.backgroundPosition = "center center, center center";
+    widget.style.backgroundRepeat = "no-repeat, no-repeat";
+  }
+  if (borderColor) widget.style.borderColor = borderColor;
+  if (borderWidth !== undefined && borderWidth !== null && borderWidth !== "") {
+    widget.style.borderWidth = `${Number(borderWidth)}px`;
+    widget.style.borderStyle = borderStyle;
+  }
+  if (borderRadius !== undefined && borderRadius !== null && borderRadius !== "") widget.style.borderRadius = `${Number(borderRadius)}px`;
+  if (textColor) widget.style.color = textColor;
+  if (fontSize !== undefined && fontSize !== null && fontSize !== "") widget.style.fontSize = `${Number(fontSize)}px`;
+  if (fontFamily) widget.style.fontFamily = `'${String(fontFamily)}', var(--td-font-main, "Roboto", sans-serif)`;
+  if (blur) {
+    widget.style.backdropFilter = `blur(${Number(blur)}px) saturate(1.08)`;
+    widget.style.webkitBackdropFilter = `blur(${Number(blur)}px) saturate(1.08)`;
+  }
+  if (config.css_class) widget.classList.add(...String(config.css_class).split(/\s+/).filter(Boolean));
+  if (config.glass || cfg.glass) widget.classList.add("widget-glass");
+  if (config.glow || cfg.glow) widget.classList.add("widget-glow");
+  if (shadowMap[shadowPreset]) widget.style.boxShadow = shadowMap[shadowPreset];
+  if (padX !== undefined || padY !== undefined) {
+    const px = Number(padX ?? 14);
+    const py = Number(padY ?? 14);
+    widget.style.padding = `${py}px ${px}px`;
+    widget.style.setProperty("--td-widget-padding", `${py}px ${px}px`);
+  } else if (config.padding !== undefined) {
+    widget.style.padding = typeof config.padding === "number" ? `${config.padding}px` : config.padding;
+  }
+  if (innerGap !== undefined && innerGap !== null && innerGap !== "") widget.style.setProperty("--td-widget-inner-gap", `${Number(innerGap)}px`);
+  if (iconSize !== undefined && Number(iconSize) > 0) widget.style.setProperty("--td-widget-icon-size", `${Number(iconSize)}px`);
+  if (valueSize !== undefined && Number(valueSize) > 0) widget.style.setProperty("--td-widget-value-size", `${Number(valueSize)}px`);
+  if (nameSize !== undefined && Number(nameSize) > 0) widget.style.setProperty("--td-widget-name-size", `${Number(nameSize)}px`);
+  if (unitSize !== undefined && Number(unitSize) > 0) widget.style.setProperty("--td-widget-unit-size", `${Number(unitSize)}px`);
+  if (subtitleSize !== undefined && Number(subtitleSize) > 0) widget.style.setProperty("--td-widget-subtitle-size", `${Number(subtitleSize)}px`);
+  if (textAlign) widget.style.setProperty("--td-widget-text-align", textAlign);
+  if (contentAlign) widget.style.setProperty("--td-widget-align-items", alignMap[contentAlign] || contentAlign);
+  if (contentJustify) widget.style.setProperty("--td-widget-justify-content", justifyMap[contentJustify] || contentJustify);
+  if (minHeight !== undefined && minHeight !== null && minHeight !== "" && Number(minHeight) > 0) {
+    widget.style.minHeight = `${Number(minHeight)}px`;
+    widget.style.setProperty("--td-widget-min-height", `${Number(minHeight)}px`);
+  }
+  if (widgetOpacity !== undefined && widgetOpacity !== null && widgetOpacity !== "") widget.style.opacity = String(widgetOpacity);
+  if (config.z_index) widget.style.zIndex = String(config.z_index);
+  if (customCss) widget.style.cssText += `;${customCss}`;
+}
 
   /* ────── FEHLENDE METHODE: _loadCameraInto ────── */
   _loadCameraInto(imgElement, entityId, source = "auto") {
@@ -710,23 +890,57 @@ class ScreenManager {
   }
 
   /* ────── Screen Builders ────── */
+  /** Dashboard Screen - Verbessert */
   _buildDashboardScreen(screen, config) {
+    console.log("📊 Dashboard erstellen:", config);
     const grid = document.createElement("div");
     grid.className = "dashboard-grid";
-    const cols = config.grid?.columns || 3;
-    const rows = config.grid?.rows || 2;
+    
+    // Grid-Konfiguration
+    const cols = Math.max(1, config.grid?.columns || 3);
+    const rows = Math.max(1, config.grid?.rows || 2);
+    const gap = config.grid?.gap || 12;
+    
     grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    grid.style.gap = `${gap}px`;
+    grid.style.padding = `${gap}px`;
+    
+    // Widgets erstellen
     const widgets = Utils.safeArray(config.widgets);
+    console.log("📊 Widgets:", widgets.length);
+    
     widgets.forEach((wc, index) => {
+      if (!wc) return;
       const widget = this._createWidget(wc);
       widget.style.setProperty("--widget-enter-delay", `${index * 60}ms`);
       widget.classList.add("widget-enter");
-      widget.style.gridColumn = `${(wc.col || 0) + 1}/span ${wc.colspan || 1}`;
-      widget.style.gridRow = `${(wc.row || 0) + 1}/span ${wc.rowspan || 1}`;
+      
+      // Spalten und Zeilen
+      if (wc.col !== undefined) {
+        widget.style.gridColumn = `${wc.col + 1}/span ${wc.colspan || 1}`;
+      }
+      if (wc.row !== undefined) {
+        widget.style.gridRow = `${wc.row + 1}/span ${wc.rowspan || 1}`;
+      }
+      
+      // Responsive
+      widget.style.setProperty("--widget-priority", wc.priority || "normal");
+      
       grid.appendChild(widget);
     });
+    
     screen.appendChild(grid);
+    
+    // Dashboard-Info anzeigen
+    if (config.show_info !== false) {
+      const info = document.createElement("div");
+      info.className = "dashboard-info";
+      info.innerHTML = `<span>${widgets.length} Widgets</span>`;
+      screen.appendChild(info);
+    }
+    
+    console.log("✅ Dashboard erstellt mit", widgets.length, "Widgets");
   }
 
   _buildClockScreen(screen) {
@@ -771,12 +985,21 @@ class ScreenManager {
     screen.innerHTML = `<div class="image-screen-wrap">${src ? `<img src="${src}" class="screen-image-contain" style="object-fit:${config.image_fit || config.background_image_size || "contain"}" alt="Image">` : `<div class="empty-state"><div class="empty-state-icon">🖼️</div><div class="empty-state-title">Kein Bild gesetzt</div></div>`}</div>`;
   }
 
-  /* ────── Widget Factory ────── */
+  /* ══════════════════════════════════════════════════════════
+   WIDGET FACTORY -VERBESSERT
+   ══════════════════════════════════════════════════════════ */
   _createWidget(config) {
     const widget = document.createElement("div");
-    widget.className = `widget widget-${config.type || "simple-value"}`;
-
-    const trackedIds = [config.entity_id, config.config?.camera_entity, config.camera_entity, ...Utils.safeArray(config.config?.entities || config.entities)].filter(Boolean);
+    const widgetType = config.type || "simple-value";
+    widget.className = `widget widget-${widgetType}`;
+    
+    // Tracking
+    const trackedIds = [
+      config.entity_id, 
+      config.config?.camera_entity, 
+      config.camera_entity, 
+      ...Utils.safeArray(config.config?.entities || config.entities)
+    ].filter(Boolean);
     for (const tid of [...new Set(trackedIds)]) {
       if (!this._widgetElements[tid]) this._widgetElements[tid] = [];
       this._widgetElements[tid].push({ element: widget, config });
@@ -787,7 +1010,10 @@ class ScreenManager {
     const attrs = state.attributes || {};
     const unit = attrs.unit_of_measurement || config.unit || "";
     const name = this._widgetName(config, attrs.friendly_name || "");
-    const icon = config.icon || this._defaultIconForType(config.type);
+    const icon = config.icon || this._defaultIconForType(widgetType);
+    
+    // Debug
+    console.log("📦 Widget erstellen:", widgetType, config.entity_id, name);
 
     switch (config.type) {
       case "gauge": this._renderGaugeWidget(widget, config, value, unit, name); break;
@@ -807,6 +1033,12 @@ class ScreenManager {
       case "qr-code": this._renderQrWidget(widget, config); break;
       case "color-block": this._renderColorBlockWidget(widget, config, name); break;
       case "button": this._renderButtonWidget(widget, config, name); break;
+      case "web-embed": this._renderWebEmbedWidget(widget, config, name); break;
+      case "text-card": this._renderTextCardWidget(widget, config, state, name, icon); break;
+      case "entity-list": this._renderEntityListWidget(widget, config, state, name, icon); break;
+      case "chip-row": this._renderChipRowWidget(widget, config, state, name, icon); break;
+      case "divider": this._renderDividerWidget(widget, config, state, name, icon); break;
+      case "spacer": this._renderSpacerWidget(widget, config, state, name, icon); break;
       case "mini-graph": case "sparkline": case "line-chart": case "bar-chart":
       case "area-chart": case "multi-line-chart": case "stacked-bar-chart":
       case "horizontal-bar-chart": case "donut-chart": case "pie-chart":
@@ -814,6 +1046,8 @@ class ScreenManager {
       case "scatter-chart": case "bubble-chart": case "polar-area-chart":
       case "forecast-chart": case "energy-flow-mini": case "comparison-chart":
       case "radial-gauge-advanced": case "bullet-chart":
+      case "candlestick-chart": case "histogram-chart": case "waterfall-chart":
+      case "treemap-chart": case "sunburst-chart": case "sankey-chart": case "boxplot-chart":
         this._renderChartWidget(widget, config, state, name); break;
       case "icon-value":
         if (String(config.entity_id || "").startsWith("media_player.")) this._renderMediaPlayerWidget(widget, config, state, name, icon);
@@ -844,6 +1078,81 @@ class ScreenManager {
   _renderIconValueWidget(widget, config, value, unit, name, icon) {
     widget.innerHTML = `<div class="w-icon"><span style="font-size:28px">${icon}</span></div><div class="w-value-wrap"><span class="w-value">${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}</span><span class="w-unit">${unit ? ` ${unit}` : ''}</span></div>${name ? `<div class="w-name">${name}</div>` : ""}`;
     this._renderExtraEntityList(widget, config);
+  }
+
+  _textCardContentToHtml(text, markdown = true) {
+    const raw = Utils.text(text, "");
+    if (!markdown) return raw.replace(/\n/g, "<br>");
+    return raw
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/__(.+?)__/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/^\s*[-•]\s+(.+)$/gm, '<div class="text-card-bullet">• $1</div>')
+      .replace(/\n/g, "<br>");
+  }
+
+  _renderTextCardWidget(widget, config, state, name, icon) {
+    const cfg = config?.config || {};
+    const title = this._widgetName(config, name || "Text");
+    const bodyHtml = this._textCardContentToHtml(cfg.text_content || cfg.subtitle_text || "Text hinzufügen…", cfg.text_markdown !== false);
+    const stateText = cfg.text_show_entity && config.entity_id
+      ? Utils.formatStateWithUnit(state?.state ?? "—", state?.attributes?.unit_of_measurement || config.unit || "", { decimals: cfg.value_decimals, trimTrailingZeros: cfg.trim_trailing_zeros !== false })
+      : "";
+    widget.classList.add("widget-text-card");
+    widget.innerHTML = `<div class="text-card-shell">${title ? `<div class="w-name">${title}</div>` : ""}${icon ? `<div class="w-icon">${icon}</div>` : ""}<div class="text-card-body">${bodyHtml}</div>${stateText ? `<div class="widget-subvalue">${stateText}</div>` : ""}</div>`;
+  }
+
+  _renderEntityListWidget(widget, config, state, name, icon) {
+    const cfg = config?.config || {};
+    const ids = [config.entity_id, ...this._normalizeEntityIdList(cfg.entities || config.entities)]
+      .filter(Boolean)
+      .slice(0, Math.max(1, Number(cfg.list_max_items || 8)));
+    const rows = ids.map((entityId) => {
+      const st = this.app.entityStates[entityId] || {};
+      const attrs = st.attributes || {};
+      const label = cfg.list_show_names === false ? "" : Utils.text(this._extraEntityMeta(config, entityId).alias || attrs.friendly_name || entityId, entityId);
+      const unit = cfg.list_show_units === false ? "" : (attrs.unit_of_measurement || "");
+      const val = cfg.list_show_values === false ? "" : Utils.formatStateWithUnit(st.state ?? "—", unit, { decimals: cfg.extra_value_decimals ?? cfg.value_decimals, trimTrailingZeros: cfg.trim_trailing_zeros !== false });
+      const iconHtml = cfg.list_show_icons === false ? "" : `<span class="entity-list-icon">${attrs.icon || icon || '•'}</span>`;
+      return `<div class="entity-list-row ${cfg.list_dense ? 'dense' : ''}">${iconHtml}<span class="entity-list-name">${label}</span><span class="entity-list-value">${val}</span></div>`;
+    }).join("");
+    widget.classList.add("widget-entity-list");
+    widget.innerHTML = `<div class="entity-list-shell">${name ? `<div class="w-name">${name}</div>` : ""}<div class="entity-list-wrap">${rows || `<div class="widget-subvalue">Keine Entitäten gewählt</div>`}</div></div>`;
+  }
+
+  _renderChipRowWidget(widget, config, state, name, icon) {
+    const cfg = config?.config || {};
+    const ids = [config.entity_id, ...this._normalizeEntityIdList(cfg.entities || config.entities)].filter(Boolean).slice(0, Math.max(1, Number(cfg.list_max_items || 8)));
+    const chips = ids.map((entityId) => {
+      const st = this.app.entityStates[entityId] || {};
+      const attrs = st.attributes || {};
+      const label = cfg.chip_show_names === false ? "" : Utils.text(this._extraEntityMeta(config, entityId).alias || attrs.friendly_name || entityId, entityId);
+      const valueText = cfg.chip_show_values === false ? "" : Utils.text(st.state ?? "—", "—");
+      const iconHtml = cfg.chip_show_icons === false ? "" : `<span class="chip-row-icon">${attrs.icon || icon || '•'}</span>`;
+      return `<span class="chip-row-chip ${cfg.chip_style || 'glass'}">${iconHtml}${label ? `<span class="chip-row-label">${label}</span>` : ''}${valueText ? `<span class="chip-row-value">${valueText}</span>` : ''}</span>`;
+    }).join("");
+    widget.classList.add("widget-chip-row");
+    widget.innerHTML = `<div class="chip-row-shell">${name ? `<div class="w-name">${name}</div>` : ""}<div class="chip-row-wrap ${cfg.chip_wrap === false ? 'nowrap' : 'wrap'}">${chips || `<span class="chip-row-chip outline">Keine Entitäten</span>`}</div></div>`;
+  }
+
+  _renderDividerWidget(widget, config, state, name, icon) {
+    const cfg = config?.config || {};
+    const label = Utils.text(cfg.divider_label || name || config.name || "", "");
+    const align = cfg.divider_align || "center";
+    const style = cfg.divider_style || "solid";
+    const thickness = Math.max(1, Number(cfg.divider_thickness || 1));
+    const color = cfg.divider_color || config.text_color || config.textColor || "rgba(255,255,255,.24)";
+    widget.classList.add("widget-divider");
+    widget.innerHTML = `<div class="divider-shell ${align} ${style}" style="--divider-thickness:${thickness}px;--divider-color:${color};">${label ? `<span class="divider-label">${label}</span>` : ''}</div>`;
+  }
+
+  _renderSpacerWidget(widget, config) {
+    widget.classList.add("widget-spacer");
+    widget.innerHTML = `<div class="spacer-shell"><span>Spacer</span></div>`;
   }
 
   _renderMediaPlayerWidget(widget, config, state, name, icon) {
@@ -1338,6 +1647,75 @@ class ScreenManager {
     widget.innerHTML = `<div class="widget-button-face"><div class="w-icon button-icon-animated"><span style="font-size:24px">${config.icon || "🔘"}</span></div>${this._widgetName(config, name || "Button") ? `<div class="w-name">${this._widgetName(config, name || "Button")}</div>` : ""}</div>`;
   }
 
+  _renderWebEmbedWidget(widget, config, name) {
+    widget.classList.add("widget-web-embed");
+    const cfg = config.config || {};
+    const rawUrl = String(cfg.embed_url || cfg.page_url || "/lovelace").trim();
+    const isExternal = /^https?:\/\//i.test(rawUrl);
+    const normalizedPath = isExternal ? rawUrl : (rawUrl.startsWith('/') ? rawUrl : `/${rawUrl.replace(/^\/+/, '')}`);
+    const kiosk = cfg.embed_kiosk !== false;
+    const embedUrl = !isExternal && kiosk ? this._applyHaEmbedKiosk(normalizedPath) : normalizedPath;
+    const height = Math.max(140, Math.min(Number(cfg.embed_height || 350), 2000));
+    const interactive = cfg.embed_interactive !== false;
+    const fullscreen = cfg.embed_fullscreen !== false;
+    const title = fullscreen ? "" : this._widgetName(config, name || cfg.embed_title || "Webseite / Einbettung");
+    widget.classList.toggle("is-fullscreen-embed", fullscreen);
+    const iframeStyle = fullscreen
+      ? `width:100%;height:100%;border:0;border-radius:0;background:#0b1220;pointer-events:${interactive ? 'auto' : 'none'};`
+      : `width:100%;height:${height}px;border:0;border-radius:14px;background:#0b1220;pointer-events:${interactive ? 'auto' : 'none'};`;
+    widget.innerHTML = `${title ? `<div class="w-name">${title}</div>` : ""}<div class="widget-web-embed-frame-wrap ${interactive ? 'interactive' : 'locked'} ${fullscreen ? 'fullscreen' : ''}"><iframe class="widget-web-embed-frame" src="${embedUrl}" style="${iframeStyle}" loading="lazy"></iframe>${interactive ? '' : '<div class="widget-web-embed-overlay">Vorschau</div>'}</div>`;
+    const iframe = widget.querySelector('.widget-web-embed-frame');
+    if (iframe && kiosk && !isExternal) {
+      const hideUi = () => this._applyHaEmbedKioskStyles(iframe);
+      iframe.addEventListener('load', hideUi);
+      window.setTimeout(hideUi, 1200);
+    }
+  }
+
+  _applyHaEmbedKiosk(path) {
+    try {
+      const base = window.location.origin || '';
+      const url = new URL(path, base);
+      if (!url.searchParams.has('kiosk')) url.searchParams.set('kiosk', '1');
+      if (!url.searchParams.has('hide_header')) url.searchParams.set('hide_header', '1');
+      if (!url.searchParams.has('hide_sidebar')) url.searchParams.set('hide_sidebar', '1');
+      if (!url.searchParams.has('embed')) url.searchParams.set('embed', '1');
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch (_err) {
+      return path;
+    }
+  }
+
+  _applyHaEmbedKioskStyles(iframe) {
+    try {
+      const doc = iframe?.contentDocument || iframe?.contentWindow?.document;
+      if (!doc || !doc.head) return;
+      if (doc.getElementById('td-kiosk-style')) return;
+      const style = doc.createElement('style');
+      style.id = 'td-kiosk-style';
+      style.textContent = `
+        app-header, app-toolbar, ha-top-app-bar-fixed, ha-drawer, partial-panel-resolver > app-drawer-layout > [slot="drawer"],
+        .toolbar, .header, .mdc-top-app-bar, hui-masonry-view > .header, hui-panel-view > .header,
+        ha-menu-button, ha-sidebar, paper-drawer-panel [drawer], mwc-drawer, .edit-mode-toolbar {
+          display: none !important;
+          visibility: hidden !important;
+          max-height: 0 !important;
+        }
+        home-assistant, home-assistant-main, app-drawer-layout, partial-panel-resolver, ha-panel-lovelace, hui-root, ha-app-layout {
+          --app-header-height: 0px !important;
+          --mdc-top-app-bar-height: 0px !important;
+        }
+        ha-panel-lovelace, hui-root, .view, .container, main, #view, #root, body {
+          margin-top: 0 !important;
+          padding-top: 0 !important;
+          top: 0 !important;
+        }
+      `;
+      doc.head.appendChild(style);
+      doc.body?.classList?.add('td-kiosk-embed');
+    } catch (_err) {}
+  }
+
 // ══════════════════════════════════════════════════════════
 // TEIL 2 – ScreenManager Fortsetzung: Charts, Updates, Interactions
 // ══════════════════════════════════════════════════════════
@@ -1414,144 +1792,177 @@ class ScreenManager {
     }
   }
 
-  _getChartConfig(type, histories, labels, config) {
-    const showLegend = config.config?.chart_show_legend !== false;
-    const showAxes = config.config?.chart_show_axes !== false;
-    const showGrid = config.config?.chart_show_grid !== false;
-    const showPoints = config.config?.chart_show_points !== false;
-    const lineWidth = Number(config.config?.chart_line_width || 2);
-    const tension = Number(config.config?.chart_tension ?? ((type === "line-chart" || type === "multi-line-chart" || type === "area-chart") ? 0.35 : 0.25));
-    const fillOpacity = Number(config.config?.chart_fill_opacity ?? (type === "area-chart" ? 0.22 : 0.14));
-    const stacked = config.config?.chart_stacked === true || type === "stacked-bar-chart";
-    const compact = config.config?.chart_mobile_compact === true;
-    const beginAtZero = config.config?.chart_begin_at_zero === true;
-    const legendPosition = config.config?.chart_legend_position || (compact ? "bottom" : "top");
-    const curveMode = config.config?.chart_curve_mode || "default";
-    const pointStyle = config.config?.chart_point_style || "circle";
 
-    const legendOptions = {
-      display: showLegend && (histories.length > 1 || ["donut-chart", "pie-chart", "radar-chart", "line-chart", "multi-line-chart"].includes(type)),
-      position: legendPosition,
-      labels: { color: "rgba(255,255,255,0.72)", boxWidth: compact ? 10 : 14, usePointStyle: true, padding: compact ? 10 : 14, filter: (item, data) => !data?.datasets?.[item.datasetIndex]?.tdHideName }
-    };
+_getChartConfig(type, histories, labels, config) {
+  const showLegend = config.config?.chart_show_legend !== false;
+  const showAxes = config.config?.chart_show_axes !== false;
+  const showGrid = config.config?.chart_show_grid !== false;
+  const showPoints = config.config?.chart_show_points !== false;
+  const lineWidth = Number(config.config?.chart_line_width || 2);
+  const tension = Number(config.config?.chart_tension ?? ((type === "line-chart" || type === "multi-line-chart" || type === "area-chart") ? 0.35 : 0.25));
+  const fillOpacity = Number(config.config?.chart_fill_opacity ?? (type === "area-chart" ? 0.22 : 0.14));
+  const stacked = config.config?.chart_stacked === true || type === "stacked-bar-chart";
+  const compact = config.config?.chart_mobile_compact === true;
+  const beginAtZero = config.config?.chart_begin_at_zero === true;
+  const legendPosition = config.config?.chart_legend_position || (compact ? "bottom" : "top");
+  const curveMode = config.config?.chart_curve_mode || "default";
+  const pointStyle = config.config?.chart_point_style || "circle";
+  const yMinRaw = config.config?.chart_y_min;
+  const yMaxRaw = config.config?.chart_y_max;
+  const xTickLimit = Number(config.config?.chart_x_tick_limit || 0);
+  const yTickLimit = Number(config.config?.chart_y_tick_limit || 0);
+  const cutout = Number(config.config?.chart_cutout || (type === "pie-chart" ? 0 : 68));
+  const barRadius = Number(config.config?.chart_bar_radius || (compact ? 6 : 8));
+  const goalValue = config.config?.chart_goal_value;
+  const bubbleScale = Math.max(2, Number(config.config?.chart_bubble_scale || 8));
 
-    const chartAnimationEnabled = (config.config?.chart_animation !== false) && (this.app?.globalSettings?.default_chart_widget_animations !== false);
-    const baseOptions = {
-      responsive: true, maintainAspectRatio: false,
-      animation: chartAnimationEnabled ? { duration: compact ? 220 : 600, easing: "easeOutCubic" } : false,
-      interaction: { mode: "nearest", intersect: false },
-      plugins: { legend: legendOptions, tooltip: { enabled: true, displayColors: true } },
-      scales: {
-        x: { display: showAxes, grid: { display: showGrid, color: "rgba(255,255,255,0.05)" }, ticks: { maxTicksLimit: compact ? 4 : 6, color: "rgba(255,255,255,0.5)" } },
-        y: { display: showAxes, beginAtZero, grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: compact ? 4 : 5, color: "rgba(255,255,255,0.5)" } }
-      }
-    };
+  const legendOptions = {
+    display: showLegend && (histories.length > 1 || ["donut-chart", "pie-chart", "radar-chart", "line-chart", "multi-line-chart", "candlestick-chart", "histogram-chart", "waterfall-chart", "boxplot-chart"].includes(type)),
+    position: legendPosition,
+    labels: { color: "rgba(255,255,255,0.72)", boxWidth: compact ? 10 : 14, usePointStyle: true, padding: compact ? 10 : 14, filter: (item, data) => !data?.datasets?.[item.datasetIndex]?.tdHideName }
+  };
 
-    // ═══ LINE-BASIERTE CHARTS ═══
-    const lineTypes = new Set(["mini-graph", "sparkline", "line-chart", "area-chart", "multi-line-chart", "forecast-chart", "comparison-chart", "energy-flow-mini", "timeline-chart"]);
-
-    if (lineTypes.has(type)) {
-      const datasets = histories.map((entry, idx) => ({
-        label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
-        tdHideName: !!entry.meta?.hide_name,
-        data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
-        borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
-        backgroundColor: this._chartPalette(idx, fillOpacity, config, entry.entityId),
-        fill: type === "area-chart" || type === "forecast-chart" || type === "energy-flow-mini",
-        tension: curveMode === "stepped" ? 0 : tension,
-        stepped: curveMode === "stepped",
-        cubicInterpolationMode: curveMode === "monotone" ? "monotone" : "default",
-        pointStyle, pointRadius: showPoints ? (compact ? 1.5 : 2.5) : 0,
-        pointHoverRadius: showPoints ? 4 : 0, borderWidth: lineWidth, spanGaps: true,
-        stack: stacked ? "stack" : undefined
-      }));
-      return {
-        type: "line",
-        data: { labels, datasets },
-        options: { ...baseOptions,
-          plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || ["line-chart", "multi-line-chart", "comparison-chart", "forecast-chart"].includes(type)) } },
-          scales: { ...baseOptions.scales, x: { ...baseOptions.scales.x, display: showAxes && type !== "sparkline" }, y: { ...baseOptions.scales.y, display: showAxes && type !== "sparkline", stacked } }
-        }
-      };
+  const chartAnimationEnabled = (config.config?.chart_animation !== false) && (this.app?.globalSettings?.default_chart_widget_animations !== false);
+  const baseOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: chartAnimationEnabled ? { duration: compact ? 220 : 600, easing: "easeOutCubic" } : false,
+    interaction: { mode: "nearest", intersect: false },
+    plugins: { legend: legendOptions, tooltip: { enabled: true, displayColors: true } },
+    scales: {
+      x: { display: showAxes, grid: { display: showGrid, color: "rgba(255,255,255,0.05)" }, ticks: { maxTicksLimit: xTickLimit || (compact ? 4 : 6), color: "rgba(255,255,255,0.5)" } },
+      y: { display: showAxes, beginAtZero, min: yMinRaw === "" || yMinRaw == null ? undefined : Number(yMinRaw), max: yMaxRaw === "" || yMaxRaw == null ? undefined : Number(yMaxRaw), grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { maxTicksLimit: yTickLimit || (compact ? 4 : 5), color: "rgba(255,255,255,0.5)" } }
     }
+  };
 
-    // ═══ BAR-BASIERTE CHARTS ═══
-    const barTypes = new Set(["bar-chart", "stacked-bar-chart", "horizontal-bar-chart", "heatmap-mini", "bullet-chart"]);
-
-    if (barTypes.has(type)) {
-      const heatmapMode = config.config?.heatmap_mode || "intensity";
-      const datasets = histories.map((entry, idx) => ({
-        label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
-        tdHideName: !!entry.meta?.hide_name,
-        data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
-        borderWidth: 1, borderRadius: compact ? 6 : 8,
-        borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
-        backgroundColor: type === "heatmap-mini"
-          ? labels.map((_, pidx) => { const val = entry.points[pidx]?.y ?? 0; const alpha = heatmapMode === "zones" ? (Math.abs(val) >= 75 ? 0.78 : Math.abs(val) >= 50 ? 0.58 : Math.abs(val) >= 25 ? 0.38 : 0.22) : Utils.clamp(Math.abs(val) / 100, 0.18, 0.82); return this._chartPalette(idx, alpha, config, entry.entityId); })
-          : this._chartPalette(idx, 0.42, config, entry.entityId),
-        barPercentage: type === "bullet-chart" ? 0.55 : 0.78,
-        categoryPercentage: type === "bullet-chart" ? 0.92 : 0.84
-      }));
-      return {
-        type: "bar",
-        data: { labels, datasets },
-        options: { ...baseOptions, indexAxis: (type === "horizontal-bar-chart" || type === "bullet-chart") ? "y" : "x",
-          scales: { x: { ...baseOptions.scales.x, stacked }, y: { ...baseOptions.scales.y, stacked } },
-          plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || stacked) } }
-        }
-      };
-    }
-
-    // ═══ CIRCULAR CHARTS ═══
-    if (["donut-chart", "pie-chart", "radial-gauge-advanced", "polar-area-chart"].includes(type)) {
-      const latest = histories.map(e => e.points[e.points.length - 1]?.y ?? 0);
-      const dLabels = histories.map((e, idx) => this._chartSeriesLabel(config, e.entityId, e.state?.attributes?.friendly_name || e.entityId, idx));
-      const isGauge = type === "radial-gauge-advanced";
-      const gaugeMax = Number(config.config?.max ?? 100);
-      const gaugeValue = Number(latest[0] ?? 0);
-      return {
-        type: type === "polar-area-chart" ? "polarArea" : "doughnut",
-        data: {
-          labels: isGauge ? [dLabels[0] || "Wert", "Rest"] : dLabels,
-          datasets: [{ tdHideName: false,
-            data: isGauge ? [gaugeValue, Math.max(gaugeMax - gaugeValue, 0)] : latest,
-            backgroundColor: isGauge ? [this._chartPalette(0, 0.95, config, histories[0]?.entityId), "rgba(255,255,255,0.08)"] : histories.map((e, idx) => this._chartPalette(idx, 0.82, config, e.entityId)),
-            borderColor: "rgba(255,255,255,0.08)", borderWidth: 1
-          }]
-        },
-        options: { ...baseOptions, cutout: type === "pie-chart" || type === "polar-area-chart" ? "0%" : "68%", scales: {}, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend } } }
-      };
-    }
-
-    // ═══ RADAR ═══
-    if (type === "radar-chart") {
-      return {
-        type: "radar",
-        data: { labels, datasets: histories.map((entry, idx) => ({ label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx), tdHideName: !!entry.meta?.hide_name, data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0), borderColor: this._chartPalette(idx, 0.95, config, entry.entityId), backgroundColor: this._chartPalette(idx, 0.2, config, entry.entityId), pointBackgroundColor: this._chartPalette(idx, 0.95, config, entry.entityId), pointRadius: showPoints ? 2 : 0, borderWidth: lineWidth })) },
-        options: { ...baseOptions, scales: { r: { angleLines: { color: "rgba(255,255,255,0.08)" }, grid: { color: "rgba(255,255,255,0.08)" }, pointLabels: { color: "rgba(255,255,255,0.6)" }, ticks: { backdropColor: "transparent", color: "rgba(255,255,255,0.45)" } } } }
-      };
-    }
-
-    // ═══ SCATTER / BUBBLE ═══
-    if (type === "scatter-chart" || type === "bubble-chart") {
-      return {
-        type: type === "bubble-chart" ? "bubble" : "scatter",
-        data: { datasets: histories.map((entry, idx) => ({ label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx), tdHideName: !!entry.meta?.hide_name, data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y, r: type === "bubble-chart" ? Utils.clamp(Math.abs(Number(p.y) || 0) / 8, 4, compact ? 11 : 16) : undefined })), borderColor: this._chartPalette(idx, 0.95, config, entry.entityId), backgroundColor: this._chartPalette(idx, 0.48, config, entry.entityId), pointStyle, pointRadius: showPoints ? 4 : 0, pointHoverRadius: showPoints ? 5 : 0 })) },
-        options: { ...baseOptions, scales: { x: { display: showAxes, type: "linear", position: "bottom", grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { color: "rgba(255,255,255,0.45)" } }, y: baseOptions.scales.y } }
-      };
-    }
-
-    // ═══ FALLBACK → line (NICHT bar!) ═══
-    const fallbackDS = histories.map((entry, idx) => ({
+  const lineTypes = new Set(["mini-graph", "sparkline", "line-chart", "area-chart", "multi-line-chart", "forecast-chart", "comparison-chart", "energy-flow-mini", "timeline-chart"]);
+  if (lineTypes.has(type)) {
+    const datasets = histories.map((entry, idx) => ({
       label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
       tdHideName: !!entry.meta?.hide_name,
       data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
       borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
-      backgroundColor: this._chartPalette(idx, 0.14, config, entry.entityId),
-      fill: false, tension, pointRadius: showPoints ? 2.5 : 0, borderWidth: lineWidth, spanGaps: true
+      backgroundColor: this._chartPalette(idx, fillOpacity, config, entry.entityId),
+      fill: type === "area-chart" || type === "forecast-chart" || type === "energy-flow-mini",
+      tension: curveMode === "stepped" ? 0 : tension,
+      stepped: curveMode === "stepped",
+      cubicInterpolationMode: curveMode === "monotone" ? "monotone" : "default",
+      pointStyle, pointRadius: showPoints ? (compact ? 1.5 : 2.5) : 0,
+      pointHoverRadius: showPoints ? 4 : 0, borderWidth: lineWidth, spanGaps: true,
+      stack: stacked ? "stack" : undefined
     }));
-    return { type: "line", data: { labels, datasets: fallbackDS }, options: baseOptions };
+    return { type: "line", data: { labels, datasets }, options: { ...baseOptions, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || ["line-chart", "multi-line-chart", "comparison-chart", "forecast-chart"].includes(type)) } }, scales: { ...baseOptions.scales, x: { ...baseOptions.scales.x, display: showAxes && type !== "sparkline" }, y: { ...baseOptions.scales.y, display: showAxes && type !== "sparkline", stacked } } } };
   }
+
+  if (type === "histogram-chart") {
+    const values = histories[0]?.points?.map((p) => Number(p?.y)).filter((v) => Number.isFinite(v)) || [];
+    const bins = Math.max(4, Number(config.config?.histogram_bins || 8));
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 1;
+    const span = Math.max(1, max - min);
+    const step = span / bins;
+    const counts = Array.from({ length: bins }, () => 0);
+    values.forEach((value) => {
+      const idx = Math.min(bins - 1, Math.floor((value - min) / Math.max(step, 0.0001)));
+      counts[Math.max(0, idx)] += 1;
+    });
+    const hLabels = Array.from({ length: bins }, (_, idx) => {
+      const start = min + (idx * step);
+      const end = start + step;
+      return `${Utils.formatValue(start, { decimals: 1, trimTrailingZeros: true })}–${Utils.formatValue(end, { decimals: 1, trimTrailingZeros: true })}`;
+    });
+    return { type: "bar", data: { labels: hLabels, datasets: [{ label: this._chartSeriesLabel(config, histories[0]?.entityId, histories[0]?.state?.attributes?.friendly_name || histories[0]?.entityId || "Histogramm", 0), data: counts, borderColor: this._chartPalette(0, .96, config, histories[0]?.entityId), backgroundColor: this._chartPalette(0, .38, config, histories[0]?.entityId), borderRadius: barRadius }] }, options: { ...baseOptions, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend } } } };
+  }
+
+  if (type === "waterfall-chart") {
+    const primary = histories[0] || { points: [] };
+    const pts = primary.points.slice(-Math.max(4, Math.min(16, labels.length)));
+    let running = 0;
+    const wfLabels = pts.map((p) => Utils.shortDateTime(p.x));
+    const wfData = pts.map((p, idx) => {
+      const prev = idx === 0 ? Number(pts[0]?.y || 0) : Number(pts[idx - 1]?.y || 0);
+      const cur = Number(p?.y || 0);
+      const delta = idx === 0 ? cur : (cur - prev);
+      const start = running;
+      running += delta;
+      return [start, running];
+    });
+    const wfColors = wfData.map((range) => range[1] >= range[0] ? this._chartPalette(0, .5, config, primary.entityId) : 'rgba(239,83,80,.55)');
+    return { type: 'bar', data: { labels: wfLabels, datasets: [{ label: 'Waterfall', data: wfData, borderColor: wfColors, backgroundColor: wfColors, borderRadius: barRadius }] }, options: { ...baseOptions, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: false } } } };
+  }
+
+  if (type === "candlestick-chart") {
+    const primary = histories[0] || { points: [] };
+    const pts = primary.points;
+    const buckets = Math.max(4, Math.min(12, Number(config.config?.chart_max_points || 12)));
+    const size = Math.max(1, Math.ceil(pts.length / Math.max(1, buckets)));
+    const grouped = [];
+    for (let i = 0; i < pts.length; i += size) {
+      const chunk = pts.slice(i, i + size).map((p) => Number(p?.y)).filter((v) => Number.isFinite(v));
+      if (!chunk.length) continue;
+      grouped.push({ label: Utils.shortDateTime(pts[Math.min(i + size - 1, pts.length - 1)]?.x), low: Math.min(...chunk), high: Math.max(...chunk), open: chunk[0], close: chunk[chunk.length - 1] });
+    }
+    const cLabels = grouped.map((g) => g.label);
+    const cData = grouped.map((g) => [g.low, g.high]);
+    const cColors = grouped.map((g) => g.close >= g.open ? 'rgba(76,175,80,.48)' : 'rgba(239,83,80,.48)');
+    const cBorders = grouped.map((g) => g.close >= g.open ? 'rgba(76,175,80,.98)' : 'rgba(239,83,80,.98)');
+    return { type: 'bar', data: { labels: cLabels, datasets: [{ label: 'OHLC', data: cData, backgroundColor: cColors, borderColor: cBorders, borderWidth: 1.5, borderRadius: Math.max(1, Math.round(barRadius / 2)), barPercentage: .5, categoryPercentage: .7 }] }, options: { ...baseOptions, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: false } } } };
+  }
+
+  const barTypes = new Set(["bar-chart", "stacked-bar-chart", "horizontal-bar-chart", "heatmap-mini", "bullet-chart", "sankey-chart", "boxplot-chart"]);
+  if (barTypes.has(type)) {
+    if (type === 'boxplot-chart') {
+      const values = histories[0]?.points?.map((p) => Number(p?.y)).filter((v) => Number.isFinite(v)).sort((a,b) => a-b) || [];
+      const pick = (ratio) => values.length ? values[Math.min(values.length - 1, Math.floor((values.length - 1) * ratio))] : 0;
+      const stats = [values.length ? values[0] : 0, pick(.25), pick(.5), pick(.75), values.length ? values[values.length - 1] : 0];
+      return { type: 'bar', data: { labels: ['Min','Q1','Median','Q3','Max'], datasets: [{ label: 'Verteilung', data: stats, borderColor: this._chartPalette(0,.96, config, histories[0]?.entityId), backgroundColor: this._chartPalette(0,.38, config, histories[0]?.entityId), borderRadius: barRadius }] }, options: { ...baseOptions, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: false } } } };
+    }
+    const heatmapMode = config.config?.heatmap_mode || "intensity";
+    const datasets = histories.map((entry, idx) => ({
+      label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx),
+      tdHideName: !!entry.meta?.hide_name,
+      data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0),
+      borderWidth: 1, borderRadius: barRadius,
+      borderColor: this._chartPalette(idx, 0.96, config, entry.entityId),
+      backgroundColor: type === "heatmap-mini"
+        ? labels.map((_, pidx) => { const val = entry.points[pidx]?.y ?? 0; const alpha = heatmapMode === "zones" ? (Math.abs(val) >= 75 ? 0.78 : Math.abs(val) >= 50 ? 0.58 : Math.abs(val) >= 25 ? 0.38 : 0.22) : Utils.clamp(Math.abs(val) / 100, 0.18, 0.82); return this._chartPalette(idx, alpha, config, entry.entityId); })
+        : this._chartPalette(idx, 0.42, config, entry.entityId),
+      barPercentage: type === "bullet-chart" ? 0.55 : 0.78,
+      categoryPercentage: type === "bullet-chart" ? 0.92 : 0.84
+    }));
+    if (type === 'bullet-chart' && goalValue !== undefined && goalValue !== '') {
+      datasets.push({ label: 'Ziel', data: labels.map(() => Number(goalValue) || 0), type: 'line', borderColor: 'rgba(255,255,255,.82)', borderDash: [6,4], pointRadius: 0, fill: false });
+    }
+    return { type: "bar", data: { labels, datasets }, options: { ...baseOptions, indexAxis: (type === "horizontal-bar-chart" || type === "bullet-chart" || type === 'sankey-chart') ? "y" : "x", scales: { x: { ...baseOptions.scales.x, stacked }, y: { ...baseOptions.scales.y, stacked } }, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend && (histories.length > 1 || stacked || type === 'sankey-chart') } } } };
+  }
+
+  if (["donut-chart", "pie-chart", "radial-gauge-advanced", "polar-area-chart", "treemap-chart", "sunburst-chart"].includes(type)) {
+    const latest = histories.map(e => e.points[e.points.length - 1]?.y ?? 0);
+    const dLabels = histories.map((e, idx) => this._chartSeriesLabel(config, e.entityId, e.state?.attributes?.friendly_name || e.entityId, idx));
+    const isGauge = type === "radial-gauge-advanced";
+    const gaugeMax = Number(config.config?.max ?? goalValue ?? 100);
+    const gaugeValue = Number(latest[0] ?? 0);
+    return {
+      type: type === "polar-area-chart" || type === 'sunburst-chart' ? "polarArea" : "doughnut",
+      data: {
+        labels: isGauge ? [dLabels[0] || "Wert", "Rest"] : dLabels,
+        datasets: [{ tdHideName: false, data: isGauge ? [gaugeValue, Math.max(gaugeMax - gaugeValue, 0)] : latest, backgroundColor: isGauge ? [this._chartPalette(0, 0.95, config, histories[0]?.entityId), "rgba(255,255,255,0.08)"] : histories.map((e, idx) => this._chartPalette(idx, 0.82, config, e.entityId)), borderColor: "rgba(255,255,255,0.08)", borderWidth: 1 }]
+      },
+      options: { ...baseOptions, cutout: (type === "pie-chart" || type === "polar-area-chart" || type === 'sunburst-chart') ? "0%" : `${Utils.clamp(cutout, 0, 95)}%`, scales: {}, plugins: { ...baseOptions.plugins, legend: { ...legendOptions, display: showLegend } } }
+    };
+  }
+
+  if (type === "radar-chart") {
+    return { type: "radar", data: { labels, datasets: histories.map((entry, idx) => ({ label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx), tdHideName: !!entry.meta?.hide_name, data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0), borderColor: this._chartPalette(idx, 0.95, config, entry.entityId), backgroundColor: this._chartPalette(idx, 0.2, config, entry.entityId), pointBackgroundColor: this._chartPalette(idx, 0.95, config, entry.entityId), pointRadius: showPoints ? 2 : 0, borderWidth: lineWidth })) }, options: { ...baseOptions, scales: { r: { angleLines: { color: "rgba(255,255,255,0.08)" }, grid: { color: "rgba(255,255,255,0.08)" }, pointLabels: { color: "rgba(255,255,255,0.6)" }, ticks: { backdropColor: "transparent", color: "rgba(255,255,255,0.45)" } } } } };
+  }
+
+  if (type === "scatter-chart" || type === "bubble-chart") {
+    return { type: type === "bubble-chart" ? "bubble" : "scatter", data: { datasets: histories.map((entry, idx) => ({ label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx), tdHideName: !!entry.meta?.hide_name, data: entry.points.map((p, pidx) => ({ x: pidx + 1, y: p.y, r: type === "bubble-chart" ? Utils.clamp(Math.abs(Number(p.y) || 0) / bubbleScale, 4, compact ? 11 : 16) : undefined })), borderColor: this._chartPalette(idx, 0.95, config, entry.entityId), backgroundColor: this._chartPalette(idx, 0.48, config, entry.entityId), pointStyle, pointRadius: showPoints ? 4 : 0, pointHoverRadius: showPoints ? 5 : 0 })) }, options: { ...baseOptions, scales: { x: { display: showAxes, type: "linear", position: "bottom", grid: { display: showGrid, color: "rgba(255,255,255,0.06)" }, ticks: { color: "rgba(255,255,255,0.45)" } }, y: baseOptions.scales.y } } };
+  }
+
+  const fallbackDS = histories.map((entry, idx) => ({ label: this._chartSeriesLabel(config, entry.entityId, entry.state?.attributes?.friendly_name || entry.entityId, idx), tdHideName: !!entry.meta?.hide_name, data: labels.map((_, pidx) => entry.points[pidx]?.y ?? entry.points[entry.points.length - 1]?.y ?? 0), borderColor: this._chartPalette(idx, 0.96, config, entry.entityId), backgroundColor: this._chartPalette(idx, 0.14, config, entry.entityId), fill: false, tension, pointRadius: showPoints ? 2.5 : 0, borderWidth: lineWidth, spanGaps: true }));
+  return { type: "line", data: { labels, datasets: fallbackDS }, options: baseOptions };
+}
 
   /* ────── Widget Updates ────── */
   _updateWidget(widgetInfo, entityId, newState) {
@@ -1594,13 +2005,20 @@ class ScreenManager {
       case "light-control": this._renderLightControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
       case "climate-control": this._renderClimateControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
       case "cover-control": this._renderCoverControlWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "text-card": this._renderTextCardWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "entity-list": this._renderEntityListWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "chip-row": this._renderChipRowWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "divider": this._renderDividerWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
+      case "spacer": this._renderSpacerWidget(element, config, newState || this.app.entityStates[config.entity_id] || {}, this._widgetName(config, newState?.attributes?.friendly_name || ""), config.icon || this._defaultIconForType(config.type)); break;
       case "mini-graph": case "sparkline": case "line-chart": case "bar-chart":
       case "area-chart": case "multi-line-chart": case "stacked-bar-chart":
       case "horizontal-bar-chart": case "donut-chart": case "pie-chart":
       case "radar-chart": case "heatmap-mini": case "timeline-chart":
       case "scatter-chart": case "bubble-chart": case "polar-area-chart":
       case "forecast-chart": case "energy-flow-mini": case "comparison-chart":
-      case "radial-gauge-advanced": case "bullet-chart": {
+      case "radial-gauge-advanced": case "bullet-chart":
+      case "candlestick-chart": case "histogram-chart": case "waterfall-chart":
+      case "treemap-chart": case "sunburst-chart": case "sankey-chart": case "boxplot-chart": {
         const cv = element.querySelector(".chart-value");
         if (cv) cv.innerHTML = `${Utils.formatValue(value, { decimals: config.config?.value_decimals, trimTrailingZeros: config.config?.trim_trailing_zeros !== false })}${unit ? `<span class="chart-unit"> ${unit}</span>` : ""}`;
         const canvas = element.querySelector(".chart-canvas");
@@ -1680,7 +2098,7 @@ class ScreenManager {
 
   _syncWidgetToggleBadge(widget, config) {
     if ((config?.tap_action || "none") !== "toggle" || config?.toggle_badge === false || config?.config?.control_show_toggle_badge === false) { const ex = widget.querySelector(".widget-toggle-badge"); if (ex) ex.remove(); return; }
-    const entityId = this._resolvePrimaryEntityId(config, state);
+    const entityId = this._resolvePrimaryEntityId(config, null);
     if (!entityId) return;
     const st = this.app?.entityStates?.[entityId] || {};
     this._showWidgetToggleBadge(widget, Utils.isTruthyState(st.state), st.state);
@@ -1916,11 +2334,15 @@ class ScreenManager {
 
 
   async _toggleWidgetEntity(widget, config) {
-    const entityId = this._resolvePrimaryEntityId(config, state);
+    const entityId = this._resolvePrimaryEntityId(config, null);
     if (!entityId) return;
-    const ok = await this._invokeToggleAction(entityId, config.toggle_mode || 'toggle');
-    if (!ok) return;
-    setTimeout(() => this._syncWidgetToggleBadge(widget, config), 250);
+    try {
+      const ok = await this._invokeToggleAction(entityId, config.toggle_mode || 'toggle');
+      if (!ok) return;
+      setTimeout(() => this._syncWidgetToggleBadge(widget, config), 250);
+    } catch (e) {
+      console.warn("Toggle failed for", entityId, e);
+    }
   }
 
   async _invokeToggleAction(entityId, mode = 'toggle') {
@@ -2205,7 +2627,7 @@ class ScreenManager {
   }
 
   _defaultIconForType(type) {
-    const map = { "simple-value": "🔢", "icon-value": "ℹ️", "mini-graph": "📉", "line-chart": "📈", "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈", "stacked-bar-chart": "🧱", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "🕒", "scatter-chart": "✳️", "bubble-chart": "🫧", "polar-area-chart": "🧿", "forecast-chart": "🔮", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", "sparkline": "〰️", "trend-arrow": "📈", "media-player-control": "🎵", "switch-control": "🎚️", "light-control": "💡", "climate-control": "🌡️", "cover-control": "🪟", "weather": "🌤️", "clock": "🕐", "image": "🖼️", "camera": "📹", "qr-code": "🔳", "countdown": "⏱️", "button": "🔘" };
+    const map = { "simple-value": "🔢", "icon-value": "ℹ️", "mini-graph": "📉", "line-chart": "📈", "bar-chart": "📊", "area-chart": "🌊", "multi-line-chart": "📈", "stacked-bar-chart": "🧱", "horizontal-bar-chart": "↔️", "donut-chart": "🍩", "pie-chart": "🥧", "radar-chart": "🕸️", "heatmap-mini": "🔥", "timeline-chart": "🕒", "scatter-chart": "✳️", "bubble-chart": "🫧", "polar-area-chart": "🧿", "forecast-chart": "🔮", "energy-flow-mini": "⚡", "comparison-chart": "⚖️", "radial-gauge-advanced": "🎛️", "bullet-chart": "🎯", "sparkline": "〰️", "trend-arrow": "📈", "media-player-control": "🎵", "switch-control": "🎚️", "light-control": "💡", "climate-control": "🌡️", "cover-control": "🪟", "weather": "🌤️", "clock": "🕐", "image": "🖼️", "camera": "📹", "qr-code": "🔳", "countdown": "⏱️", "button": "🔘", "web-embed": "🌐" };
     return map[type] || "📊";
   }
 }
@@ -2221,18 +2643,33 @@ class TickerManager {
     this.bar = document.getElementById("ticker-bar");
     this.messages = [];
     this.entityTemplates = [];
+    this._autoHideTimer = null;
+    this._isVisible = true;
+    console.log("📺 TickerManager init");
   }
 
+  /** Debug-Hilfe */
+  debug() {
+    console.log("=== TICKER DEBUG ===", "Messages:", this.messages.length, "Visible:", this._isVisible);
+  }
+
+  /** Initialisierung */
   init() {
+    console.log("📺 Ticker init gestartet");
     const tickerConfig = this.app.config.ticker || {};
+    console.log("📺 Ticker Config:", tickerConfig);
     this._applyStyle(tickerConfig);
+    
     if (!tickerConfig.enabled) {
-      if (this.bar) this.bar.hidden = true;
-      document.querySelector(".screen-container")?.classList.add("no-ticker");
+      console.log("📺 Ticker deaktiviert");
+      this._setBarVisible(false);
       return;
     }
+    
     this.entityTemplates = Utils.safeArray(tickerConfig.entities);
+    this._setBarVisible(true);
     this._rebuild();
+    console.log("📺 Ticker init abgeschlossen");
   }
 
   rebuild() {
@@ -2288,10 +2725,78 @@ class TickerManager {
     if (this.bar) { this.bar.classList.toggle("top", (cfg.position || "bottom") === "top"); this.bar.classList.toggle("bottom", (cfg.position || "bottom") !== "top"); }
   }
 
-  addMessages(msgs) {
-    for (const m of Utils.safeArray(msgs)) {
-      this.messages.push({ text: m.text || m.message || "", color: m.color, icon: m.icon, timestamp: Date.now(), duration: m.duration || 300 });
+  /** Sichtbarkeit der Ticker-Leiste setzen */
+  _setBarVisible(visible) {
+    this._isVisible = visible;
+    console.log("📺 Ticker sichtbar:", visible);
+    if (this.bar) {
+      this.bar.hidden = !visible;
+      this.bar.style.display = visible ? "flex" : "none";
     }
+    const screen = document.querySelector(".screen-container");
+    if (screen) screen.classList.toggle("no-ticker", !visible);
+  }
+
+  /** Auto-Hide Timer planen */
+  _scheduleAutoHide() {
+    if (this._autoHideTimer) {
+      clearTimeout(this._autoHideTimer);
+      this._autoHideTimer = null;
+    }
+    const cfg = this.app.config.ticker || {};
+    if (!cfg.auto_show_on_message) {
+      console.log("⏰ Auto-Hide deaktiviert");
+      return;
+    }
+    const seconds = Math.max(2, Number(cfg.auto_hide_seconds || 15));
+    console.log("⏰ Auto-Hide geplant in", seconds, "Sekunden");
+    this._autoHideTimer = setTimeout(() => {
+      console.log("⏰ Auto-Hide ausgelöst!");
+      this._autoHideTimer = null;
+      this._rebuild();
+    }, seconds * 1000);
+  }
+
+  /** Nachrichten von WebSocket hinzufügen */
+  addMessages(msgs) {
+    console.log("📨 addMessages erhalten:", msgs);
+    const cfg = this.app.config.ticker || {};
+    
+    // msgs kann Array oder Objekt sein
+    const msgArray = Array.isArray(msgs) ? msgs : [msgs];
+    const now = Date.now();
+    const duration = Number(cfg.message_duration || cfg.auto_hide_seconds || 15);
+    
+    const incoming = msgArray.map((m) => {
+      const text = m.text || m.message || m.msg || "";
+      if (!text || !text.trim()) return null;
+      console.log("📨 Neue Nachricht:", text);
+      return {
+        text: text.trim(),
+        color: m.color || null,
+        icon: m.icon || null,
+        priority: Number(m.priority) || 0,
+        timestamp: now,
+        duration: Number(m.duration) || duration,
+      };
+    }).filter(Boolean);
+    
+    if (!incoming.length) {
+      console.warn("⚠️ Keine gültigen Nachrichten!");
+      return;
+    }
+    
+    // Alte oder neue Nachrichten
+    if (cfg.replace_on_new_message) {
+      this.messages = incoming;
+    } else {
+      this.messages.push(...incoming);
+    }
+    
+    console.log("📨 Nachrichten gesamt:", this.messages.length);
+    
+    if (cfg.auto_show_on_message) this._setBarVisible(true);
+    this._scheduleAutoHide();
     this._rebuild();
   }
 
@@ -2302,39 +2807,153 @@ class TickerManager {
     if (this.entityTemplates.some(t => (typeof t === "string" ? t : t.entity_id) === entityId)) this._rebuild();
   }
 
+  /** Ticker-Leiste komplett neu bauen */
   _rebuild() {
-    if (!this.container) return;
-    let items = [];
-    for (const msg of Utils.safeArray(this.app.config.ticker?.fixed_messages)) {
-      items.push({ text: typeof msg === "string" ? msg : (msg?.text || ""), color: typeof msg === "object" ? msg.color : null, icon: typeof msg === "object" ? msg.icon : null });
+    if (!this.container) {
+      console.warn("⚠️ Ticker Container fehlt!");
+      return;
     }
-    for (const tmpl of this.entityTemplates) {
-      const eid = typeof tmpl === "string" ? tmpl : tmpl.entity_id;
-      const tpl = typeof tmpl === "string" ? "{friendly_name}: {state}" : (tmpl.template || "{state}");
-      const color = typeof tmpl === "object" ? tmpl.color : null;
-      const state = this.app.entityStates[eid];
-      if (state) {
-        const text = tpl.replace("{state}", state.state || "").replace("{friendly_name}", state.attributes?.friendly_name || eid).replace("{unit}", state.attributes?.unit_of_measurement || "");
-        items.push({ text, color });
+    const cfg = this.app.config.ticker || {};
+    const direction = cfg.direction || "ltr";
+    console.log("🔨 _rebuild() Richtung:", direction, "Nachrichten:", this.messages.length);
+    
+    let items = [];
+    const showList = cfg.show_list !== false;
+    
+    // Fixed Messages
+    if (showList) {
+      for (const msg of Utils.safeArray(cfg.fixed_messages || [])) {
+        const text = typeof msg === "string" ? msg : (msg?.text || "");
+        if (text && text.trim()) {
+          items.push({ 
+            text: text.trim(), 
+            color: typeof msg === "object" ? msg.color : null, 
+            icon: typeof msg === "object" ? msg.icon : null, 
+            priority: typeof msg === "object" ? (Number(msg.priority) || 0) : 0 
+          });
+        }
+      }
+      
+      // Entity-Templates
+      for (const tmpl of this.entityTemplates) {
+        const eid = typeof tmpl === "string" ? tmpl : tmpl.entity_id;
+        if (!eid) continue;
+        const tpl = typeof tmpl === "string" ? "{friendly_name}: {state}" : (tmpl.template || "{friendly_name}: {state}{unit}");
+        const color = typeof tmpl === "object" ? tmpl.color : null;
+        const icon = typeof tmpl === "object" ? tmpl.icon : null;
+        const priority = typeof tmpl === "object" ? (Number(tmpl.priority) || 0) : 0;
+        const state = this.app.entityStates?.[eid];
+        if (state) {
+          const unitStr = state.attributes?.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : "";
+          const text = tpl
+            .replaceAll("{state}", String(state.state || ""))
+            .replaceAll("{friendly_name}", state.attributes?.friendly_name || eid)
+            .replaceAll("{unit}", unitStr)
+            .replaceAll("{entity_id}", eid);
+          if (text && text.trim()) {
+            items.push({ text: text.trim(), color, icon, priority });
+          }
+        }
       }
     }
+    
+    // Aktive Nachrichten (von WebSocket)
     const now = Date.now();
-    this.messages = this.messages.filter(m => (now - m.timestamp) / 1000 < m.duration);
-    for (const m of this.messages) items.push({ text: m.text, color: m.color, icon: m.icon });
-    items.push(...this._buildRuleItems());
+    this.messages = this.messages.filter(m => {
+      const age = (now - m.timestamp) / 1000;
+      return age < (m.duration || 60);
+    });
+    
+    for (const m of this.messages) {
+      if (m.text && m.text.trim()) {
+        items.push({
+          text: m.text.trim(),
+          color: m.color || null,
+          icon: m.icon || null,
+          priority: Number(m.priority) || 0
+        });
+      }
+    }
+    
+    // Rule-basierte Items
+    if (showList) {
+      items.push(...this._buildRuleItems());
+    }
+    
+    // Leere entfernen und sortieren
+    items = items.filter(item => item && item.text && item.text.trim());
     items.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-    if (!items.length) { this.container.innerHTML = ""; this.container.classList.remove("scrolling"); return; }
-    const separator = String(this.app.config.ticker?.separator || "│");
-    const build = list => list.map((item, i) => {
+    
+    const shouldHide = cfg.enabled === false || (!items.length && cfg.hide_when_empty !== false);
+    
+    if (shouldHide) {
+      this._setBarVisible(false);
+      this.container.innerHTML = "";
+      this.container.classList.remove("scrolling");
+      this.container.style.animation = "none";
+      console.log("📺 Ticker ausgeblendet");
+      return;
+    }
+    
+    this._setBarVisible(true);
+    
+    // HTML bauen
+    const separator = String(cfg.separator || " | ");
+    const buildItem = (item, idx) => {
       const style = item.color ? `color:${item.color}` : "";
-      return `<span class="ticker-item" style="${style}">${item.icon ? `<span class="ticker-icon">${item.icon}</span>` : ""}${item.text}</span>` + (i < list.length - 1 ? `<span class="ticker-separator">${separator}</span>` : "");
+      const iconHtml = item.icon ? `<span class="ticker-icon">${item.icon}</span>` : "";
+      return `<span class="ticker-item" data-index="${idx}" ${style ? `style="${style}"` : ""}>${iconHtml}${item.text}</span>`;
+    };
+    const buildList = (list) => list.map((item, i) => {
+      return buildItem(item, i) + (i < list.length - 1 ? `<span class="ticker-separator">${separator}</span>` : "");
     }).join("");
-    this.container.innerHTML = build(items) + `<span class="ticker-separator">${separator}</span>` + build(items);
-    this.container.classList.add("scrolling");
-    const speed = this.app.config.ticker?.speed || "normal";
-    const mult = { slow: 1.5, normal: 1, fast: 0.6 }[speed] || 1;
-    this.container.style.setProperty("--ticker-duration", `${Math.max(10, items.length * 5 * mult)}s`);
+    
+    // CSS-Klassen
+    this.container.classList.remove("single-item", "direction-ltr", "direction-rtl", "scrolling");
+    this.container.classList.add(direction === "rtl" ? "direction-rtl" : "direction-ltr");
+    
+    // Animation stoppen
+    this.container.style.animation = "none";
+    this.container.style.display = "inline-flex";
+    this.container.style.width = "auto";
+    this.container.style.whiteSpace = "nowrap";
+    
+    // Items anzeigen
+    const itemCount = items.length;
+    
+    if (itemCount === 0) {
+      this.container.innerHTML = "";
+      this.container.classList.remove("scrolling");
+      return;
+    }
+    
+    if (itemCount === 1 && !cfg.force_scroll) {
+      // Einzelnes Item
+      this.container.innerHTML = buildList(items);
+      this.container.classList.add("single-item");
+      if (cfg.scroll_single !== false) {
+        this.container.classList.add("scrolling");
+        // RTL = von rechts nach links, LTR = von links nach rechts
+        const animName = direction === "rtl" ? "tickerScrollSingleRtl" : "tickerScrollSingleLtr";
+        this.container.style.animation = `${animName} 15s linear infinite`;
+      }
+    } else {
+      // Mehrere Items duplizieren
+      const content = buildList(items);
+      const sepHtml = `<span class="ticker-separator">${separator}</span>`;
+      this.container.innerHTML = content + sepHtml + content;
+      this.container.classList.add("scrolling");
+      
+      // RTL = von rechts nach links, LTR = von links nach rechts
+      const animName = direction === "rtl" ? "tickerScrollRtl" : "tickerScrollLtr";
+      const speed = cfg.speed || "normal";
+      const mult = { slow: 1.8, normal: 1.0, fast: 0.5 }[speed] || 1;
+      const totalChars = items.reduce((sum, item) => sum + (item.text?.length || 0), 0);
+      const duration = Math.max(8, Math.min(60, totalChars * 0.25 * mult));
+      this.container.style.animation = `${animName} ${duration}s linear infinite`;
+    }
+    
+    console.log("✅ Ticker rebuild abgeschlossen, Items:", itemCount, "Animation:", direction);
   }
 }
 
@@ -2354,7 +2973,8 @@ class AlertManager {
 
   async show(data = {}) {
     this.clearAll();
-    const payload = { ...data };
+    const toastDefaults = this.app?.config?.toast || {};
+    const payload = (data?.mode === "toast") ? { ...toastDefaults, ...data } : { ...data };
     const mode = payload.mode || "fullscreen";
     // TTS URL is prepared by the backend to avoid unauthenticated /api/tts_get_url calls.
     this._activeTag = payload.tag || null;
@@ -2466,8 +3086,9 @@ class AlertManager {
   _showFullscreen(data) {
     if (!this.overlay) return;
     const sev = data.severity || "info";
+    const colorStyle = data.color ? ` style="background:${Utils.text(data.color)};"` : "";
     this.overlay.className = `alert-overlay severity-${sev}`;
-    this.overlay.innerHTML = `<div class="alert-card"><div class="alert-topline">${Utils.text(data.source || "Alert")}</div><div class="alert-icon">${data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️"}</div><div class="alert-title">${Utils.text(data.title || "")}</div><div class="alert-message">${Utils.text(data.message || "")}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}${data.duration && !data.require_ack && !data.persistent ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}</div>`;
+    this.overlay.innerHTML = `<div class="alert-card"${colorStyle}><div class="alert-topline">${Utils.text(data.source || "Alert")}</div><div class="alert-icon">${data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️"}</div><div class="alert-title">${Utils.text(data.title || "")}</div><div class="alert-message">${Utils.text(data.message || "")}</div>${this._progressMarkup(data)}${this._actionsMarkup(data)}${data.duration && !data.require_ack && !data.persistent ? `<div class="alert-timer">Schließt in ${data.duration}s</div>` : ""}</div>`;
     this.overlay.hidden = false;
     this._bindAlertActions(this.overlay, data);
     this._armAutoClose(data);
@@ -2477,6 +3098,8 @@ class AlertManager {
     if (!this.banner) return;
     const sev = data.severity || "info";
     this.banner.className = `notification-banner severity-${sev}`;
+    if (data.color) this.banner.style.background = String(data.color);
+    else this.banner.style.background = "";
     this.banner.innerHTML = `<div class="banner-icon">${Utils.text(data.icon || {info:"ℹ️",warning:"⚠️",critical:"🚨"}[sev] || "ℹ️")}</div><div class="banner-main"><div class="banner-title-row"><div class="banner-title">${Utils.text(data.title || data.source || 'Hinweis')}</div>${data.tag ? `<div class="banner-tag">${Utils.text(data.tag)}</div>` : ''}</div><div class="banner-message">${Utils.text(data.message || '')}</div>${this._progressMarkup(data)}</div>${this._actionsMarkup(data)}`;
     this.banner.hidden = false;
     this._bindAlertActions(this.banner, data);
@@ -2511,7 +3134,14 @@ class AlertManager {
 
   _showToast(data) {
     if (!this.toastContainer) return;
-    this.toastContainer.innerHTML = `<div class="toast-message"><div class="toast-title">${Utils.text(data.title || data.source || 'Info')}</div><div>${Utils.text(data.message || '')}</div>${this._actionsMarkup(data)}</div>`;
+    const position = data.position || "bottom";
+    this.toastContainer.className = `toast-container pos-${position}`;
+    const bg = data.color || "#111827";
+    const color = data.text_color || "#f9fafb";
+    const accent = data.accent_color || "#60a5fa";
+    const radius = Number(data.border_radius ?? 16);
+    const fontSize = Number(data.font_size ?? 16);
+    this.toastContainer.innerHTML = `<div class="toast-message" style="background:${bg};color:${color};border-radius:${radius}px;font-size:${fontSize}px;border-left:4px solid ${accent}"><div class="toast-title">${Utils.text(data.title || data.source || 'Info')}</div><div>${Utils.text(data.message || '')}</div>${this._actionsMarkup(data)}</div>`;
     this.toastContainer.hidden = false;
     this._bindAlertActions(this.toastContainer, data);
     this._armAutoClose(data);
@@ -2531,18 +3161,49 @@ class TickerDisplayApp {
     this.dataManager = new DataManager(this.apiBase);
     this.isPreview = location.pathname.includes("/preview/");
     this._statePollTimer = null;
+    this._entityRefreshTimers = {};
+    this._initTime = Date.now();
   }
 
   async init() {
-    console.log("🚀 Ticker Display starting...", this.deviceId);
+    console.log("🚀 Ticker Display v3 startet...", this.deviceId);
+
+    // Locale aus Config setzen falls vorhanden
+    if (this.globalSettings?.locale) Utils.setLocale(this.globalSettings.locale);
+    else if (this.config?.locale) Utils.setLocale(this.config.locale);
+
+    // Preview-Modus: Draft aus localStorage laden
     try {
       const qp = new URLSearchParams(location.search);
       const previewKey = qp.get("td_preview_key");
       if (this.isPreview && previewKey) {
         const raw = localStorage.getItem(previewKey);
-        if (raw) { const draft = JSON.parse(raw); if (draft && typeof draft === "object") this.config = { ...(this.config || {}), ...draft, screens: Array.isArray(draft.screens) ? draft.screens : (this.config.screens || []) }; }
+        if (raw) {
+          const draft = JSON.parse(raw);
+          if (draft && typeof draft === "object") {
+            this.config = {
+              ...(this.config || {}),
+              ...draft,
+              screens: Array.isArray(draft.screens) ? draft.screens : (this.config.screens || []),
+            };
+          }
+        }
       }
-    } catch (e) { console.warn("Preview draft load failed", e); }
+    } catch (e) { console.warn("Preview-Draft laden fehlgeschlagen:", e); }
+
+    // Gecachte Config als Fallback laden
+    try {
+      if (!this.config?.screens?.length) {
+        const cached = localStorage.getItem("ticker_config_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.screens?.length) {
+            console.log("📦 Verwende gecachte Konfiguration");
+            this.config = { ...this.config, ...parsed };
+          }
+        }
+      }
+    } catch (e) { /* Cache-Fehler ignorieren */ }
 
     try {
       this.bridge = new BridgeWrapper();
@@ -2557,18 +3218,45 @@ class TickerDisplayApp {
       this.tickerManager.init();
 
       const loading = document.getElementById("loading-screen");
-      if (loading) loading.style.display = "none";
+      if (loading) {
+        loading.style.opacity = "0";
+        loading.style.transition = "opacity 0.3s ease";
+        setTimeout(() => { loading.style.display = "none"; }, 350);
+      }
       const offline = document.getElementById("offline-screen");
       if (offline && this.isPreview) offline.hidden = true;
 
       this.wsClient.connect()
-        .then(() => { console.log("✅ WebSocket connected"); if (offline) offline.hidden = true; this.reportSensorsNow?.(); })
-        .catch(e => { console.warn("⚠️ WebSocket connect failed, running offline:", e); if (offline && this.isPreview) offline.hidden = true; });
+        .then(() => {
+          console.log("✅ WebSocket verbunden");
+          if (offline) offline.hidden = true;
+          this.reportSensorsNow?.();
+        })
+        .catch(e => {
+          console.warn("⚠️ WebSocket-Verbindung fehlgeschlagen, Offline-Modus:", e.message || e);
+          if (offline && this.isPreview) offline.hidden = true;
+        });
 
       this._startSensorReporting();
       this._startStatePolling();
-      console.log("✅ Ticker Display ready!");
-    } catch (e) { console.error("❌ Init error:", e); }
+
+      // Visibility-Change: Bei Tab-Wechsel Daten aktualisieren
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          this._pollEntityStates(true);
+          if (!this.wsClient?.isConnected()) this.wsClient?.connect?.().catch(() => {});
+        }
+      });
+
+      const initDuration = Date.now() - this._initTime;
+      console.log(`✅ Ticker Display bereit! (${initDuration}ms)`);
+    } catch (e) {
+      console.error("❌ Initialisierungsfehler:", e);
+      const loading = document.getElementById("loading-screen");
+      if (loading) {
+        loading.innerHTML = `<div style="text-align:center;color:#ef5350"><div style="font-size:48px">❌</div><div style="margin-top:12px">Fehler beim Laden</div><div style="font-size:14px;opacity:.7;margin-top:8px">${Utils.escapeHtml(e.message || "Unbekannter Fehler")}</div></div>`;
+      }
+    }
   }
 
   onEntityStateChanged(id, state) {

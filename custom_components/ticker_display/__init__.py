@@ -10,6 +10,7 @@ from homeassistant.components.frontend import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .api import TickerDisplayAPI
 from .const import DOMAIN, PANEL_URL, PLATFORMS
@@ -20,6 +21,48 @@ from .store import TickerDisplayStore
 from .websocket_api import TickerDisplayWebSocket
 
 _LOGGER = logging.getLogger(__name__)
+
+VOICE_ENTITY_UNIQUE_IDS = {
+    "assist_satellite",
+    "assist_state",
+    "assist_server_audio_mode",
+    "assist_message",
+    "assist_last_stt",
+    "assist_reply_text",
+    "assist_tts_url",
+    "assist_pipeline_used",
+    "assist_trigger_source",
+    "assist_wake_word",
+    "assist_wake_word_2",
+    "assist_assistant",
+    "assist_assistant_2",
+    "assist_vad_mode",
+}
+
+
+async def _async_cleanup_legacy_voice_entities(hass: HomeAssistant, entry: ConfigEntry, store: TickerDisplayStore) -> None:
+    """Remove old voice-related entities from the entity registry."""
+    ent_reg = er.async_get(hass)
+    devices = store.get_devices() or {}
+    prefixes = [f"ticker_display_{device_id}_" for device_id in devices]
+    to_remove: list[str] = []
+    for entity_entry in list(ent_reg.entities.values()):
+        if entity_entry.config_entry_id != entry.entry_id or entity_entry.platform != DOMAIN:
+            continue
+        unique_id = str(entity_entry.unique_id or "")
+        if entity_entry.domain == "assist_satellite":
+            to_remove.append(entity_entry.entity_id)
+            continue
+        for prefix in prefixes:
+            if unique_id.startswith(prefix):
+                suffix = unique_id[len(prefix):]
+                if suffix in VOICE_ENTITY_UNIQUE_IDS:
+                    to_remove.append(entity_entry.entity_id)
+                break
+    for entity_id in to_remove:
+        _LOGGER.info("Removing legacy voice entity from registry: %s", entity_id)
+        ent_reg.async_remove(entity_id)
+
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -40,6 +83,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     media_manager = MediaManager(hass)
     await media_manager.async_initialize()
+
+    await _async_cleanup_legacy_voice_entities(hass, entry, store)
 
     heartbeat_timeout = int(entry.options.get("heartbeat_timeout", 120))
     coordinator = TickerDisplayCoordinator(hass, store, heartbeat_timeout=heartbeat_timeout)
@@ -105,3 +150,35 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data.pop(DOMAIN, None)
 
     return unload_ok
+
+async def async_remove_config_entry_device(hass: HomeAssistant, entry: ConfigEntry, device_entry) -> bool:
+    """Allow removing stale devices from the config entry device page."""
+    identifiers = set(device_entry.identifiers or set())
+    target_id = None
+    for domain, ident in identifiers:
+        if domain == DOMAIN:
+            target_id = ident
+            break
+    if not target_id:
+        return False
+
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if not entry_data:
+        return False
+
+    store = entry_data.get("store")
+    coordinator = entry_data.get("coordinator")
+    await store.async_remove_device(target_id)
+    if coordinator is not None:
+        coordinator._device_data.pop(target_id, None)
+        coordinator._last_heartbeat.pop(target_id, None)
+        coordinator._last_seen.pop(target_id, None)
+        coordinator._update_callbacks.pop(target_id, None)
+
+    ent_reg = er.async_get(hass)
+    for entity_entry in list(er.async_entries_for_device(ent_reg, device_entry.id)):
+        ent_reg.async_remove(entity_entry.entity_id)
+
+    dev_reg = dr.async_get(hass)
+    dev_reg.async_remove_device(device_entry.id)
+    return True

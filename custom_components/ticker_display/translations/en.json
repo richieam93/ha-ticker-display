@@ -3,7 +3,250 @@
     "step": {
       "user": {
         "title": "Ticker Display Setup",
-        "description": "Set up Ticker Display. After installation, find the editor in the sidebar."
+        "description": "Set up Ticker Display. After installation, find the editor in the sidebar.",
+        "data": {
+          "title": "Display Name",
+          "description": "Name for this display"
+        }
+      },
+      "options": {
+        "title": "Options",
+        "description": "Configure display options"
+      }
+    },
+    "abort": {
+      "already_configured": "This device is already configured"
+    },
+    "error": {
+      "already_configured": "Already configured",
+      "invalid_discovery": "Invalid configuration"
+    }
+  },
+  "services": {
+    "show_dashboard": {
+      "name": "Show Dashboard",
+      "description": "Shows the dashboard screen"
+    },
+    "show_graph": {
+      "name": "Show Graph",
+      "description": "Shows a graph/chart screen"
+    },
+    "show_camera": {
+      "name": "Show Camera",
+      "description": "Shows a camera screen"
+    },
+    "show_weather": {
+      "name": "Show Weather",
+      "description": "Shows a weather screen"
+    },
+    "show_single_value": {
+      "name": "Show Single Value",
+      "description": "Shows a single value screen"
+    },
+    "show_clock": {
+      "name": "Show Clock",
+      "description": "Shows the clock screen"
+    },
+    "show_status_board": {
+      "name": "Show Status Board",
+      "description": "Shows a status board"
+    },
+    "show_image": {
+      "name": "Show Image",
+      "description": "Shows an image screen"
+    },
+    "show_template": {
+      "name": "Show Template",
+      "description": "Shows a saved template"
+    },
+    "show_alert": {
+      "name": "Show Alert",
+      "description": "Shows an alert on the display"
+    },
+    "show_notification": {
+      "name": "Notification",
+      "description": "Shows a notification"
+    },
+    "show_toast": {
+      "name": "Toast Message",
+      "description": "Shows a brief toast message"
+    },
+    "clear_alert": {
+      "name": "Clear Alert",
+      "description": "Clears all active alerts"
+    },
+    "send_ticker_message": {
+      "name": "Ticker Message",
+      "description": "Sends a message to the ticker bar"
+    },
+    "set_ticker_entities": {
+      "name": "Set Ticker Entities",
+      "description": "Sets entity templates for the ticker bar"
+    },
+    "clear_ticker": {
+      "name": "Clear Ticker",
+      "description": "Clears all ticker messages"
+    },
+    "set_screen_power": {
+      "name": "Screen On/Off",
+      "description": "Turns the screen on or off"
+    },
+    "set_brightness": {
+      "name": "Set Brightness",
+      "description": "Sets the screen brightness"
+    },
+    "set_theme": {
+      "name": "Set Theme",
+      "description": "Sets the display theme"
+    },
+    "set_volume": {
+      "name": "Volume",
+      "description": "Sets the volume"
+    },
+    "play_sound": {
+      "name": "Play Sound",
+      "description": "Plays a sound"
+    },
+    "play_announcement": {
+      "name": "Announcement",
+      "description": "Plays an announcement"
+    },
+    "tts_speak": {
+      "name": "Text-to-Speech",
+      "description": "Speaks a text"
+    },
+    "stop_audio": {
+      "name": "Stop Audio",
+      "description": "Stops all audio playback"
+    },
+    "next_screen": {
+      "name": "Next Screen",
+      "description": "Shows the next screen"
+    },
+    "previous_screen": {
+      "name": "Previous Screen",
+      "description": "Shows the previous screen"
+    },
+    "goto_screen": {
+      "name": "Go to Screen",
+      "description": "Goes to a specific screen"
+    },
+    "pause_rotation": {
+      "name": "Pause Rotation",
+      "description": "Pauses automatic rotation"
+    },
+    "resume_rotation": {
+      "name": "Resume Rotation",
+      "description": "Resumes rotation"
+    },
+    "reload_page": {
+      "name": "Reload Page",
+      "description": "Reloads the page"
+    },
+    "identify_device": {
+      "name": "Identify Device",
+      "description": "Visually identifies the device"
+    },
+    "entity_toggle": {
+      "name": "Toggle Entity",
+      "description": "Toggles an entity on/off"
+    },
+    "entity_action": {
+      "name": "Entity Action",
+      "description": "Executes an action on an entity"
+    },
+    "show_popup": {
+      "name": "Show Popup",
+      "description": "Shows a popup window"
+    },
+    "dismiss_popup": {
+      "name": "Dismiss Popup",
+      "description": "Closes a popup"
+    },
+    "show_silent_alert": {
+      "name": "Silent Alert",
+      "description": "Alert without sound"
+    },
+    "update_ticker_config": {
+      "name": "Ticker Config",
+      "description": "Updates ticker configuration"
+    },
+    "set_screen_orientation": {
+      "name": "Orientation",
+      "description": "Sets screen orientation"
+    },
+    "play_media": {
+      "name": "Play Media",
+      "description": "Plays a media file"
+    },
+    "stop_media": {
+      "name": "Stop Media",
+      "description": "Stops media playback"
+    },
+    "media_next": {
+      "name": "Next Track",
+      "description": "Next media track"
+    },
+    "media_previous": {
+      "name": "Previous Track",
+      "description": "Previous media track"
+    },
+    "media_pause": {
+      "name": "Pause",
+      "description": "Pause playback"
+    },
+    "media_resume": {
+      "name": "Resume",
+      "description": "Resume playback"
+    }
+  },
+  "common": {
+    "device": "Device",
+    "device_id": "Device ID",
+    "entity_id": "Entity",
+    "title": "Title",
+    "message": "Message",
+    "severity": "Severity",
+    "mode": "Mode",
+    "duration": "Duration",
+    "enabled": "Enabled",
+    "direction": "Direction",
+    "speed": "Speed",
+    "volume": "Volume",
+    "brightness": "Brightness",
+    "orientation": "Orientation",
+    "all": "All Devices",
+    "info": "Info",
+    "warning": "Warning",
+    "critical": "Critical",
+    "success": "Success",
+    "fullscreen": "Fullscreen",
+    "banner": "Banner",
+    "overlay": "Overlay",
+    "toast": "Toast",
+    "ltr": "Left to Right",
+    "rtl": "Right to Left",
+    "slow": "Slow",
+    "normal": "Normal",
+    "fast": "Fast",
+    "classic": "Classic",
+    "glass": "Glass",
+    "alert": "Alert",
+    "minimal": "Minimal"
+  },
+  "entity": {
+    "step": {
+      "user": {
+        "title": "Add Entity",
+        "description": "Adds a new entity to the display"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Adjust display options"
       }
     }
   }
