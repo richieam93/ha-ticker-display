@@ -6412,8 +6412,9 @@ TdScreenEditor.prototype._setScreen = function (key, value) {
 };
 
 TdScreenEditor.prototype._setWidget = function (key, value) {
-  this._pushUndo();
   const ws = [...(this._cfg.widgets || [])];
+  if (this._sel < 0 || this._sel >= ws.length || !ws[this._sel]) return;
+  this._pushUndo();
   const current = ws[this._sel] || {};
   const next = { ...current, [key]: value };
 
@@ -6434,8 +6435,9 @@ TdScreenEditor.prototype._setWidget = function (key, value) {
 };
 
 TdScreenEditor.prototype._setWidgetConfig = function (key, value) {
-  this._pushUndo();
   const ws = [...(this._cfg.widgets || [])];
+  if (this._sel < 0 || this._sel >= ws.length || !ws[this._sel]) return;
+  this._pushUndo();
   const w = ws[this._sel];
   let finalValue = value;
   if (key === "entities") {
@@ -6455,8 +6457,9 @@ TdScreenEditor.prototype._setWidgetConfig = function (key, value) {
 };
 
 TdScreenEditor.prototype._setEntityMeta = function (entityId, patch) {
-  this._pushUndo();
   const ws = [...(this._cfg.widgets || [])];
+  if (this._sel < 0 || this._sel >= ws.length || !ws[this._sel]) return;
+  this._pushUndo();
   const w = ws[this._sel] || {};
   const cfg = { ...(w.config || {}) };
   const meta = { ...(cfg.entity_meta || {}) };
@@ -6481,8 +6484,9 @@ TdScreenEditor.prototype._deleteWidget = function () {
 TdScreenEditor.prototype._applyWidgetJson = function (jsonStr) {
   const parsed = safeJsonParse(jsonStr, null);
   if (!parsed) return;
-  this._pushUndo();
   const ws = [...(this._cfg.widgets || [])];
+  if (this._sel < 0 || this._sel >= ws.length || !ws[this._sel]) return;
+  this._pushUndo();
   ws[this._sel] = parsed;
   this._cfg = { ...this._cfg, widgets: ws };
 };
