@@ -5,6 +5,10 @@
 Ticker Display ist eine Kombination aus einer **Home-Assistant-Custom-Integration** und einer **Android-Kiosk-App**. Das Projekt verwandelt Android-Geräte wie Tablets oder alte Smartphones in flexible Smart-Home-Displays mit Dashboards, Tickern, Alarmen, Mediensteuerung, Kameras, Wetter, Status-Boards und mehr.
 
 Ticker Display is a combination of a **Home Assistant custom integration** and an **Android kiosk app**. It turns Android devices such as tablets or old phones into flexible smart home displays with dashboards, tickers, alerts, media controls, cameras, weather screens, status boards, and more.
+---
+<a href="https://www.buymeacoffee.com/geartec" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50">
+</a>
 
 ---
 
