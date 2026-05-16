@@ -43,7 +43,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Modernere Karten, klarere Hilfen und kompletter TTS-Bereich für Alerts."
+                    android:text="Überarbeitete Oberfläche, Diagnosefunktionen und robuste Verbindung für Android 9 bis aktuelle Versionen."
                     android:textColor="@color/td_text_secondary"
                     android:textSize="13sp"
                     android:layout_marginTop="6dp" />
@@ -54,7 +54,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="46dp"
                 android:minWidth="104dp"
-                android:text="Schliessen"
+                android:text="Schließen"
                 android:textAllCaps="false"
                 android:textColor="@color/td_text"
                 android:background="@drawable/bg_button_secondary" />
@@ -79,7 +79,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Empfohlen auf Android 16: Rand-Wischgeste von links oder rechts. Zusätzlich funktionieren 3-Finger-Tap, 5x Lautstärke runter, Eckentap und die Benachrichtigung."
+                android:text="Empfohlen auf Android 9 bis aktuell: Rand-Wischgeste von links oder rechts. Zusätzlich funktionieren 3-Finger-Tap, 5x Lautstärke runter, Eckentap und die Benachrichtigung."
                 android:textColor="@color/td_text_secondary"
                 android:textSize="13sp"
                 android:lineSpacingExtra="3dp"
@@ -244,7 +244,7 @@
 
             <Button android:id="@+id/btn_reset" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="App komplett zurücksetzen" android:textAllCaps="false"
-                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_danger"
                 android:layout_marginTop="12dp" />
         </LinearLayout>
 

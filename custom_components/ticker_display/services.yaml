@@ -832,3 +832,60 @@ media_resume:
       name: Device
       description: Geräte-ID oder "all".
       example: redmi_note_7
+
+set_device_setting:
+  name: Set device setting
+  description: Setzt eine native Android-Gerätefunktion, z. B. motion_detection, front_camera, camera_interval_seconds oder motion_sensitivity.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: redmi_note_7_redmi_note_7
+    setting:
+      name: Setting
+      description: Name der Einstellung.
+      example: motion_detection
+    value:
+      name: Value
+      description: Neuer Wert, z. B. true, false, 75 oder 30.
+      example: true
+
+restart_app:
+  name: Restart app
+  description: Startet die Android-App auf einem oder mehreren Geräten neu.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: redmi_note_7_redmi_note_7
+
+open_android_settings:
+  name: Open Android settings
+  description: Öffnet die Android-App-Detailseite auf dem Gerät.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: redmi_note_7_redmi_note_7
+
+vibrate_device:
+  name: Vibrate device
+  description: Lässt das Smartphone kurz vibrieren.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: redmi_note_7_redmi_note_7
+    duration:
+      name: Duration
+      description: Vibrationsdauer in Millisekunden.
+      example: 500
+
+report_device_state:
+  name: Report device state
+  description: Fordert sofort einen neuen Status-/Sensorbericht vom Android-Gerät an.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: redmi_note_7_redmi_note_7

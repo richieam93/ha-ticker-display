@@ -7,6 +7,8 @@ from html import escape
 
 from homeassistant.core import HomeAssistant
 
+from ..const import INTEGRATION_VERSION
+
 
 def render_display_page(hass: HomeAssistant, store, media_manager, device_id: str) -> str:
     device_config = store.get_device(device_id) or {}
@@ -34,8 +36,30 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 <style id="font-faces">{font_css}</style>
 <style id="theme-vars">{theme_css}</style>
 
-<link rel="stylesheet" href="/ticker-display/assets/css/main.css">
-<link rel="stylesheet" href="/ticker-display/assets/css/overlays.css">
+<script>
+(function() {{
+  function applyViewportVars() {{
+    try {{
+      var root = document.documentElement;
+      var w = Math.max(1, window.innerWidth || root.clientWidth || screen.width || 1);
+      var h = Math.max(1, window.innerHeight || root.clientHeight || screen.height || 1);
+      root.style.setProperty("--td-app-width", w + "px");
+      root.style.setProperty("--td-app-height", h + "px");
+      root.style.setProperty("--td-viewport-min", Math.min(w, h) + "px");
+      root.style.setProperty("--td-viewport-max", Math.max(w, h) + "px");
+      root.classList.toggle("td-landscape", w >= h);
+      root.classList.toggle("td-portrait", h > w);
+    }} catch (e) {{}}
+  }}
+  applyViewportVars();
+  window.addEventListener("resize", applyViewportVars);
+  window.addEventListener("orientationchange", function() {{ setTimeout(applyViewportVars, 250); }});
+  window.TickerDisplayApplyViewport = applyViewportVars;
+}})();
+</script>
+
+<link rel="stylesheet" href="/ticker-display/assets/css/main.css?v={INTEGRATION_VERSION}">
+<link rel="stylesheet" href="/ticker-display/assets/css/overlays.css?v={INTEGRATION_VERSION}">
 </head>
 <body>
 <div id="screen-container" class="screen-container"></div>
@@ -52,13 +76,21 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 </div>
 
 <div id="loading-screen" class="loading-screen">
-  <div class="loading-spinner"></div>
-  <p>Verbinde...</p>
+  <div class="loading-card">
+    <div class="loading-brand">Ticker Display</div>
+    <div class="loading-spinner"></div>
+    <p id="loading-status">Verbinde mit Home Assistant...</p>
+    <small id="loading-hint">Wenn dies länger dauert, prüft die Android-App automatisch Cache und Verbindung.</small>
+    <button id="loading-reload" class="loading-action" type="button" onclick="location.reload()">Neu laden</button>
+  </div>
 </div>
 
 <div id="offline-screen" class="offline-screen" hidden>
   <div class="offline-icon">📡</div>
-  <p>Verbindung unterbrochen</p>
+  <div>
+    <p id="offline-title">Verbindung unterbrochen</p>
+    <small id="offline-detail">Automatischer Neuversuch läuft.</small>
+  </div>
 </div>
 
 <script>
@@ -70,9 +102,27 @@ window.TICKER_WS_URL = ((location.protocol === "https:" ? "wss:" : "ws:") + "//"
 window.TICKER_API_BASE = "/ticker-display";
 </script>
 
-<script src="/ticker-display/assets/lib/chart.min.js"></script>
-<script src="/ticker-display/assets/lib/qrcode.min.js"></script>
-<script src="/ticker-display/assets/js/display.js"></script>
+<script>
+window.addEventListener("error", function(ev) {{
+  try {{
+    var el = document.getElementById("loading-status");
+    if (el) el.textContent = "Fehler beim Start: " + ((ev && ev.message) ? ev.message : "Unbekannter Fehler");
+    var hint = document.getElementById("loading-hint");
+    if (hint) hint.textContent = "Details stehen im Android-Menü unter Geräteinformationen/Logcat.";
+  }} catch (e) {{}}
+}});
+window.addEventListener("unhandledrejection", function(ev) {{
+  try {{
+    var reason = ev && ev.reason ? (ev.reason.message || String(ev.reason)) : "Unbekannter Fehler";
+    var el = document.getElementById("loading-status");
+    if (el) el.textContent = "Fehler beim Start: " + reason;
+  }} catch (e) {{}}
+}});
+</script>
+
+<script src="/ticker-display/assets/lib/chart.min.js?v={INTEGRATION_VERSION}"></script>
+<script src="/ticker-display/assets/lib/qrcode.min.js?v={INTEGRATION_VERSION}"></script>
+<script src="/ticker-display/assets/js/display.js?v={INTEGRATION_VERSION}"></script>
 </body>
 </html>"""
 

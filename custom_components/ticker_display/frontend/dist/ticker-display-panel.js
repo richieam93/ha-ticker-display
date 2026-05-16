@@ -2062,6 +2062,9 @@ class TdDeviceList extends LitElement {
           <span>Modell:</span><span class="v">${d.model || (d.virtual ? "Browser / Web" : "—")}</span>
           <span>Typ:</span><span class="v">${d.virtual ? "Virtuelles Gerät" : "Android / App"}</span>
           <span>Auflösung:</span><span class="v">${d.screen_resolution || "—"}</span>
+          <span>Verbindung:</span><span class="v">${d.connected ? "WebSocket verbunden" : "kein WebSocket"}</span>
+          <span>IP:</span><span class="v">${d.ip_address || "—"}</span>
+          <span>Heartbeat:</span><span class="v">${d.heartbeat_age_seconds != null ? `${d.heartbeat_age_seconds}s` : "—"}</span>
           <span>Screens:</span><span class="v">${screenCount} (${widgetCount} Widgets)</span>
           <span>Theme:</span><span class="v">${d.theme || "dark"}</span>
           <span>Font:</span><span class="v">${d.font || "roboto"}</span>
@@ -9578,7 +9581,7 @@ class TdGlobalSettings extends LitElement {
         <h3>ℹ️ Info & Statistik</h3>
         <div class="info-grid">
           <span class="label">Version:</span>
-          <span class="value">Ticker Display v2.0</span>
+          <span class="value">Ticker Display v2.4.0</span>
           <span class="label">Sounds:</span>
           <span class="value">${(this.sounds || []).length} (${(this.sounds || []).filter((s) => s.builtin).length} eingebaut)</span>
           <span class="label">Fonts:</span>
@@ -9693,6 +9696,7 @@ class TickerDisplayPanel extends LitElement {
       _haMediaImages:  { type: Array },
       _haMediaAudio:   { type: Array },
       _globalSettings: { type: Object },
+      _diagnostics:    { type: Object },
       _loading:        { type: Boolean },
     };
   }
@@ -9718,6 +9722,7 @@ class TickerDisplayPanel extends LitElement {
     this._haMediaImages = [];
     this._haMediaAudio = [];
     this._globalSettings = {};
+    this._diagnostics = {};
     this._loading = true;
   }
 
@@ -9787,7 +9792,7 @@ class TickerDisplayPanel extends LitElement {
   async _loadAll() {
     this._loading = true;
     try {
-      const [dv, tp, al, th, so, fo, im, haIm, haAu, gs] = await Promise.all([
+      const [dv, tp, al, th, so, fo, im, haIm, haAu, gs, diag] = await Promise.all([
         this._get("/api/config/devices").catch(() => []),
         this._get("/api/config/templates").catch(() => ({})),
         this._get("/api/config/alerts").catch(() => ({})),
@@ -9798,6 +9803,7 @@ class TickerDisplayPanel extends LitElement {
         this._get("/api/ha-media/items?kind=image").catch(() => []),
         this._get("/api/ha-media/items?kind=audio").catch(() => []),
         this._get("/api/config/global").catch(() => ({})),
+        this._get("/api/diagnostics").catch(() => ({})),
       ]);
       this._devices = dv;
       this._templates = tp;
@@ -9809,6 +9815,7 @@ class TickerDisplayPanel extends LitElement {
       this._haMediaImages = haIm;
       this._haMediaAudio = haAu;
       this._globalSettings = tdNormalizedDefaults(gs || {});
+      this._diagnostics = diag || {};
     } catch (e) {
       console.error("Ticker Display: Load failed", e);
     }
@@ -9958,6 +9965,16 @@ class TickerDisplayPanel extends LitElement {
         color: var(--td-accent);
       }
       .chip:hover { background: rgba(255,255,255,.04); }
+
+      .diag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+      .diag-card { background: var(--card-background-color, #1e1e1e); border: 1px solid var(--divider-color); border-radius: 14px; padding: 16px; }
+      .diag-card h3 { margin: 0 0 8px; font-size: 16px; }
+      .badge { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:999px; font-size:12px; border:1px solid var(--divider-color); }
+      .badge.on { color:#4caf50; background:rgba(76,175,80,.10); }
+      .badge.off { color:#f44336; background:rgba(244,67,54,.10); }
+      .kv { display:grid; grid-template-columns: 130px 1fr; gap:6px 10px; font-size:12px; margin-top:10px; }
+      .kv span:nth-child(odd) { color: var(--secondary-text-color); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     `;
   }
 
@@ -9990,6 +10007,7 @@ class TickerDisplayPanel extends LitElement {
       { id: "devices",  l: "📱 Geräte"       },
       { id: "library",  l: "🧱 Bibliothek"   },
       { id: "media",    l: "🖼️ Medien"       },
+      { id: "diagnostics", l: "🩺 Diagnose" },
       { id: "settings", l: "⚙️ Einstellungen" },
     ];
     return html`
@@ -10017,6 +10035,7 @@ class TickerDisplayPanel extends LitElement {
       case "devices":  return this._renderDevicesTab();
       case "library":  return this._renderLibraryTab();
       case "media":    return this._renderMediaTab();
+      case "diagnostics": return this._renderDiagnosticsTab();
       case "settings": return this._renderSettingsTab();
       default:         return html``;
     }
@@ -10037,6 +10056,7 @@ class TickerDisplayPanel extends LitElement {
             <div class="cta">
               <button class="btn p" @click=${() => this._tab = "devices"}>Geräte verwalten</button>
               <button class="btn" @click=${() => { this._tab = "library"; this._libraryTab = "templates"; }}>Vorlagen</button>
+              <button class="btn" @click=${() => this._tab = "diagnostics"}>Diagnose</button>
               <button class="btn" @click=${() => this._tab = "settings"}>Einstellungen</button>
             </div>
           </div>
@@ -10060,6 +10080,8 @@ class TickerDisplayPanel extends LitElement {
           ${[
             ["Geräte",   s.devices],
             ["Online",   s.online],
+            ["Verbunden", s.connected],
+            ["Fehler", s.errors],
             ["Screens",  s.screens],
             ["Widgets",  s.widgets],
             ["Vorlagen", s.templates],
@@ -10080,6 +10102,8 @@ class TickerDisplayPanel extends LitElement {
     return {
       devices:   d.length,
       online:    d.filter((x) => x.online).length,
+      connected: d.filter((x) => x.connected).length,
+      errors:    d.reduce((s, x) => s + Number(x.webview_error_count || 0), 0),
       screens:   d.reduce((s, x) => s + (x.screens?.length || 0), 0),
       widgets:   d.reduce((s, x) => s + (x.screens || []).reduce((a, sc) => a + (sc.widgets?.length || 0), 0), 0),
       templates: Object.keys(this._templates || {}).length,
@@ -10197,6 +10221,54 @@ class TickerDisplayPanel extends LitElement {
           @delete-image=${(e) => this._deleteMedia("image", e.detail.imageId)}>
         </td-image-manager>`;
     }
+  }
+
+  /* ────── Diagnostics Tab ────── */
+  _renderDiagnosticsTab() {
+    const diag = this._diagnostics || {};
+    const devices = Array.isArray(diag.devices) ? diag.devices : (this._devices || []);
+    return html`
+      <div class="wrap">
+        <div class="card" style="margin-bottom:16px">
+          <h3>🩺 Diagnose & Verbindungsstatus</h3>
+          <div class="muted">
+            Backend v${diag.integration_version || "2.4.0"} · ${diag.device_count ?? devices.length} Geräte ·
+            ${diag.online_count ?? devices.filter((d) => d.online).length} online ·
+            ${diag.connected_count ?? devices.filter((d) => d.connected).length} WebSocket verbunden
+          </div>
+          <div class="cta">
+            <button class="btn p" @click=${() => this._loadAll()}>🔄 Aktualisieren</button>
+            <button class="btn" @click=${() => this._copyDiagnostics()}>📋 Diagnose kopieren</button>
+          </div>
+        </div>
+        <div class="diag-grid">
+          ${devices.map((d) => html`
+            <div class="diag-card">
+              <h3>${d.online ? "🟢" : "🔴"} ${d.name || d.device_id || d.id}</h3>
+              <span class="badge ${d.online ? "on" : "off"}">${d.online ? "Online" : "Offline"}</span>
+              <span class="badge ${d.connected ? "on" : "off"}" style="margin-left:6px">${d.connected ? "WebSocket" : "Kein WebSocket"}</span>
+              <div class="kv">
+                <span>Geräte-ID</span><span class="mono">${d.device_id || d.id || "—"}</span>
+                <span>IP / Netzwerk</span><span>${d.ip_address || "—"} ${d.wifi_signal != null ? `(${d.wifi_signal} dBm)` : ""}</span>
+                <span>Akku</span><span>${d.battery_level != null ? `${d.battery_level}%` : "—"} ${d.battery_charging ? "· lädt" : ""}</span>
+                <span>Heartbeat</span><span>${d.heartbeat_age_seconds != null ? `${d.heartbeat_age_seconds}s` : "—"}</span>
+                <span>Zuletzt gesehen</span><span>${d.last_seen_at || "—"}</span>
+                <span>Letztes Event</span><span>${d.last_event || "—"}</span>
+                <span>Letzter Befehl</span><span>${d.last_command || "—"}</span>
+                <span>JS/WebView Fehler</span><span>${d.webview_error_count ?? 0}${d.last_error ? ` · ${d.last_error}` : ""}</span>
+                <span>Aktueller Screen</span><span class="mono">${d.current_screen || "—"}</span>
+              </div>
+              <div class="cta">
+                <button class="btn" @click=${() => this.hass.callService("ticker_display", "reload_page", { device: d.device_id || d.id })}>🔄 Reload</button>
+                <button class="btn" @click=${() => this.hass.callService("ticker_display", "identify_device", { device: d.device_id || d.id })}>💡 Identifizieren</button>
+                <button class="btn" @click=${() => window.open(d.preview_url || `${API}/preview/${d.device_id || d.id}`, "_blank")}>👁️ Vorschau</button>
+              </div>
+            </div>
+          `)}
+          ${!devices.length ? html`<div class="diag-card muted">Noch keine Geräte registriert.</div>` : ""}
+        </div>
+      </div>
+    `;
   }
 
   /* ────── Settings Tab ────── */
@@ -10377,6 +10449,17 @@ TickerDisplayPanel.prototype._copyDeviceLink = async function (urlOrDeviceId) {
   } catch (e) {
     console.error("Copy device link failed:", e);
     this._toast("❌ Link konnte nicht kopiert werden", "error");
+  }
+};
+
+TickerDisplayPanel.prototype._copyDiagnostics = async function () {
+  try {
+    await this._loadAll();
+    await copyToClipboard(JSON.stringify(this._diagnostics || {}, null, 2));
+    this._toast("📋 Diagnose kopiert", "success");
+  } catch (e) {
+    console.error("Copy diagnostics failed:", e);
+    this._toast("❌ Diagnose konnte nicht kopiert werden", "error");
   }
 };
 
@@ -10733,7 +10816,7 @@ TickerDisplayPanel.prototype._createBackup = async function () {
     // Enrich with metadata
     const enriched = {
       _ticker_display_backup: true,
-      _version: "2.0",
+      _version: "2.4.0",
       _created: new Date().toISOString(),
       _ha_version: this.hass?.config?.version || "unknown",
       ...backup,
@@ -10823,7 +10906,7 @@ TickerDisplayPanel.prototype._exportAllConfig = async function () {
     const date = new Date().toISOString().slice(0, 10);
     downloadJson(`ticker-display-full-export-${date}.json`, {
       _ticker_display_backup: true,
-      _version: "2.0",
+      _version: "2.4.0",
       _created: new Date().toISOString(),
       _ha_version: this.hass?.config?.version || "unknown",
       devices: this._devices,

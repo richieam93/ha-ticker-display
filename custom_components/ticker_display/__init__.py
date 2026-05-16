@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .api import TickerDisplayAPI
-from .const import DOMAIN, PANEL_URL, PLATFORMS
+from .const import DEFAULT_HEARTBEAT_TIMEOUT, DOMAIN, PANEL_URL, PLATFORMS
 from .coordinator import TickerDisplayCoordinator
 from .media_manager import MediaManager
 from .services import async_setup_services, async_unload_services
@@ -37,6 +37,36 @@ VOICE_ENTITY_UNIQUE_IDS = {
     "assist_assistant",
     "assist_assistant_2",
     "assist_vad_mode",
+}
+
+REMOVED_ENTITY_SUFFIXES_BY_DOMAIN = {
+    "sensor": {
+        "heartbeat_age",
+        "last_seen_age",
+        "last_heartbeat",
+        "last_seen",
+        "last_event",
+        "last_command",
+        "webview_errors",
+        "page_load",
+        "webview_version",
+    },
+    "binary_sensor": {"connected"},
+    "button": {
+        "reload_page",
+        "identify",
+        "restart_app",
+        "screen_on",
+        "screen_off",
+        "clear_alerts",
+    },
+    "select": {
+        "wake_word",
+        "wake_word_2",
+        "assistant",
+        "assistant_2",
+        "speech_pause_detection",
+    },
 }
 
 
@@ -65,6 +95,28 @@ async def _async_cleanup_legacy_voice_entities(hass: HomeAssistant, entry: Confi
 
 
 
+async def _async_cleanup_removed_entities(hass: HomeAssistant, entry: ConfigEntry, store: TickerDisplayStore) -> None:
+    """Remove entities that were added by the 2.3.0 diagnostics/buttons/select expansion."""
+    ent_reg = er.async_get(hass)
+    devices = store.get_devices() or {}
+    prefixes = [f"ticker_display_{device_id}_" for device_id in devices]
+    to_remove: list[str] = []
+    for entity_entry in list(ent_reg.entities.values()):
+        if entity_entry.config_entry_id != entry.entry_id or entity_entry.platform != DOMAIN:
+            continue
+        suffixes = REMOVED_ENTITY_SUFFIXES_BY_DOMAIN.get(entity_entry.domain)
+        if not suffixes:
+            continue
+        unique_id = str(entity_entry.unique_id or "")
+        for prefix in prefixes:
+            if unique_id.startswith(prefix) and unique_id[len(prefix):] in suffixes:
+                to_remove.append(entity_entry.entity_id)
+                break
+    for entity_id in to_remove:
+        _LOGGER.info("Removing no-longer-created Ticker Display entity from registry: %s", entity_id)
+        ent_reg.async_remove(entity_id)
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Ticker Display integration."""
     hass.data.setdefault(DOMAIN, {})
@@ -85,8 +137,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await media_manager.async_initialize()
 
     await _async_cleanup_legacy_voice_entities(hass, entry, store)
+    await _async_cleanup_removed_entities(hass, entry, store)
 
-    heartbeat_timeout = int(entry.options.get("heartbeat_timeout", 120))
+    heartbeat_timeout = int(entry.options.get("heartbeat_timeout", DEFAULT_HEARTBEAT_TIMEOUT))
     coordinator = TickerDisplayCoordinator(hass, store, heartbeat_timeout=heartbeat_timeout)
     websocket = TickerDisplayWebSocket(hass, store, coordinator)
 
@@ -170,10 +223,13 @@ async def async_remove_config_entry_device(hass: HomeAssistant, entry: ConfigEnt
     coordinator = entry_data.get("coordinator")
     await store.async_remove_device(target_id)
     if coordinator is not None:
-        coordinator._device_data.pop(target_id, None)
-        coordinator._last_heartbeat.pop(target_id, None)
-        coordinator._last_seen.pop(target_id, None)
-        coordinator._update_callbacks.pop(target_id, None)
+        if hasattr(coordinator, "forget_device"):
+            coordinator.forget_device(target_id)
+        else:
+            coordinator._device_data.pop(target_id, None)
+            coordinator._last_heartbeat.pop(target_id, None)
+            coordinator._last_seen.pop(target_id, None)
+            coordinator._update_callbacks.pop(target_id, None)
 
     ent_reg = er.async_get(hass)
     for entity_entry in list(er.async_entries_for_device(ent_reg, device_entry.id)):

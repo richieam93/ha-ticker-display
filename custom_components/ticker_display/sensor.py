@@ -229,6 +229,47 @@ SENSOR_DEFINITIONS = {
         "dc": None,
         "sc": SensorStateClass.TOTAL_INCREASING,
     },
+    "event_count": {
+        "name": "Event Count",
+        "key": "event_count",
+        "icon": "mdi:counter",
+        "unit": None,
+        "dc": None,
+        "sc": SensorStateClass.TOTAL_INCREASING,
+    },
+    "command_count": {
+        "name": "Command Count",
+        "key": "command_count",
+        "icon": "mdi:send-clock",
+        "unit": None,
+        "dc": None,
+        "sc": SensorStateClass.TOTAL_INCREASING,
+    },
+    "missed_command_count": {
+        "name": "Missed Commands",
+        "key": "missed_command_count",
+        "icon": "mdi:send-off",
+        "unit": None,
+        "dc": None,
+        "sc": SensorStateClass.TOTAL_INCREASING,
+    },
+    "connection_count": {
+        "name": "Connection Count",
+        "key": "connection_count",
+        "icon": "mdi:connection",
+        "unit": None,
+        "dc": None,
+        "sc": SensorStateClass.TOTAL_INCREASING,
+    },
+    "last_error": {
+        "name": "Last Error",
+        "key": "last_error",
+        "icon": "mdi:alert-circle-outline",
+        "unit": None,
+        "dc": None,
+        "sc": None,
+    },
+
 }
 
 
@@ -288,7 +329,12 @@ class TickerDisplaySensor(SensorEntity):
     def native_value(self):
         """Return the native value."""
         data = self._coordinator.get_device_data(self._device_id)
-        value = data.get(self._data_key)
+        status = (
+            self._coordinator.get_device_status(self._device_id)
+            if hasattr(self._coordinator, "get_device_status")
+            else {}
+        )
+        value = data.get(self._data_key, status.get(self._data_key))
         if self._sensor_key == "uptime" and value is not None:
             return round(value / 60, 1)
         if isinstance(value, str) and len(value) > 250:
@@ -297,9 +343,23 @@ class TickerDisplaySensor(SensorEntity):
 
     @property
     def extra_state_attributes(self):
+        if self._sensor_key not in {"current_screen", "last_error"}:
+            return None
         data = self._coordinator.get_device_data(self._device_id)
-        value = data.get(self._data_key)
-        return None
+        status = (
+            self._coordinator.get_device_status(self._device_id)
+            if hasattr(self._coordinator, "get_device_status")
+            else {}
+        )
+        attrs = {
+            "online": status.get("online"),
+            "connected": status.get("connected"),
+            "last_seen_at": status.get("last_seen_at"),
+            "last_heartbeat_at": status.get("last_heartbeat_at"),
+        }
+        if self._sensor_key == "last_error":
+            attrs["last_error_at"] = data.get("last_error_at")
+        return attrs
 
     @property
     def available(self) -> bool:
@@ -308,6 +368,8 @@ class TickerDisplaySensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Handle entity being added to Home Assistant."""
-        self._coordinator.register_update_callback(
+        remove_cb = self._coordinator.register_update_callback(
             self._device_id, self.async_write_ha_state
         )
+        if remove_cb:
+            self.async_on_remove(remove_cb)

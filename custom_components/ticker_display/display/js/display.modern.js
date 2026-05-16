@@ -351,6 +351,10 @@ class BridgeWrapper {
     if (this._bridge?.setScreenPower) this._bridge.setScreenPower(!!on);
   }
 
+  setScreenOrientation(degrees) {
+    if (this._bridge?.setScreenOrientation) this._bridge.setScreenOrientation(Math.round(degrees));
+  }
+
   playSound(url, volume = 100, loop = false) {
     if (!url) return;
     if (this._bridge) {
@@ -378,6 +382,13 @@ class BridgeWrapper {
   setVolume(v) {
     if (this._bridge?.setVolume) { try { this._bridge.setVolume(v); } catch (e) {} }
   }
+  setNativeSetting(setting, value) {
+    if (this._bridge?.setDeviceSetting) { try { return this._bridge.setDeviceSetting(String(setting), String(value)); } catch (e) {} }
+    return false;
+  }
+  restartApp() { try { this._bridge?.restartApp?.(); } catch (e) {} }
+  openAndroidSettings() { try { this._bridge?.openAndroidSettings?.(); } catch (e) {} }
+  reportDeviceStateNow() { try { this._bridge?.reportDeviceStateNow?.(); } catch (e) {} }
 
   vibrate(ms = 500) {
     if (this._bridge?.vibrate) { try { this._bridge.vibrate(ms); } catch (e) {} }
@@ -545,6 +556,12 @@ class WebSocketClient {
       case "audio": 
         this.app.onAudio(msg); 
         break;
+      case "native_control":
+        this.app.onNativeControl(msg);
+        break;
+      case "native_action":
+        this.app.onNativeAction(msg);
+        break;
       case "navigate": 
         this.app.onNavigate(msg); 
         break;
@@ -591,6 +608,74 @@ class ScreenManager {
     this._cameraIntervals = [];
     this._countdownIntervals = [];
     this._chartInstances = [];
+    this._layoutResizeTimer = null;
+    const onViewportChange = () => {
+      clearTimeout(this._layoutResizeTimer);
+      this._layoutResizeTimer = setTimeout(() => this._fitCurrentDashboard(), 120);
+    };
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("orientationchange", onViewportChange);
+  }
+
+
+  _applyViewportMetrics() {
+    try {
+      if (typeof window.TickerDisplayApplyViewport === "function") window.TickerDisplayApplyViewport();
+    } catch (e) {}
+    const root = document.documentElement;
+    const w = Math.max(1, window.innerWidth || (root && root.clientWidth) || (screen && screen.width) || 1);
+    const h = Math.max(1, window.innerHeight || (root && root.clientHeight) || (screen && screen.height) || 1);
+    if (root) {
+      root.style.setProperty("--td-app-width", `${w}px`);
+      root.style.setProperty("--td-app-height", `${h}px`);
+      root.style.setProperty("--td-viewport-min", `${Math.min(w, h)}px`);
+      root.style.setProperty("--td-viewport-max", `${Math.max(w, h)}px`);
+      root.classList.toggle("td-landscape", w >= h);
+      root.classList.toggle("td-portrait", h > w);
+    }
+    return { width: w, height: h };
+  }
+
+  _fitCurrentDashboard() {
+    try {
+      this._applyViewportMetrics();
+      const grid = this.container ? this.container.querySelector(".screen .dashboard-grid") : null;
+      if (grid) this._fitDashboardLayout(grid);
+    } catch (e) {
+      console.warn("Layout-Fit fehlgeschlagen", e);
+    }
+  }
+
+  _fitDashboardLayout(grid) {
+    if (!grid) return;
+    const adaptive = grid.dataset.adaptive !== "false";
+    if (!adaptive) return;
+    const cols = Math.max(1, Number(grid.dataset.cols || 3));
+    const rows = Math.max(1, Number(grid.dataset.rows || 2));
+    const requestedGap = Math.max(0, Number(grid.dataset.gap || 10));
+    const rect = grid.getBoundingClientRect ? grid.getBoundingClientRect() : { width: 0, height: 0 };
+    const viewport = this._applyViewportMetrics();
+    const width = Math.max(1, grid.clientWidth || rect.width || viewport.width);
+    const height = Math.max(1, grid.clientHeight || rect.height || viewport.height);
+    const shortest = Math.max(1, Math.min(width, height));
+    const gap = Math.max(2, Math.min(requestedGap, Math.floor(shortest / 36)));
+    const pad = Math.max(2, Math.min(gap, Math.floor(shortest / 44)));
+    const cellW = Math.max(1, (width - (pad * 2) - (gap * Math.max(0, cols - 1))) / cols);
+    const cellH = Math.max(1, (height - (pad * 2) - (gap * Math.max(0, rows - 1))) / rows);
+    const cellMin = Math.max(24, Math.floor(Math.min(cellW, cellH)));
+    const widgetPad = Math.max(4, Math.min(16, Math.floor(cellMin / 12)));
+    const innerGap = Math.max(2, Math.min(10, Math.floor(cellMin / 24)));
+    grid.classList.add("td-layout-adaptive");
+    grid.classList.toggle("td-layout-compact", cellMin < 150);
+    grid.classList.toggle("td-layout-tight", cellMin < 105);
+    grid.classList.toggle("td-layout-auto-rotate", true);
+    grid.style.setProperty("--td-cell-width", `${Math.floor(cellW)}px`);
+    grid.style.setProperty("--td-cell-height", `${Math.floor(cellH)}px`);
+    grid.style.setProperty("--td-cell-min", `${cellMin}px`);
+    grid.style.setProperty("--td-adaptive-gap", `${gap}px`);
+    grid.style.setProperty("--td-adaptive-padding", `${pad}px`);
+    grid.style.setProperty("--td-adaptive-widget-padding", `${widgetPad}px`);
+    grid.style.setProperty("--td-adaptive-widget-inner-gap", `${innerGap}px`);
   }
 
 
@@ -890,56 +975,63 @@ _applyCommonWidgetStyle(widget, config) {
   }
 
   /* ────── Screen Builders ────── */
-  /** Dashboard Screen - Verbessert */
+  /** Dashboard Screen - adaptiv für Tablet/WebView */
   _buildDashboardScreen(screen, config) {
     console.log("📊 Dashboard erstellen:", config);
     const grid = document.createElement("div");
-    grid.className = "dashboard-grid";
-    
-    // Grid-Konfiguration
-    const cols = Math.max(1, config.grid?.columns || 3);
-    const rows = Math.max(1, config.grid?.rows || 2);
-    const gap = config.grid?.gap || 12;
-    
-    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-    grid.style.gap = `${gap}px`;
-    grid.style.padding = `${gap}px`;
-    
-    // Widgets erstellen
+    grid.className = "dashboard-grid td-layout-adaptive";
+
+    const gridCfg = config.grid || {};
+    const cols = Math.max(1, Number(gridCfg.columns || 3));
+    const rows = Math.max(1, Number(gridCfg.rows || 2));
+    const gap = Math.max(0, Number(gridCfg.gap || 12));
+    const adaptive = gridCfg.adaptive !== false;
+
+    grid.dataset.cols = String(cols);
+    grid.dataset.rows = String(rows);
+    grid.dataset.gap = String(gap);
+    grid.dataset.adaptive = adaptive ? "true" : "false";
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+    grid.style.setProperty("--td-widget-gap", `${gap}px`);
+    grid.style.setProperty("--td-adaptive-gap", `${gap}px`);
+    grid.style.setProperty("--td-adaptive-padding", `${gap}px`);
+
     const widgets = Utils.safeArray(config.widgets);
     console.log("📊 Widgets:", widgets.length);
-    
+
     widgets.forEach((wc, index) => {
       if (!wc) return;
       const widget = this._createWidget(wc);
       widget.style.setProperty("--widget-enter-delay", `${index * 60}ms`);
       widget.classList.add("widget-enter");
-      
-      // Spalten und Zeilen
-      if (wc.col !== undefined) {
-        widget.style.gridColumn = `${wc.col + 1}/span ${wc.colspan || 1}`;
+
+      const col = Number(wc.col);
+      const row = Number(wc.row);
+      const colspan = Math.max(1, Math.min(cols, Number(wc.colspan || 1)));
+      const rowspan = Math.max(1, Math.min(rows, Number(wc.rowspan || 1)));
+      if (wc.col !== undefined && Number.isFinite(col)) {
+        widget.style.gridColumn = `${Math.max(0, col) + 1}/span ${colspan}`;
       }
-      if (wc.row !== undefined) {
-        widget.style.gridRow = `${wc.row + 1}/span ${wc.rowspan || 1}`;
+      if (wc.row !== undefined && Number.isFinite(row)) {
+        widget.style.gridRow = `${Math.max(0, row) + 1}/span ${rowspan}`;
       }
-      
-      // Responsive
+
       widget.style.setProperty("--widget-priority", wc.priority || "normal");
-      
       grid.appendChild(widget);
     });
-    
+
     screen.appendChild(grid);
-    
-    // Dashboard-Info anzeigen
-    if (config.show_info !== false) {
+
+    if (config.show_info === true) {
       const info = document.createElement("div");
-      info.className = "dashboard-info";
-      info.innerHTML = `<span>${widgets.length} Widgets</span>`;
+      info.className = "td-screen-badge";
+      info.textContent = `${widgets.length} Widgets`;
       screen.appendChild(info);
     }
-    
+
+    requestAnimationFrame(() => this._fitDashboardLayout(grid));
+    setTimeout(() => this._fitDashboardLayout(grid), 250);
     console.log("✅ Dashboard erstellt mit", widgets.length, "Widgets");
   }
 
@@ -2599,6 +2691,8 @@ _getChartConfig(type, histories, labels, config) {
       this.container.appendChild(newScreen);
       setTimeout(() => { oldScreen.remove(); newScreen.classList.remove(`screen-enter-${type}`); }, 600);
     } else { if (oldScreen) oldScreen.remove(); this.container.appendChild(newScreen); }
+    requestAnimationFrame(() => this._fitCurrentDashboard());
+    setTimeout(() => this._fitCurrentDashboard(), 300);
   }
 
   _startRotation() {
@@ -2722,19 +2816,25 @@ class TickerManager {
     if (cfg.border_radius != null) root.style.setProperty("--td-ticker-radius", `${cfg.border_radius}px`);
     if (cfg.font_weight != null) root.style.setProperty("--td-ticker-font-weight", String(cfg.font_weight));
     if (cfg.opacity != null && this.bar) this.bar.style.opacity = String(cfg.opacity);
-    if (this.bar) { this.bar.classList.toggle("top", (cfg.position || "bottom") === "top"); this.bar.classList.toggle("bottom", (cfg.position || "bottom") !== "top"); }
+    const pos = (cfg.position || "bottom") === "top" ? "top" : "bottom";
+    root.classList.toggle("td-ticker-top", pos === "top");
+    root.classList.toggle("td-ticker-bottom", pos !== "top");
+    if (this.bar) { this.bar.classList.toggle("top", pos === "top"); this.bar.classList.toggle("bottom", pos !== "top"); }
   }
 
   /** Sichtbarkeit der Ticker-Leiste setzen */
   _setBarVisible(visible) {
     this._isVisible = visible;
     console.log("📺 Ticker sichtbar:", visible);
+    const root = document.documentElement;
+    if (root) root.style.setProperty("--td-ticker-offset", visible ? "var(--td-ticker-height, 36px)" : "0px");
     if (this.bar) {
       this.bar.hidden = !visible;
       this.bar.style.display = visible ? "flex" : "none";
     }
     const screen = document.querySelector(".screen-container");
     if (screen) screen.classList.toggle("no-ticker", !visible);
+    try { if (this.app && this.app.screenManager) this.app.screenManager._fitCurrentDashboard(); } catch (e) {}
   }
 
   /** Auto-Hide Timer planen */
@@ -3163,10 +3263,72 @@ class TickerDisplayApp {
     this._statePollTimer = null;
     this._entityRefreshTimers = {};
     this._initTime = Date.now();
+    this._frontendErrorCount = 0;
+    window.addEventListener("error", (e) => {
+      this._reportFrontendError(e.message || "JavaScript error", e.filename || "window.error", e.lineno, e.colno);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      const reason = e.reason?.message || String(e.reason || "Unhandled promise rejection");
+      this._reportFrontendError(reason, "unhandledrejection");
+    });
+  }
+
+  _reportFrontendError(message, source, line, column) {
+    this._frontendErrorCount = (this._frontendErrorCount || 0) + 1;
+    try {
+      fetch(`${this.apiBase}/api/device/${encodeURIComponent(this.deviceId)}/notify-error`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ message: String(message || "").slice(0, 500), source: source || "display", line: line || null, column: column || null }),
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  _setLoadingStatus(text, hint) {
+    try {
+      const status = document.getElementById("loading-status");
+      if (status && text) status.textContent = text;
+      const hintEl = document.getElementById("loading-hint");
+      if (hintEl && hint) hintEl.textContent = hint;
+    } catch (e) {}
+  }
+
+  _hideLoading() {
+    const loading = document.getElementById("loading-screen");
+    if (!loading) return;
+    loading.style.opacity = "0";
+    loading.style.transition = "opacity 0.3s ease";
+    setTimeout(() => { loading.style.display = "none"; }, 350);
+  }
+
+  _showLoadingError(error) {
+    const loading = document.getElementById("loading-screen");
+    const msg = error?.message || String(error || "Unbekannter Fehler");
+    if (loading) {
+      loading.style.display = "flex";
+      loading.style.opacity = "1";
+      loading.innerHTML = `<div class="loading-card"><div style="font-size:48px">⚠️</div><div class="loading-brand">Ticker Display</div><p>Fehler beim Laden</p><small>${Utils.escapeHtml(msg)}</small><button class="loading-action" type="button" onclick="location.reload()">Neu laden</button></div>`;
+    }
+  }
+
+  _setOffline(title, detail, hidden) {
+    const offline = document.getElementById("offline-screen");
+    if (!offline) return;
+    if (this.isPreview || hidden === true) {
+      offline.hidden = true;
+      return;
+    }
+    const titleEl = document.getElementById("offline-title");
+    const detailEl = document.getElementById("offline-detail");
+    if (titleEl && title) titleEl.textContent = title;
+    if (detailEl && detail) detailEl.textContent = detail;
+    offline.hidden = false;
   }
 
   async init() {
     console.log("🚀 Ticker Display v3 startet...", this.deviceId);
+    this._setLoadingStatus("Konfiguration wird geladen...");
 
     // Locale aus Config setzen falls vorhanden
     if (this.globalSettings?.locale) Utils.setLocale(this.globalSettings.locale);
@@ -3207,7 +3369,9 @@ class TickerDisplayApp {
 
     try {
       this.bridge = new BridgeWrapper();
+      this._setLoadingStatus("Geräteschnittstelle wird vorbereitet...");
       await this._primeEntityStates();
+      this._setLoadingStatus("Layout wird aufgebaut...");
       this.themeManager = new ThemeManager();
       this.screenManager = new ScreenManager(this);
       this.tickerManager = new TickerManager(this);
@@ -3217,24 +3381,19 @@ class TickerDisplayApp {
       this.screenManager.start();
       this.tickerManager.init();
 
-      const loading = document.getElementById("loading-screen");
-      if (loading) {
-        loading.style.opacity = "0";
-        loading.style.transition = "opacity 0.3s ease";
-        setTimeout(() => { loading.style.display = "none"; }, 350);
-      }
+      this._hideLoading();
       const offline = document.getElementById("offline-screen");
       if (offline && this.isPreview) offline.hidden = true;
 
       this.wsClient.connect()
         .then(() => {
           console.log("✅ WebSocket verbunden");
-          if (offline) offline.hidden = true;
+          this._setOffline("", "", true);
           this.reportSensorsNow?.();
         })
         .catch(e => {
           console.warn("⚠️ WebSocket-Verbindung fehlgeschlagen, Offline-Modus:", e.message || e);
-          if (offline && this.isPreview) offline.hidden = true;
+          this._setOffline("Live-Verbindung unterbrochen", "Das Layout bleibt sichtbar. Befehle und Live-Updates verbinden automatisch neu.");
         });
 
       this._startSensorReporting();
@@ -3252,10 +3411,7 @@ class TickerDisplayApp {
       console.log(`✅ Ticker Display bereit! (${initDuration}ms)`);
     } catch (e) {
       console.error("❌ Initialisierungsfehler:", e);
-      const loading = document.getElementById("loading-screen");
-      if (loading) {
-        loading.innerHTML = `<div style="text-align:center;color:#ef5350"><div style="font-size:48px">❌</div><div style="margin-top:12px">Fehler beim Laden</div><div style="font-size:14px;opacity:.7;margin-top:8px">${Utils.escapeHtml(e.message || "Unbekannter Fehler")}</div></div>`;
-      }
+      this._showLoadingError(e);
     }
   }
 
@@ -3273,12 +3429,27 @@ class TickerDisplayApp {
     else if (cmd === "set_ticker_entities") this.tickerManager.setEntities(data);
     else if (cmd === "clear_ticker") this.tickerManager.clear();
     else if (cmd === "identify") this._showIdentify();
+    else if (cmd === "show_popup") {
+      const cfg = {
+        type: data.type || data.popup_type || "simple-value",
+        entity_id: data.entity_id || data.target_entity || "",
+        name: data.title || data.name || data.entity_id || "Popup",
+        tap_popup_kind: data.kind || data.tap_popup_kind || data.popup_kind || "",
+        config: data.config || {},
+      };
+      this.screenManager?._openWidgetPopup?.(cfg);
+    }
+    else if (cmd === "dismiss_popup") this.screenManager?._closeWidgetPopup?.();
+    else if (cmd === "update_ticker_config") {
+      this.config.ticker = { ...(this.config.ticker || {}), ...(data || {}) };
+      this.tickerManager?.rebuild?.();
+    }
     else if (cmd === "assist_command") { try { this.bridge?._bridge?.assistCommand?.(JSON.stringify(data || {})); } catch (e) { console.warn("assist command failed", e); } }
   }
 
   onAlert(data) { this.alertManager.show(data); }
   onTickerMessages(msgs) { this.tickerManager.addMessages(msgs); }
-  onDisplayControl(data) { if (data.brightness !== undefined) this.bridge.setScreenBrightness(data.brightness); if (data.screen_power !== undefined) this.bridge.setScreenPower(data.screen_power); }
+  onDisplayControl(data) { if (data.brightness !== undefined) this.bridge.setScreenBrightness(data.brightness); if (data.screen_power !== undefined) this.bridge.setScreenPower(data.screen_power); if (data.orientation !== undefined) this.bridge.setScreenOrientation(data.orientation); }
 
   async onAudio(data) {
     if (data.action === "play") this.bridge.playSound(data.url, data.volume, data.loop);
@@ -3289,6 +3460,24 @@ class TickerDisplayApp {
     else if (data.action === "next") this.bridge._bridge?.nextSound?.();
     else if (data.action === "previous") this.bridge._bridge?.previousSound?.();
     else if (data.action === "set_volume") this.bridge.setVolume(data.volume);
+  }
+
+  onNativeControl(data) {
+    const setting = data?.setting || data?.key || data?.command || "";
+    const value = data?.value !== undefined ? data.value : data?.enabled;
+    if (!setting) return;
+    if (setting === "screen_power") this.bridge.setScreenPower(!!value);
+    else if (setting === "screen_brightness" || setting === "brightness") this.bridge.setScreenBrightness(value);
+    else if (setting === "volume" || setting === "media_volume" || setting === "volume_percent") this.bridge.setVolume(value);
+    this.bridge.setNativeSetting(setting, value);
+  }
+
+  onNativeAction(data) {
+    const action = data?.action || data?.command || "";
+    if (action === "restart_app") this.bridge.restartApp();
+    else if (action === "open_android_settings") this.bridge.openAndroidSettings();
+    else if (action === "vibrate") this.bridge.vibrate(data?.duration || 500);
+    else if (action === "report_now") this.bridge.reportDeviceStateNow();
   }
 
   _refreshEntityStateSoon(entityId) {
@@ -3356,6 +3545,12 @@ class TickerDisplayApp {
   reportSensorsNow() {
     if (!this.bridge || !this.bridge.isAvailable()) return;
     const d = this.bridge.getAllSensorData();
+    if (d) {
+      d.page_load_ms = Date.now() - this._initTime;
+      d.webview_user_agent = navigator.userAgent || "";
+      d.webview_version = navigator.userAgent || "";
+      d.webview_error_count = this._frontendErrorCount || 0;
+    }
     if (d && this.wsClient?.isConnected()) this.wsClient.send({ type: "sensor_update", data: { device_id: this.deviceId, ...d } });
   }
 

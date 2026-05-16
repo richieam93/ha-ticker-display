@@ -10,6 +10,7 @@ import android.app.admin.DeviceAdminReceiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -48,9 +49,6 @@ class KioskManager(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     or View.SYSTEM_UI_FLAG_FULLSCREEN
                     or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
             )
         }
     }
@@ -88,17 +86,42 @@ class ScreenManager(private val ctx: Context) {
         wakeLock = null
     }
 
+    fun clearKeepScreenOn(activity: Activity) {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        release()
+    }
+
     fun setBrightness(percent: Int) {
+        val clamped = percent.coerceIn(0, 100)
         try {
-            val brightness = (percent * 255) / 100
+            val activity = ctx as? Activity
+            if (activity != null) {
+                activity.runOnUiThread {
+                    val lp = activity.window.attributes
+                    lp.screenBrightness = if (clamped <= 0) 0.01f else (clamped / 100f).coerceIn(0.01f, 1.0f)
+                    activity.window.attributes = lp
+                }
+            }
+        } catch (_: Exception) {}
+        try {
+            val brightness = (clamped * 255) / 100
             Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS, brightness.coerceIn(1, 255))
         } catch (_: Exception) {}
     }
 
-    fun getBrightness(): Int = try {
-        val b = Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-        (b * 100) / 255
-    } catch (_: Exception) { 50 }
+    fun getBrightness(): Int {
+        try {
+            val activity = ctx as? Activity
+            val windowBrightness = activity?.window?.attributes?.screenBrightness
+            if (windowBrightness != null && windowBrightness >= 0f) {
+                return (windowBrightness * 100).toInt().coerceIn(1, 100)
+            }
+        } catch (_: Exception) {}
+        return try {
+            val b = Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+            (b * 100) / 255
+        } catch (_: Exception) { 50 }
+    }
 
     fun screenOn() {
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -113,6 +136,17 @@ class ScreenManager(private val ctx: Context) {
     fun isScreenOn(): Boolean {
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
         return pm.isInteractive
+    }
+
+    fun setOrientation(degrees: Int) {
+        val activity = ctx as? Activity ?: return
+        activity.requestedOrientation = when (degrees) {
+            90 -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            -1 -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
     }
 }
 

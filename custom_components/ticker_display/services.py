@@ -12,10 +12,16 @@ REGISTERED_SERVICES = [
     "show_dashboard", "show_graph", "show_camera", "show_weather",
     "show_single_value", "show_clock", "show_status_board", "show_image",
     "show_template", "show_alert", "show_notification", "show_toast",
+    "show_alert_template", "show_alert_sequence", "show_silent_alert",
     "clear_alert", "send_ticker_message", "set_ticker_entities", "clear_ticker",
-    "set_screen_power", "set_brightness", "set_theme", "set_volume",
-    "play_sound", "play_announcement", "tts_speak", "stop_audio", "next_screen", "previous_screen",
-    "goto_screen", "pause_rotation", "resume_rotation", "reload_page", "identify_device", "show_alert_template", "show_alert_sequence",
+    "update_ticker_config", "set_screen_power", "set_brightness", "set_theme",
+    "set_volume", "set_screen_orientation", "play_sound", "play_announcement",
+    "tts_speak", "stop_audio", "play_media", "stop_media", "media_next",
+    "media_previous", "media_pause", "media_resume", "next_screen", "previous_screen",
+    "goto_screen", "pause_rotation", "resume_rotation", "reload_page",
+    "identify_device", "set_device_setting", "restart_app", "open_android_settings",
+    "vibrate_device", "report_device_state", "entity_toggle", "entity_action",
+    "show_popup", "dismiss_popup",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -391,6 +397,34 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     async def handle_identify_device(call):
         await websocket.send_command(_dev(call), {"type": "command", "command": "identify"})
 
+    async def handle_set_device_setting(call):
+        d = _data(call)
+        setting = d.get("setting") or d.get("key")
+        if not setting:
+            _LOGGER.warning("set_device_setting: setting is required")
+            return
+        await websocket.send_command(_dev(call), {
+            "type": "native_control",
+            "setting": str(setting),
+            "value": d.get("value"),
+        })
+
+    async def handle_restart_app(call):
+        await websocket.send_command(_dev(call), {"type": "native_action", "action": "restart_app"})
+
+    async def handle_open_android_settings(call):
+        await websocket.send_command(_dev(call), {"type": "native_action", "action": "open_android_settings"})
+
+    async def handle_vibrate_device(call):
+        await websocket.send_command(_dev(call), {
+            "type": "native_action",
+            "action": "vibrate",
+            "duration": call.data.get("duration", 500),
+        })
+
+    async def handle_report_device_state(call):
+        await websocket.send_command(_dev(call), {"type": "native_action", "action": "report_now"})
+
     # ══════════════════════════════════════════════════════════
     # NEUE ERWEITERTE HANDLER
     # ══════════════════════════════════════════════════════════
@@ -540,8 +574,11 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         "next_screen": handle_next_screen, "previous_screen": handle_previous_screen,
         "goto_screen": handle_goto_screen, "pause_rotation": handle_pause_rotation,
         "resume_rotation": handle_resume_rotation,
-        # Management
+        # Management and native Android control
         "reload_page": handle_reload_page, "identify_device": handle_identify_device,
+        "set_device_setting": handle_set_device_setting, "restart_app": handle_restart_app,
+        "open_android_settings": handle_open_android_settings,
+        "vibrate_device": handle_vibrate_device, "report_device_state": handle_report_device_state,
         # Entity control (NEW)
         "entity_toggle": handle_entity_toggle, "entity_action": handle_entity_action,
         # Popup (NEW)

@@ -127,7 +127,7 @@ class TickerDisplayBinarySensor(BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true if binary sensor is on."""
         if self._sensor_key == "online":
-            return self._coordinator.is_device_available(self._device_id)
+            return self._coordinator.is_device_online(self._device_id)
 
         data = self._coordinator.get_device_data(self._device_id)
         key = self._sensor_def.get("key")
@@ -142,6 +142,29 @@ class TickerDisplayBinarySensor(BinarySensorEntity):
             else self._sensor_def["icon_off"]
         )
 
+
+    @property
+    def extra_state_attributes(self):
+        """Return useful attributes for selected binary sensors."""
+        if self._sensor_key != "motion":
+            return None
+
+        data = self._coordinator.get_device_data(self._device_id)
+        attrs = {}
+        for source_key, attr_key in (
+            ("motion_last_detected_at", "last_detected_at"),
+            ("motion_last_cleared_at", "last_cleared_at"),
+            ("motion_score", "score"),
+            ("motion_avg_delta", "avg_delta"),
+            ("motion_status", "detector_status"),
+            ("motion_source", "source"),
+            ("motion_last_error", "last_error"),
+        ):
+            value = data.get(source_key)
+            if value not in (None, ""):
+                attrs[attr_key] = value
+        return attrs or None
+
     @property
     def available(self) -> bool:
         """Return availability."""
@@ -151,6 +174,8 @@ class TickerDisplayBinarySensor(BinarySensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Handle entity being added to Home Assistant."""
-        self._coordinator.register_update_callback(
+        remove_cb = self._coordinator.register_update_callback(
             self._device_id, self.async_write_ha_state
         )
+        if remove_cb:
+            self.async_on_remove(remove_cb)

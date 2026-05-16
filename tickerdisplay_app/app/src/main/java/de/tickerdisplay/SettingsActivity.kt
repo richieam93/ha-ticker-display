@@ -28,7 +28,7 @@ class SettingsActivity : AppCompatActivity() {
         prefs = Prefs(this)
 
         setupField(R.id.setting_ha_url, "HA URL", prefs.haUrl, "Adresse deiner Home-Assistant-Instanz, z. B. https://ha.local:8123") {
-            prefs.haUrl = it.trim()
+            prefs.haUrl = U.normalizeHaUrl(it)
         }
         setupField(R.id.setting_device_id, "Geräte-ID", prefs.deviceId, "Eindeutige Kennung dieses Displays in Home Assistant") {
             prefs.deviceId = it.trim()
@@ -46,7 +46,7 @@ class SettingsActivity : AppCompatActivity() {
         setupSwitch(R.id.setting_screen_on, "Display wach halten", prefs.screenOn, "Hält den Bildschirm aktiv, solange die App läuft.") { prefs.screenOn = it }
         setupSwitch(R.id.setting_burnin, "Burn-in-Schutz", prefs.burnIn, "Aktiviert kleine Schutzbewegungen gegen Einbrennen.") { prefs.burnIn = it }
         setupSwitch(R.id.setting_light, "Lichtsensor", prefs.lightSensor, "Sendet Helligkeitswerte des Geräts.") { prefs.lightSensor = it }
-        setupSwitch(R.id.setting_motion, "Bewegungs-Erkennung", prefs.motionDetect, "Reserviert für spätere Bewegungs-/Anwesenheitserkennung.") { prefs.motionDetect = it }
+        setupSwitch(R.id.setting_motion, "Bewegungs-Erkennung", prefs.motionDetect, "Erkennt Bewegung über die Geräte-Kamera und meldet sie als Motion an Home Assistant.") { enabled -> if (enabled) ensureCameraPermission(); prefs.motionDetect = enabled }
         setupSwitch(R.id.setting_sensor_battery_details, "Erweiterte Batteriesensoren", prefs.sensorBatteryDetails, "Zusätzliche Batterie- und Ladeinformationen an Home Assistant senden.") { prefs.sensorBatteryDetails = it }
         setupSwitch(R.id.setting_sensor_network_details, "Erweiterte Netzwerksensoren", prefs.sensorNetworkDetails, "WLAN-, SSID-, Link-Speed- und Netzwerktyp-Sensoren senden.") { prefs.sensorNetworkDetails = it }
         setupSwitch(R.id.setting_sensor_storage_details, "Speicher- und RAM-Sensoren", prefs.sensorStorageDetails, "Freien Speicher, RAM und belegten Speicher senden.") { prefs.sensorStorageDetails = it }
@@ -68,8 +68,18 @@ class SettingsActivity : AppCompatActivity() {
             if (prefs.backCameraEnabled) CameraSnapshotUploader(this, api, prefs, CameraFacing.BACK).triggerManualUpload()
             Toast.makeText(this, "Kamera-Aktualisierung gestartet", Toast.LENGTH_SHORT).show()
         }
+        findViewById<Button>(R.id.btn_test_connection).setOnClickListener { testConnectionNow() }
+        findViewById<Button>(R.id.btn_copy_info).setOnClickListener {
+            copyText("Ticker Display Diagnose", buildInfoText())
+            Toast.makeText(this, "Diagnose kopiert", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btn_copy_logs).setOnClickListener {
+            val logs = L.readTail()
+            copyText("Ticker Display Logs", logs.ifBlank { "Keine Logs vorhanden" })
+            Toast.makeText(this, "Log-Auszug kopiert", Toast.LENGTH_SHORT).show()
+        }
         findViewById<Button>(R.id.btn_clear_cache).setOnClickListener {
-            android.webkit.WebView(this).clearCache(true)
+            clearWebViewData()
             Toast.makeText(this, "Cache gelöscht", Toast.LENGTH_SHORT).show()
         }
         findViewById<Button>(R.id.btn_reload).setOnClickListener {
@@ -124,9 +134,11 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun buildInfoText(): String {
         return """
-            Ticker Display v2.1.2
+            Ticker Display v${U.getAppVersion(this)}
             ID: ${prefs.deviceId}
             URL: ${prefs.displayUrl}
+            HA URL: ${prefs.haUrl}
+            Token: ${if (prefs.token.isBlank()) "fehlt" else "gesetzt (${prefs.token.length} Zeichen)"}
             Android: ${U.getAndroidVersion()}
             Gerät: ${U.getDeviceModel()}
             Auflösung: ${U.getScreenRes(this)}
@@ -134,6 +146,7 @@ class SettingsActivity : AppCompatActivity() {
             Audio/TTS: Home Assistant Audio an den Lautsprecher
             Frontkamera: ${if (prefs.frontCameraEnabled) "aktiv" else "aus"}
             Rückkamera: ${if (prefs.backCameraEnabled) "aktiv" else "aus"}
+            Bewegungserkennung: ${if (prefs.motionDetect) "aktiv" else "aus"}
             Kameramodus: ${if (prefs.cameraManualOnly) "manuell" else "auto ${prefs.cameraIntervalSeconds}s"}
             Stille Kamera: ${if (prefs.cameraSilentMode) "ja" else "nein"}
         """.trimIndent()
@@ -148,8 +161,8 @@ class SettingsActivity : AppCompatActivity() {
         view.setOnClickListener {
             val et = EditText(this).apply {
                 setText(value)
-                setTextColor(getColor(R.color.td_text))
-                setHintTextColor(getColor(R.color.td_text_muted))
+                setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.td_text))
+                setHintTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.td_text_muted))
                 setBackgroundResource(R.drawable.bg_input)
                 setPadding(32, 24, 32, 24)
                 hint = description
@@ -175,6 +188,49 @@ class SettingsActivity : AppCompatActivity() {
         sw.text = "$label\n$description"
         sw.isChecked = checked
         sw.setOnCheckedChangeListener { _, isChecked -> onChange(isChecked) }
+    }
+
+    private fun copyText(label: String, value: String) {
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, value))
+    }
+
+    private fun clearWebViewData() {
+        try {
+            val wv = android.webkit.WebView(this)
+            wv.clearCache(true)
+            wv.clearHistory()
+            wv.destroy()
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            android.webkit.CookieManager.getInstance().removeAllCookies(null)
+            android.webkit.CookieManager.getInstance().flush()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Cache teilweise gelöscht: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun testConnectionNow() {
+        Toast.makeText(this, "Verbindung wird geprüft ...", Toast.LENGTH_SHORT).show()
+        Thread {
+            val start = System.currentTimeMillis()
+            val ok = try { ApiClient(prefs).testConnection() } catch (_: Exception) { false }
+            val duration = System.currentTimeMillis() - start
+            runOnUiThread {
+                val msg = if (ok) {
+                    "Home Assistant erreichbar (${duration} ms)."
+                } else {
+                    "Verbindung fehlgeschlagen. Prüfe URL, Token, WLAN und ob Home Assistant läuft."
+                }
+                AlertDialog.Builder(this)
+                    .setTitle(if (ok) "Verbindung erfolgreich" else "Verbindung fehlgeschlagen")
+                    .setMessage(msg)
+                    .setPositiveButton("OK", null)
+                    .setNeutralButton("Diagnose kopieren") { _, _ ->
+                        copyText("Ticker Display Diagnose", buildInfoText())
+                    }
+                    .show()
+            }
+        }.start()
     }
 
     private fun changePin() {

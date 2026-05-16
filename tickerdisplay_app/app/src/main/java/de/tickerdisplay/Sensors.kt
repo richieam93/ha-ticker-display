@@ -15,6 +15,7 @@ import android.speech.tts.TextToSpeech
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
+import java.text.SimpleDateFormat
 import java.util.*
 
 // ═══════════════════════════════════════════════════════════
@@ -33,6 +34,14 @@ class SensorReporter(
     private var handler: Handler? = null
     private var running = false
     private val startTime = System.currentTimeMillis()
+
+    @Volatile private var motionDetected = false
+    @Volatile private var motionLastDetectedAtMs = 0L
+    @Volatile private var motionScore = 0.0
+    @Volatile private var motionAvgDelta: Double? = null
+    @Volatile private var motionStatus = "disabled"
+    @Volatile private var motionSource = "camera"
+    @Volatile private var motionLastError = ""
 
     fun start() {
         if (running) return
@@ -70,6 +79,17 @@ class SensorReporter(
         }.start()
     }
 
+    fun reportNow() = sendHeartbeat()
+
+    fun applyPreferenceChange(key: String) {
+        when (key) {
+            "light_sensor", "light_sensor_enabled" -> {
+                if (prefs.lightSensor) light.start() else light.stop()
+            }
+        }
+        reportNow()
+    }
+
     fun collectData(): Map<String, Any?> {
         val b = battery.get()
         val storage = U.getStorageInfo(ctx)
@@ -82,6 +102,7 @@ class SensorReporter(
             "battery_status" to b.status,
             "charging_source" to b.chargingSource,
             "screen_on" to U.isScreenInteractive(ctx),
+            "screen_power" to (U.isScreenInteractive(ctx) && U.getScreenBrightnessPercent(ctx) > 2),
             "screen_brightness" to U.getScreenBrightnessPercent(ctx),
             "memory_free_mb" to U.getMemoryMB(ctx),
             "memory_total_mb" to U.getTotalMemoryMB(ctx),
@@ -98,6 +119,27 @@ class SensorReporter(
             "ringer_mode" to U.getRingerMode(ctx),
             "app_version" to getVersion(),
             "uptime_seconds" to (System.currentTimeMillis() - startTime) / 1000,
+            "motion_detected" to motionDetected,
+            "motion_last_detected_at" to formatEpochMs(motionLastDetectedAtMs),
+            "motion_score" to motionScore,
+            "motion_avg_delta" to motionAvgDelta,
+            "motion_status" to motionStatus,
+            "motion_source" to motionSource,
+            "motion_last_error" to motionLastError,
+            "motion_detection_enabled" to prefs.motionDetect,
+            "motion_sensitivity" to prefs.motionSensitivity,
+            "motion_hold_seconds" to prefs.motionHoldSeconds,
+            "keep_screen_on" to prefs.screenOn,
+            "kiosk_enabled" to prefs.kioskEnabled,
+            "auto_start" to prefs.autoStart,
+            "burn_in_protection" to prefs.burnIn,
+            "light_sensor_enabled" to prefs.lightSensor,
+            "camera_silent_mode" to prefs.cameraSilentMode,
+            "camera_manual_only" to prefs.cameraManualOnly,
+            "microphone_enabled" to prefs.microphoneEnabled,
+            "assist_satellite_enabled" to prefs.assistSatelliteEnabled,
+            "report_interval_seconds" to prefs.reportInterval,
+            "camera_interval_seconds" to prefs.cameraIntervalSeconds,
         )
 
         if (prefs.lightSensor) {
@@ -121,6 +163,27 @@ class SensorReporter(
 
     fun getLightLevel() = light.lux
     fun isProximityNear() = proximity.near
+    fun isMotionDetected() = motionDetected
+
+    fun updateMotionState(active: Boolean, data: Map<String, Any?> = emptyMap()) {
+        motionDetected = active
+        val detectedAt = (data["motion_last_detected_at_ms"] as? Number)?.toLong() ?: 0L
+        if (detectedAt > 0L) motionLastDetectedAtMs = detectedAt
+        (data["motion_score"] as? Number)?.toDouble()?.let { motionScore = it }
+        motionAvgDelta = (data["motion_avg_delta"] as? Number)?.toDouble()
+        data["motion_status"]?.toString()?.takeIf { it.isNotBlank() }?.let { motionStatus = it }
+        data["motion_source"]?.toString()?.takeIf { it.isNotBlank() }?.let { motionSource = it }
+        data["motion_last_error"]?.toString()?.let { motionLastError = it }
+    }
+
+    private fun formatEpochMs(value: Long): String {
+        if (value <= 0L) return ""
+        return try {
+            val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
+            fmt.timeZone = TimeZone.getTimeZone("UTC")
+            fmt.format(Date(value))
+        } catch (_: Exception) { "" }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -483,7 +546,16 @@ class SoundPlayer(private val ctx: Context) {
     }
 
     fun setVolume(v: Int) {
-        vol = v / 100f
+        val percent = v.coerceIn(0, 100)
+        vol = percent / 100f
+        try {
+            val maxMusic = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            val targetMusic = ((maxMusic * vol).toInt()).coerceIn(0, maxMusic)
+            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetMusic, 0)
+            val maxVoice = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_VOICE_CALL).coerceAtLeast(1)
+            val targetVoice = ((maxVoice * vol).toInt()).coerceIn(0, maxVoice)
+            audioManager.setStreamVolume(android.media.AudioManager.STREAM_VOICE_CALL, targetVoice, 0)
+        } catch (_: Exception) {}
         player?.setVolume(vol, vol)
     }
 

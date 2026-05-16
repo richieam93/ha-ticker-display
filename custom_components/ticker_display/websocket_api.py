@@ -46,6 +46,8 @@ class TickerDisplayWebSocket:
 
         _LOGGER.info("WebSocket connected: %s", device_id)
         self._connections.setdefault(device_id, []).append(ws)
+        if hasattr(self.coordinator, "mark_connected"):
+            self.coordinator.mark_connected(device_id)
 
         try:
             async for msg in ws:
@@ -76,6 +78,8 @@ class TickerDisplayWebSocket:
             if not connections and device_id in self._connections:
                 del self._connections[device_id]
                 self._cleanup_state_listeners(device_id)
+                if hasattr(self.coordinator, "mark_disconnected"):
+                    self.coordinator.mark_disconnected(device_id)
 
             _LOGGER.info("WebSocket disconnected: %s", device_id)
 
@@ -178,6 +182,8 @@ class TickerDisplayWebSocket:
         """Send message to one device."""
         connections = self._connections.get(device_id, [])
         if not connections:
+            if hasattr(self.coordinator, "record_command_sent"):
+                self.coordinator.record_command_sent(device_id, message, delivered=False)
             return
 
         data = json.dumps(message)
@@ -193,9 +199,12 @@ class TickerDisplayWebSocket:
             if ws in connections:
                 connections.remove(ws)
 
+        delivered = bool(connections)
         if not connections and device_id in self._connections:
             del self._connections[device_id]
             self._cleanup_state_listeners(device_id)
+        if hasattr(self.coordinator, "record_command_sent"):
+            self.coordinator.record_command_sent(device_id, message, delivered=delivered)
 
     async def send_to_all(self, message: dict) -> None:
         """Send message to all connected devices."""

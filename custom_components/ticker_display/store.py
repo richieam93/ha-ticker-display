@@ -42,20 +42,25 @@ class TickerDisplayStore:
             },
         }
 
+    def _merge_defaults(self, data: dict | None) -> dict:
+        """Merge stored data with current defaults so upgrades get new settings."""
+        merged = deepcopy(self._data)
+        if isinstance(data, dict):
+            merged.update(data)
+            merged["devices"] = data.get("devices", {}) if isinstance(data.get("devices", {}), dict) else {}
+            merged["templates"] = data.get("templates", {}) if isinstance(data.get("templates", {}), dict) else {}
+            merged["alert_templates"] = data.get("alert_templates", {}) if isinstance(data.get("alert_templates", {}), dict) else {}
+            merged["themes"] = data.get("themes", {}) if isinstance(data.get("themes", {}), dict) else {}
+            merged["global_settings"] = {
+                **deepcopy(self._data.get("global_settings", {})),
+                **(data.get("global_settings", {}) if isinstance(data.get("global_settings", {}), dict) else {}),
+            }
+        return merged
+
     async def async_load(self):
         data = await self._store.async_load()
         if data:
-            merged = deepcopy(self._data)
-            merged.update(data)
-            merged["devices"] = data.get("devices", {})
-            merged["templates"] = data.get("templates", {})
-            merged["alert_templates"] = data.get("alert_templates", {})
-            merged["themes"] = data.get("themes", {})
-            merged["global_settings"] = {
-                **deepcopy(self._data.get("global_settings", {})),
-                **(data.get("global_settings", {}) or {}),
-            }
-            self._data = merged
+            self._data = self._merge_defaults(data)
         _LOGGER.debug(
             "Loaded store with %d devices",
             len(self._data.get("devices", {})),
@@ -137,7 +142,7 @@ class TickerDisplayStore:
             },
             "theme": DEFAULT_THEME,
             "font": "roboto",
-            "created_at": None,
+            "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
         }
         await self.async_save()
@@ -190,6 +195,7 @@ class TickerDisplayStore:
             merged = deepcopy(current)
             merged.update(config)
             merged["id"] = device_id
+            merged["updated_at"] = datetime.utcnow().isoformat()
             self._data["devices"][device_id] = merged
             await self.async_save()
 
@@ -237,6 +243,19 @@ class TickerDisplayStore:
             "theme": source.get("theme", DEFAULT_THEME),
             "font": source.get("font", "roboto"),
             "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "toast": deepcopy(source.get("toast", {
+                "enabled": True,
+                "position": "bottom",
+                "duration": 6,
+                "color": "#111827",
+                "text_color": "#f9fafb",
+                "accent_color": "#60a5fa",
+                "border_radius": 16,
+                "font_size": 16,
+                "width": "content",
+                "wake_screen": True,
+            })),
             "virtual": True,
             "browser_mode": True,
             "source_device_id": source_device_id,
@@ -301,5 +320,5 @@ class TickerDisplayStore:
         return deepcopy(self._data)
 
     async def async_restore_backup(self, data: dict):
-        self._data = data
+        self._data = self._merge_defaults(data)
         await self.async_save()

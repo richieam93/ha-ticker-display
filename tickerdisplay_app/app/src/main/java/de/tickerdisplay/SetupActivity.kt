@@ -260,12 +260,11 @@ class SetupActivity : AppCompatActivity() {
                         
                         $debugInfo
                         
-                        Prüfe in der Logcat den genauen Fehler!
-                        
                         Häufige Ursachen:
                         • Token ist abgelaufen
                         • Token wurde falsch kopiert (Leerzeichen?)
                         • Firewall blockiert Zugriff
+                        • Android-Gerät ist in einem anderen WLAN
                         
                         Du kannst trotzdem fortfahren.
                     """.trimIndent()
@@ -462,9 +461,9 @@ class SetupActivity : AppCompatActivity() {
 
         when (step) {
             0 -> {
-                val url = inputUrl?.text.toString().trimEnd('/')
-                if (url.isBlank() || !url.startsWith("http")) {
-                    status.text = "❌ Bitte eine gültige URL eingeben (z.B. http://192.168.1.50:8123)"
+                val url = U.normalizeHaUrl(inputUrl?.text.toString())
+                if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+                    status.text = "Bitte eine gültige URL eingeben, z. B. http://192.168.1.50:8123"
                     return
                 }
                 prefs.haUrl = url
@@ -472,7 +471,7 @@ class SetupActivity : AppCompatActivity() {
             1 -> {
                 val token = inputToken?.text.toString().trim()
                 if (token.isBlank()) {
-                    status.text = "❌ Bitte einen Access Token eingeben oder QR-Code scannen"
+                    status.text = "Bitte einen Access Token eingeben oder QR-Code scannen"
                     return
                 }
                 prefs.token = token
@@ -481,7 +480,7 @@ class SetupActivity : AppCompatActivity() {
                 val name = inputDeviceName?.text.toString().trim()
                 val id = inputDeviceId?.text.toString().trim().replace(" ", "_").lowercase()
                 if (name.isBlank() || id.isBlank()) {
-                    status.text = "❌ Bitte Name und ID eingeben"
+                    status.text = "Bitte Name und ID eingeben"
                     return
                 }
                 prefs.deviceName = name

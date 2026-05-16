@@ -7,6 +7,7 @@
 html, body {
   width: 100%;
   height: 100%;
+  min-height: 100%;
   overflow: hidden;
   background: var(--td-bg, #121212);
   color: var(--td-text-primary, #fff);
@@ -20,23 +21,57 @@ html, body {
 
 body {
   position: relative;
+  width: var(--td-app-width, 100vw);
+  height: var(--td-app-height, 100vh);
+  min-height: var(--td-app-height, 100vh);
+  overscroll-behavior: none;
 }
 
 .screen-container {
   position: relative;
   width: 100%;
-  height: calc(100vh - var(--td-ticker-height, 36px));
+  height: calc(var(--td-app-height, 100vh) - var(--td-ticker-offset, var(--td-ticker-height, 36px)));
+  max-height: calc(var(--td-app-height, 100vh) - var(--td-ticker-offset, var(--td-ticker-height, 36px)));
   overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+@supports (height: 100dvh) {
+  .screen-container {
+    height: calc(100dvh - var(--td-ticker-offset, var(--td-ticker-height, 36px)));
+    max-height: calc(100dvh - var(--td-ticker-offset, var(--td-ticker-height, 36px)));
+  }
+}
+
+
+html.td-ticker-top .screen-container:not(.no-ticker) {
+  top: var(--td-ticker-offset, var(--td-ticker-height, 36px));
+}
+
+html.td-ticker-bottom .screen-container {
+  top: 0;
 }
 
 .screen-container.no-ticker {
-  height: 100vh;
+  height: var(--td-app-height, 100vh);
+  max-height: var(--td-app-height, 100vh);
+}
+
+@supports (height: 100dvh) {
+  .screen-container.no-ticker {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
 }
 
 .screen {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  max-width: 100%;
+  max-height: 100%;
   isolation: isolate;
   background: var(--td-bg, #121212);
 }
@@ -55,6 +90,59 @@ body {
   color: var(--td-text-secondary);
   gap: 16px;
   z-index: 9999;
+}
+
+
+.loading-card {
+  width: 360px;
+  min-width: 260px;
+  max-width: 90vw;
+  padding: 26px 28px;
+  border-radius: 24px;
+  background: rgba(18, 24, 38, .86);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 18px 60px rgba(0,0,0,.34);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.loading-brand {
+  color: var(--td-accent, #2196F3);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.loading-card p {
+  color: var(--td-text-primary, #fff);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.loading-card small,
+.offline-screen small {
+  color: var(--td-text-secondary, rgba(255,255,255,.62));
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.loading-action {
+  margin-top: 4px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.08);
+  color: var(--td-text-primary, #fff);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.loading-action:active {
+  transform: scale(.98);
 }
 
 .offline-screen {
@@ -101,6 +189,25 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.offline-screen p,
+.offline-screen small {
+  margin: 0;
+}
+
+.offline-screen #offline-title {
+  color: var(--td-text-primary, #fff);
+  font-weight: 700;
+}
+
+@supports not (font-size: clamp(20px, 5vw, 40px)) {
+  .clock-time-large,
+  .weather-temp-large { font-size: 82px; }
+  .clock-date-large,
+  .weather-cond-large { font-size: 22px; }
+  .weather-emoji-large { font-size: 64px; }
+}
+
 
 /* EMPTY / FULL SCREEN STATES */
 
@@ -187,22 +294,27 @@ body {
 
 .dashboard-grid {
   display: grid;
-  gap: var(--td-widget-gap, 10px);
-  padding: var(--td-widget-gap, 10px);
+  gap: var(--td-adaptive-gap, var(--td-widget-gap, 10px));
+  padding: var(--td-adaptive-padding, var(--td-widget-gap, 10px));
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .widget {
   background: var(--td-card-bg, #1E1E1E);
   color: var(--td-text-primary, #fff);
   border-radius: var(--td-widget-radius, 14px);
-  padding: var(--td-widget-padding, 14px);
+  padding: var(--td-adaptive-widget-padding, var(--td-widget-padding, 14px));
   display: flex;
   flex-direction: column;
   align-items: var(--td-widget-align-items, center);
   justify-content: var(--td-widget-justify-content, center);
-  gap: var(--td-widget-inner-gap, 10px);
+  gap: var(--td-adaptive-widget-inner-gap, var(--td-widget-inner-gap, 10px));
   text-align: var(--td-widget-text-align, center);
   overflow: hidden;
   position: relative;
@@ -299,6 +411,64 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+}
+
+
+/* Adaptive layout for small Android/WebView screens */
+.dashboard-grid.td-layout-adaptive {
+  grid-auto-flow: dense;
+  --td-widget-value-size: clamp(15px, calc(var(--td-cell-min, 150px) * 0.21), 42px);
+  --td-widget-unit-size: clamp(10px, calc(var(--td-cell-min, 150px) * 0.095), 18px);
+  --td-widget-name-size: clamp(10px, calc(var(--td-cell-min, 150px) * 0.075), 14px);
+  --td-widget-subtitle-size: clamp(9px, calc(var(--td-cell-min, 150px) * 0.068), 13px);
+  --td-widget-icon-size: clamp(16px, calc(var(--td-cell-min, 150px) * 0.16), 34px);
+}
+
+.dashboard-grid.td-layout-compact .widget {
+  box-shadow: 0 1px 2px rgba(0,0,0,.10), 0 5px 14px rgba(0,0,0,.10);
+}
+
+.dashboard-grid.td-layout-compact .widget .w-icon {
+  margin-bottom: 2px;
+}
+
+.dashboard-grid.td-layout-tight .widget .w-name,
+.dashboard-grid.td-layout-tight .widget-subvalue,
+.dashboard-grid.td-layout-tight .widget .w-subtitle,
+.dashboard-grid.td-layout-tight .widget .w-sub {
+  margin-top: 2px;
+}
+
+.dashboard-grid.td-layout-tight .weather-card,
+.dashboard-grid.td-layout-tight .widget-camera,
+.dashboard-grid.td-layout-tight .widget-image,
+.dashboard-grid.td-layout-tight .widget-qr {
+  padding: var(--td-adaptive-widget-padding, 6px);
+}
+
+.td-layout-tight .chart-header,
+.td-layout-tight .chart-value,
+.td-layout-tight .metric-history-mini {
+  margin-top: 2px;
+}
+
+.td-screen-badge {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 5;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: rgba(255,255,255,.72);
+  background: rgba(0,0,0,.18);
+  font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
+  opacity: .55;
+}
+
+html.td-portrait .dashboard-grid.td-layout-auto-rotate {
+  grid-auto-flow: row dense;
 }
 
 .metric-history-mini {
@@ -2420,3 +2590,17 @@ body {
 .widget-web-embed.is-fullscreen-embed .widget-web-embed-frame-wrap{height:100%;flex:1 1 auto;}
 .widget-web-embed.is-fullscreen-embed .widget-web-embed-frame{height:100%!important;border-radius:0!important;}
 .widget-web-embed.is-fullscreen-embed .widget-web-embed-overlay{border-radius:0!important;}
+
+
+/* 2.3.0 polish: Android/WebView-friendly tap targets and soft-card defaults */
+button,
+[role="button"],
+.widget-clickable {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.widget:empty::after {
+  content: "Keine Daten";
+  color: var(--td-text-secondary, rgba(255,255,255,.6));
+  font-size: 13px;
+}

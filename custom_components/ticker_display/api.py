@@ -14,7 +14,7 @@ from aiohttp import web
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH, SENSOR_KEYS, ALERT_MODES, ALERT_SEVERITIES, CAMERA_FRAME_MAX_BYTES
+from .const import API_BASE, ASSETS_PATH, DOMAIN, MEDIA_PATH, SENSOR_KEYS, ALERT_MODES, ALERT_SEVERITIES, CAMERA_FRAME_MAX_BYTES, INTEGRATION_VERSION
 from .media_manager import _safe_filename
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,6 +89,11 @@ class TickerDisplayAPI:
         app.router.add_get(f"{API_BASE}/api/persons", self._persons)
         app.router.add_get(f"{API_BASE}/api/entities", self._entities_list)
         app.router.add_get(f"{API_BASE}/api/ha-media/items", self._ha_media_items)
+
+        # Diagnostics API
+        app.router.add_get(f"{API_BASE}/api/diagnostics", self._diagnostics)
+        app.router.add_get(f"{API_BASE}/api/device/{{device_id}}/diagnostics", self._device_diagnostics)
+        app.router.add_post(f"{API_BASE}/api/device/{{device_id}}/notify-error", self._device_frontend_error)
 
         # Config API
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
@@ -397,10 +402,13 @@ class TickerDisplayAPI:
     async def _device_delete(self, request):
         device_id = request.match_info["device_id"]
         await self.store.async_remove_device(device_id)
-        self.coordinator._device_data.pop(device_id, None)
-        self.coordinator._last_heartbeat.pop(device_id, None)
-        self.coordinator._last_seen.pop(device_id, None)
-        self.coordinator._update_callbacks.pop(device_id, None)
+        if hasattr(self.coordinator, "forget_device"):
+            self.coordinator.forget_device(device_id)
+        else:
+            self.coordinator._device_data.pop(device_id, None)
+            self.coordinator._last_heartbeat.pop(device_id, None)
+            self.coordinator._last_seen.pop(device_id, None)
+            self.coordinator._update_callbacks.pop(device_id, None)
         return web.json_response({"status": "ok"})
 
     # ══════════════════════════════════════════════════════
@@ -411,7 +419,15 @@ class TickerDisplayAPI:
         device_id = request.match_info["device_id"]
         from .renderer.page_renderer import render_display_page
         html = render_display_page(self.hass, self.store, self.media, device_id)
-        return web.Response(text=html, content_type="text/html")
+        return web.Response(
+            text=html,
+            content_type="text/html",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "X-Ticker-Display-Version": INTEGRATION_VERSION,
+            },
+        )
 
     # ══════════════════════════════════════════════════════
     # Media Files
@@ -1232,6 +1248,78 @@ class TickerDisplayAPI:
         return web.json_response(items)
 
     # ══════════════════════════════════════════════════════
+    # Diagnostics API
+    # ══════════════════════════════════════════════════════
+
+    def _device_diagnostic_payload(self, request, device_id: str) -> dict:
+        """Build a diagnostics payload for one device without exposing secrets."""
+        config = self.store.get_device(device_id) or {}
+        runtime = self.coordinator.get_device_data(device_id) or {}
+        status = self.coordinator.get_device_status(
+            device_id,
+            websocket_connected=self.ws.is_device_connected(device_id),
+        )
+        return {
+            **status,
+            "name": config.get("name", device_id),
+            "model": config.get("model", ""),
+            "android_version": config.get("android_version", ""),
+            "app_version": runtime.get("app_version") or config.get("app_version", ""),
+            "screen_resolution": config.get("screen_resolution", ""),
+            "ip_address": runtime.get("ip_address", ""),
+            "wifi_ssid": runtime.get("wifi_ssid", ""),
+            "wifi_signal": runtime.get("wifi_signal"),
+            "network_type": runtime.get("network_type", ""),
+            "battery_level": runtime.get("battery_level"),
+            "battery_charging": runtime.get("battery_charging"),
+            "screen_on": runtime.get("screen_on"),
+            "screen_brightness": runtime.get("screen_brightness"),
+            "orientation": runtime.get("orientation", ""),
+            "current_screen": runtime.get("webview_url", ""),
+            "page_load_ms": runtime.get("page_load_ms"),
+            "webview_version": runtime.get("webview_version", ""),
+            "display_url": self._absolute_url(request, f"{API_BASE}/{device_id}"),
+            "preview_url": self._absolute_url(request, f"{API_BASE}/preview/{device_id}"),
+        }
+
+    async def _diagnostics(self, request):
+        """Return integration and device diagnostics for the admin panel."""
+        devices = self.store.get_devices() or {}
+        payload = {
+            "integration_version": INTEGRATION_VERSION,
+            "device_count": len(devices),
+            "online_count": sum(1 for did in devices if self.coordinator.is_device_online(did)),
+            "connected_count": sum(1 for did in devices if self.ws.is_device_connected(did)),
+            "heartbeat_timeout": getattr(self.coordinator, "_heartbeat_timeout", None),
+            "server_time": dt_util.utcnow().isoformat(),
+            "devices": [self._device_diagnostic_payload(request, did) for did in devices],
+        }
+        return web.json_response(payload)
+
+    async def _device_diagnostics(self, request):
+        """Return diagnostics for one device."""
+        device_id = self._clean_identifier(request.match_info["device_id"], field="device_id")
+        if not self.store.get_device(device_id):
+            return web.json_response({"error": "Device not found"}, status=404)
+        return web.json_response(self._device_diagnostic_payload(request, device_id))
+
+    async def _device_frontend_error(self, request):
+        """Allow the display frontend to report JS/runtime errors."""
+        device_id = self._clean_identifier(request.match_info["device_id"], field="device_id")
+        data = await self._parse_json(request)
+        self.coordinator.process_event(
+            device_id,
+            "frontend_error",
+            {
+                "message": str(data.get("message") or data.get("error") or "frontend_error")[:500],
+                "source": str(data.get("source") or "display")[:80],
+                "line": data.get("line"),
+                "column": data.get("column"),
+            },
+        )
+        return web.json_response({"status": "ok"})
+
+    # ══════════════════════════════════════════════════════
     # Config API
     # ══════════════════════════════════════════════════════
 
@@ -1240,10 +1328,19 @@ class TickerDisplayAPI:
         result = []
         for did, config in devices.items():
             item = dict(config)
-            item["online"] = self.coordinator.is_device_online(did)
-            item["connected"] = self.ws.is_device_connected(did)
+            status = self.coordinator.get_device_status(
+                did,
+                websocket_connected=self.ws.is_device_connected(did),
+            )
+            runtime = self.coordinator.get_device_data(did) or {}
+            item.update(status)
             item["display_url"] = self._absolute_url(request, f"{API_BASE}/{did}")
             item["preview_url"] = self._absolute_url(request, f"{API_BASE}/preview/{did}")
+            item["ip_address"] = runtime.get("ip_address", item.get("ip_address", ""))
+            item["wifi_signal"] = runtime.get("wifi_signal", item.get("wifi_signal"))
+            item["battery_level"] = runtime.get("battery_level", item.get("battery_level"))
+            item["screen_brightness"] = runtime.get("screen_brightness", item.get("screen_brightness"))
+            item["current_screen"] = runtime.get("webview_url", item.get("current_screen", ""))
             result.append(item)
         return web.json_response(result)
 

@@ -140,6 +140,15 @@ class Prefs(context: Context) {
         set(v) = p.edit().putInt("interval", v.coerceIn(15, 3600)).apply()
 
 
+    var motionSensitivity: Float
+        get() = p.getFloat("motion_sensitivity", 3.0f)
+        set(v) = p.edit().putFloat("motion_sensitivity", v.coerceIn(1.0f, 20.0f)).apply()
+
+    var motionHoldSeconds: Int
+        get() = p.getInt("motion_hold_seconds", 8)
+        set(v) = p.edit().putInt("motion_hold_seconds", v.coerceIn(2, 60)).apply()
+
+
     var assistSatelliteEnabled: Boolean
         get() = p.getBoolean("assist_satellite_enabled", true)
         set(v) = p.edit().putBoolean("assist_satellite_enabled", v).apply()
@@ -251,6 +260,17 @@ object L {
             logFile?.appendText("${df.format(Date())} [$lvl] $tag: $msg\n")
         } catch (_: Exception) {}
     }
+
+    fun readTail(maxChars: Int = 12000): String {
+        return try {
+            val file = logFile ?: return ""
+            if (!file.exists()) return ""
+            val text = file.readText()
+            if (text.length <= maxChars) text else text.takeLast(maxChars)
+        } catch (_: Exception) {
+            ""
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -336,6 +356,12 @@ object U {
             .trim('_')
         return if (cleaned.isBlank()) "android_display" else cleaned
     }
+
+    fun normalizeHaUrl(raw: String): String {
+        val value = raw.trim().trimEnd('/')
+        if (value.isBlank() || value == "http://" || value == "https://") return value
+        return if (value.startsWith("http://") || value.startsWith("https://")) value else "http://$value"
+    }
     fun getAppVersion(ctx: Context): String {
         return try {
             val pm = ctx.packageManager
@@ -363,6 +389,13 @@ object U {
     }
 
     fun getScreenBrightnessPercent(ctx: Context): Int {
+        try {
+            val activity = ctx as? android.app.Activity
+            val windowBrightness = activity?.window?.attributes?.screenBrightness
+            if (windowBrightness != null && windowBrightness >= 0f) {
+                return (windowBrightness * 100).toInt().coerceIn(0, 100)
+            }
+        } catch (_: Exception) {}
         return try {
             val b = Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
             ((b * 100) / 255).coerceIn(0, 100)
@@ -441,6 +474,7 @@ class ApiClient(private val prefs: Prefs) {
     private val client: OkHttpClient
 
     init {
+        prefs.haUrl = U.normalizeHaUrl(prefs.haUrl)
         Log.i("TickerDisplay/ApiClient", "Creating ApiClient")
         Log.i("TickerDisplay/ApiClient", "URL: ${prefs.haUrl}")
         Log.i("TickerDisplay/ApiClient", "Token length: ${prefs.token.length}")
@@ -662,24 +696,33 @@ class ConnectionMonitor(
     private var receiver: android.content.BroadcastReceiver? = null
 
     fun start() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            callback = object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    onChange(true)
+        try {
+            onChange(isConnected())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        onChange(true)
+                    }
+                    override fun onLost(network: Network) {
+                        onChange(false)
+                    }
+                    override fun onUnavailable() {
+                        onChange(false)
+                    }
                 }
-                override fun onLost(network: Network) {
-                    onChange(false)
+                cm.registerDefaultNetworkCallback(callback!!)
+            } else {
+                receiver = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(c: Context?, intent: android.content.Intent?) {
+                        onChange(isConnected())
+                    }
                 }
+                @Suppress("DEPRECATION")
+                ctx.registerReceiver(receiver, android.content.IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION))
             }
-            cm.registerDefaultNetworkCallback(callback!!)
-        } else {
-            receiver = object : android.content.BroadcastReceiver() {
-                override fun onReceive(c: Context?, intent: android.content.Intent?) {
-                    onChange(isConnected())
-                }
-            }
-            @Suppress("DEPRECATION")
-            ctx.registerReceiver(receiver, android.content.IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION))
+        } catch (e: Exception) {
+            L.w("ConnectionMonitor", "Network callback failed, using current state only: ${e.message}")
+            onChange(isConnected())
         }
     }
 
@@ -707,6 +750,7 @@ class Bridge(
     private val screen: ScreenManager,
     private val sound: SoundPlayer,
     private val sensors: SensorReporter,
+    private val onNativeSettingChanged: ((String, Any?) -> Unit)? = null,
 ) {
     private fun resolveMediaUrl(url: String): String {
         val trimmed = url.trim()
@@ -721,10 +765,102 @@ class Bridge(
             "Accept" to "audio/*,*/*"
         )
     }
+
+    private fun boolValue(value: String): Boolean {
+        val normalized = value.trim().lowercase(Locale.ROOT)
+        return normalized == "1" || normalized == "true" || normalized == "on" || normalized == "yes" || normalized == "enabled"
+    }
+
+    private fun floatValue(value: String, fallback: Float): Float = value.trim().replace(',', '.').toFloatOrNull() ?: fallback
+    private fun intValue(value: String, fallback: Int): Int = value.trim().toFloatOrNull()?.toInt() ?: fallback
+
+    @JavascriptInterface
+    fun setDeviceSetting(key: String, value: String): Boolean {
+        val setting = key.trim().lowercase(Locale.ROOT)
+        return try {
+            val normalized: Any? = when (setting) {
+                "screen_power" -> {
+                    val enabled = boolValue(value)
+                    if (enabled) {
+                        if (screen.getBrightness() < 5) screen.setBrightness(70)
+                        screen.screenOn()
+                    } else {
+                        screen.screenOff()
+                    }
+                    enabled
+                }
+                "screen_brightness", "brightness" -> {
+                    val level = intValue(value, screen.getBrightness()).coerceIn(1, 100)
+                    screen.setBrightness(level)
+                    level
+                }
+                "volume", "volume_percent", "media_volume" -> {
+                    val level = intValue(value, 50).coerceIn(0, 100)
+                    sound.setVolume(level)
+                    level
+                }
+                "keep_screen_on", "screen_on_pref" -> boolValue(value).also { prefs.screenOn = it }
+                "kiosk", "kiosk_enabled", "kiosk_mode" -> boolValue(value).also { prefs.kioskEnabled = it }
+                "auto_start", "autostart" -> boolValue(value).also { prefs.autoStart = it }
+                "burn_in", "burn_in_protection" -> boolValue(value).also { prefs.burnIn = it }
+                "light_sensor", "light_sensor_enabled" -> boolValue(value).also { prefs.lightSensor = it }
+                "motion", "motion_detect", "motion_detection", "motion_detection_enabled" -> boolValue(value).also { prefs.motionDetect = it }
+                "front_camera", "front_camera_enabled" -> boolValue(value).also { prefs.frontCameraEnabled = it }
+                "back_camera", "back_camera_enabled" -> boolValue(value).also { prefs.backCameraEnabled = it }
+                "camera_silent", "camera_silent_mode" -> boolValue(value).also { prefs.cameraSilentMode = it }
+                "camera_manual_only" -> boolValue(value).also { prefs.cameraManualOnly = it }
+                "microphone", "microphone_enabled" -> boolValue(value).also { prefs.microphoneEnabled = it }
+                "assist_satellite", "assist_satellite_enabled" -> boolValue(value).also { prefs.assistSatelliteEnabled = it }
+                "report_interval", "report_interval_seconds" -> intValue(value, prefs.reportInterval).coerceIn(15, 3600).also { prefs.reportInterval = it }
+                "camera_interval", "camera_interval_seconds" -> intValue(value, prefs.cameraIntervalSeconds).coerceIn(5, 300).also { prefs.cameraIntervalSeconds = it }
+                "motion_sensitivity" -> floatValue(value, prefs.motionSensitivity).coerceIn(1.0f, 20.0f).also { prefs.motionSensitivity = it }
+                "motion_hold", "motion_hold_seconds" -> intValue(value, prefs.motionHoldSeconds).coerceIn(2, 60).also { prefs.motionHoldSeconds = it }
+                else -> {
+                    L.w("Bridge", "Unknown device setting: $setting")
+                    return false
+                }
+            }
+            try { onNativeSettingChanged?.invoke(setting, normalized) } catch (_: Exception) {}
+            true
+        } catch (e: Exception) {
+            L.e("Bridge", "setDeviceSetting failed for $setting", e)
+            false
+        }
+    }
+
+    @JavascriptInterface fun restartApp() {
+        try {
+            val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
+            if (launch != null) {
+                launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                ctx.startActivity(launch)
+            }
+        } catch (e: Exception) { L.e("Bridge", "restartApp failed", e) }
+    }
+
+    @JavascriptInterface fun openAndroidSettings() {
+        try {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${ctx.packageName}")
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ctx.startActivity(intent)
+        } catch (e: Exception) { L.e("Bridge", "openAndroidSettings failed", e) }
+    }
+
+    @JavascriptInterface fun reportDeviceStateNow() = sensors.reportNow()
     @JavascriptInterface fun setScreenBrightness(b: Int) = screen.setBrightness(b)
     @JavascriptInterface fun getScreenBrightness(): Int = screen.getBrightness()
-    @JavascriptInterface fun setScreenPower(on: Boolean) = if (on) screen.screenOn() else screen.screenOff()
+    @JavascriptInterface fun setScreenPower(on: Boolean) {
+        if (on) {
+            if (screen.getBrightness() < 5) screen.setBrightness(70)
+            screen.screenOn()
+        } else {
+            screen.screenOff()
+        }
+    }
     @JavascriptInterface fun isScreenOn(): Boolean = screen.isScreenOn()
+    @JavascriptInterface fun setScreenOrientation(degrees: Int) = screen.setOrientation(degrees)
 
     @JavascriptInterface fun playSound(url: String) {
         val full = resolveMediaUrl(url)
@@ -828,7 +964,7 @@ class Bridge(
     @JavascriptInterface fun getWifiSsid(): String = U.getWifiSsid(ctx)
     @JavascriptInterface fun getIpAddress(): String = U.getIp()
     @JavascriptInterface fun getLightLevel(): Float = sensors.getLightLevel()
-    @JavascriptInterface fun isMotionDetected(): Boolean = false
+    @JavascriptInterface fun isMotionDetected(): Boolean = sensors.isMotionDetected()
     @JavascriptInterface fun getProximity(): Boolean = sensors.isProximityNear()
 
     @JavascriptInterface fun getDeviceId(): String = prefs.deviceId
@@ -867,20 +1003,44 @@ class WebViewManager(
 ) {
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     fun configure() {
+        try {
+            WebView.setWebContentsDebuggingEnabled(true)
+        } catch (_: Throwable) {}
+
+        try {
+            CookieManager.getInstance().setAcceptCookie(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+            }
+        } catch (_: Throwable) {}
+
+        try {
+            webView.clearCache(true)
+            webView.clearHistory()
+        } catch (_: Throwable) {}
+
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            cacheMode = WebSettings.LOAD_DEFAULT
+            cacheMode = WebSettings.LOAD_NO_CACHE
             allowFileAccess = false
+            allowContentAccess = true
             setSupportZoom(false)
             builtInZoomControls = false
             displayZoomControls = false
             textZoom = 100
             useWideViewPort = false
             loadWithOverviewMode = false
+            loadsImagesAutomatically = true
+            blockNetworkImage = false
+            javaScriptCanOpenWindowsAutomatically = false
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                safeBrowsingEnabled = false
+            }
+            userAgentString = "$userAgentString TickerDisplayAndroid/2.4.0"
         }
 
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
@@ -890,12 +1050,26 @@ class WebViewManager(
         webView.setBackgroundColor(android.graphics.Color.BLACK)
     }
 
-    fun load() {
-        Log.i("TickerDisplay/WebView", "Loading: ${prefs.displayUrl}")
-        webView.loadUrl(prefs.displayUrl)
+    private fun addCacheBuster(url: String): String {
+        val separator = if (url.contains("?")) "&" else "?"
+        return "$url${separator}_td_app_ts=${System.currentTimeMillis()}"
     }
 
-    fun reload() = webView.reload()
+    fun load() {
+        val url = addCacheBuster(prefs.displayUrl)
+        Log.i("TickerDisplay/WebView", "Loading: $url")
+        val headers = mutableMapOf(
+            "Cache-Control" to "no-cache",
+            "Pragma" to "no-cache"
+        )
+        val token = prefs.token.trim()
+        if (token.isNotBlank()) {
+            headers["Authorization"] = "Bearer $token"
+        }
+        webView.loadUrl(url, headers)
+    }
+
+    fun reload() = load()
 
     fun destroy() {
         webView.removeJavascriptInterface("TickerBridge")
@@ -934,9 +1108,15 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
 }
 
 class TickerWebChromeClient : WebChromeClient() {
+    var onConsoleError: ((String) -> Unit)? = null
+
     override fun onConsoleMessage(cm: ConsoleMessage?): Boolean {
         cm?.let {
-            Log.d("TickerDisplay/WebConsole", "[${it.messageLevel()}] ${it.message()}")
+            val msg = "[${it.messageLevel()}] ${it.message()} (${it.sourceId()}:${it.lineNumber()})"
+            Log.d("TickerDisplay/WebConsole", msg)
+            if (it.messageLevel() == ConsoleMessage.MessageLevel.ERROR || it.message().contains("Uncaught", ignoreCase = true)) {
+                onConsoleError?.invoke(msg)
+            }
         }
         return true
     }

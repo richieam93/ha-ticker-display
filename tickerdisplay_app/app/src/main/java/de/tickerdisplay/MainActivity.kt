@@ -38,9 +38,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var connection: ConnectionMonitor
     private var frontCameraUploader: CameraSnapshotUploader? = null
     private var backCameraUploader: CameraSnapshotUploader? = null
+    private var motionDetector: MotionCameraDetector? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pageLoaded = false
     private var retryCount = 0
+    private var lastConsoleError: String? = null
     private val runtimePermissionRequestCode = 4242
 
     // Shake Detection
@@ -80,6 +82,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             webViewContainer = findViewById(R.id.webview_container)
             offlineView = findViewById(R.id.offline_view)
             offlineView.visibility = View.GONE
+            setupOfflineActions()
             val webViewReady = initWebViewSafely()
 
             // Shake Detection einrichten
@@ -92,10 +95,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 try { api.ensureRegistered() } catch (_: Exception) {}
             }.start()
             sensors = SensorReporter(this, api, prefs)
+            motionDetector = MotionCameraDetector(this, api, prefs) { active, data ->
+                sensors.updateMotionState(active, data)
+            }
             frontCameraUploader = CameraSnapshotUploader(this, api, prefs, CameraFacing.FRONT)
             backCameraUploader = CameraSnapshotUploader(this, api, prefs, CameraFacing.BACK)
             if (webViewReady) {
-                val bridge = Bridge(this, prefs, screenMgr, sound, sensors)
+                val bridge = Bridge(this, prefs, screenMgr, sound, sensors) { key, value ->
+                    handleNativeSettingChanged(key, value)
+                }
                 val activeWebView = webView ?: throw IllegalStateException("WebView fehlt trotz webViewReady")
                 webViewMgr = WebViewManager(activeWebView, prefs, bridge)
                 webViewMgr?.configure()
@@ -155,14 +163,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
 
             kioskMgr.enable()
-            screenMgr.keepScreenOn(this)
+            if (prefs.screenOn) screenMgr.keepScreenOn(this)
             connection.start()
             sensors.start()
             loadDisplayWithRetry()
 
             if (prefs.kioskEnabled) {
                 try {
-                    startService(Intent(this, WatchdogService::class.java))
+                    val watchdogIntent = Intent(this, WatchdogService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        androidx.core.content.ContextCompat.startForegroundService(this, watchdogIntent)
+                    } else {
+                        startService(watchdogIntent)
+                    }
                 } catch (e: Exception) {
                     Log.e("TickerDisplay", "Watchdog start failed", e)
                 }
@@ -174,7 +187,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             handler.postDelayed({
                 Toast.makeText(
                     this,
-                    "Menü: Rand-Wischgeste, 3-Finger-Tap, Ecke, Schütteln oder 5x Lautstärke-",
+                    "Menü: Rand-Wischgeste, 3-Finger-Tap, Ecke, Schütteln oder 5x Lautstärke runter",
                     Toast.LENGTH_LONG
                 ).show()
             }, 2000)
@@ -258,6 +271,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val options = arrayOf(
             "Einstellungen öffnen",
             "Display neu laden",
+            "Cache leeren & neu laden",
             "Geräteinformationen",
             "Kiosk-Modus beenden",
             "Abbrechen"
@@ -273,8 +287,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         loadDisplayWithRetry()
                         Toast.makeText(this, "Display wird neu geladen...", Toast.LENGTH_SHORT).show()
                     }
-                    2 -> showDeviceInfo()
-                    3 -> {
+                    2 -> {
+                        clearWebViewData()
+                        pageLoaded = false
+                        retryCount = 0
+                        loadDisplayWithRetry()
+                        Toast.makeText(this, "Cache geleert, Display lädt neu", Toast.LENGTH_SHORT).show()
+                    }
+                    3 -> showDeviceInfo()
+                    4 -> {
                         if (prefs.kioskEnabled) {
                             showPinDialog {
                                 prefs.kioskEnabled = false
@@ -283,7 +304,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             }
                         }
                     }
-                    4 -> { /* Abbrechen */ }
+                    5 -> { /* Abbrechen */ }
                 }
             }
             .show()
@@ -298,6 +319,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             📊 Modell: ${U.getDeviceModel()}
             🤖 Android: ${U.getAndroidVersion()}
             📐 Auflösung: ${U.getScreenRes(this)}
+            🧩 App: ${U.getAppVersion(this)}
+            🌐 Netzwerk: ${U.getNetworkType(this)}
             
             📶 WiFi: ${U.getWifiSsid(this)}
             📡 Signal: ${U.getWifiSignal(this)} dBm
@@ -305,8 +328,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             
             🔋 Batterie: ${sensors.collectData()["battery_level"]}%
             💾 RAM frei: ${U.getMemoryMB(this)} MB
-            
-            PIN: ${prefs.kioskPin}
+            🚶 Motion: ${if (sensors.isMotionDetected()) "erkannt" else "keine Bewegung"}
+            🔁 Retry: $retryCount
+            ⚠️ WebView: ${lastConsoleError ?: "kein Fehler protokolliert"}
         """.trimIndent()
 
         AlertDialog.Builder(this)
@@ -332,8 +356,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
         }
         AlertDialog.Builder(this)
-            .setTitle("🔒 PIN eingeben")
-            .setMessage("Aktueller PIN: ${prefs.kioskPin}")
+            .setTitle("PIN eingeben")
+            .setMessage("Bitte PIN eingeben, um die Einstellungen zu öffnen.")
             .setView(et)
             .setPositiveButton("OK") { _, _ ->
                 val pin = et.text.toString()
@@ -348,16 +372,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
             .setNegativeButton("Abbrechen", null)
-            .setNeutralButton("PIN vergessen?") { _, _ ->
-                AlertDialog.Builder(this)
-                    .setTitle("PIN zurücksetzen")
-                    .setMessage("PIN auf Standard (1234) zurücksetzen?\n\nDadurch werden KEINE anderen Einstellungen gelöscht.")
-                    .setPositiveButton("Ja") { _, _ ->
-                        prefs.kioskPin = "1234"
-                        Toast.makeText(this, "✅ PIN zurückgesetzt auf: 1234", Toast.LENGTH_LONG).show()
-                    }
-                    .setNegativeButton("Nein", null)
-                    .show()
+            .setNeutralButton("Hinweis") { _, _ ->
+                Toast.makeText(this, "PIN kann in den Einstellungen geändert werden.", Toast.LENGTH_LONG).show()
             }
             .show()
     }
@@ -383,10 +399,39 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    private fun showOfflineMessage(message: String) {
+    private fun showOfflineMessage(message: String, title: String = "Anzeige nicht verfügbar") {
         offlineView.visibility = View.VISIBLE
-        findViewById<TextView>(R.id.offline_title)?.text = "Anzeige nicht verfügbar"
+        findViewById<TextView>(R.id.offline_title)?.text = title
         findViewById<TextView>(R.id.offline_subtitle)?.text = message
+        findViewById<TextView>(R.id.offline_status_badge)?.text = when {
+            retryCount <= 0 -> "Verbindung wird aufgebaut"
+            retryCount < 4 -> "Retry $retryCount"
+            else -> "Retry $retryCount · langsamer Modus"
+        }
+    }
+
+    private fun setupOfflineActions() {
+        findViewById<View>(R.id.btn_offline_reload)?.setOnClickListener {
+            clearWebViewData()
+            pageLoaded = false
+            retryCount = 0
+            loadDisplayWithRetry()
+        }
+        findViewById<View>(R.id.btn_offline_settings)?.setOnClickListener {
+            showSettingsAccess()
+        }
+    }
+
+    private fun clearWebViewData() {
+        try {
+            webView?.clearCache(true)
+            webView?.clearHistory()
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            android.webkit.CookieManager.getInstance().removeAllCookies(null)
+            android.webkit.CookieManager.getInstance().flush()
+        } catch (e: Exception) {
+            Log.w("TickerDisplay", "WebView data cleanup failed: ${e.message}")
+        }
     }
 
     private fun isSettingsEdgeSwipe(event: MotionEvent): Boolean {
@@ -404,12 +449,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun setupWebViewCallbacks() {
         val client = webView?.webViewClient as? TickerWebViewClient
+        val chrome = webView?.webChromeClient as? TickerWebChromeClient
+        chrome?.onConsoleError = { msg ->
+            lastConsoleError = msg
+            Log.e("TickerDisplay", "Web console error: $msg")
+            handler.postDelayed({ verifyDisplayStarted() }, 2500)
+        }
         client?.onPageLoaded = {
             runOnUiThread {
                 Log.i("TickerDisplay", "✅ Page loaded successfully!")
                 pageLoaded = true
                 retryCount = 0
                 offlineView.visibility = View.GONE
+                handler.postDelayed({ verifyDisplayStarted() }, 8000)
             }
         }
         client?.onPageError = {
@@ -421,11 +473,40 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    private fun verifyDisplayStarted() {
+        val activeWebView = webView ?: return
+        if (isFinishing) return
+        try {
+            activeWebView.evaluateJavascript(
+                """
+                (function(){
+                  var loading = document.getElementById('loading-screen');
+                  var screen = document.getElementById('screen-container');
+                  var hidden = !loading || loading.hidden || loading.style.display === 'none' || loading.offsetParent === null;
+                  var hasContent = !!(screen && screen.children && screen.children.length > 0);
+                  return (hidden || hasContent) ? 'ok' : 'loading';
+                })();
+                """.trimIndent()
+            ) { result ->
+                if (result?.contains("loading", ignoreCase = true) == true && !isFinishing) {
+                    Log.w("TickerDisplay", "Display page still shows loading screen")
+                    pageLoaded = false
+                    val detail = lastConsoleError?.let { "\n\nLetzter WebView-Fehler: $it" } ?: ""
+                    clearWebViewData()
+                    showOfflineMessage("Display lädt, aber die Oberfläche startet nicht. Cache wurde geleert und die App lädt automatisch neu.$detail", "Display hängt im Ladebildschirm")
+                    scheduleRetry()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TickerDisplay", "Display startup verification failed", e)
+        }
+    }
+
     private fun loadDisplayWithRetry() {
         Log.i("TickerDisplay", "Loading display (attempt ${retryCount + 1})")
         val manager = webViewMgr
         if (manager == null) {
-            showOfflineMessage("WebView konnte auf diesem Android-Gerät nicht gestartet werden.")
+            showOfflineMessage("WebView konnte auf diesem Android-Gerät nicht gestartet werden. Prüfe Android System WebView oder Chrome.")
             return
         }
         offlineView.visibility = View.GONE
@@ -442,10 +523,52 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             retryCount < 10 -> 10000L
             else -> 30000L
         }
-        offlineView.visibility = View.VISIBLE
+        showOfflineMessage(
+            "Automatischer Neuversuch in ${delay / 1000} Sekunden. Prüfe WLAN, Home-Assistant-URL und Token, falls es so bleibt.",
+            "Verbindung wird wiederhergestellt"
+        )
         handler.postDelayed({
             if (!pageLoaded && !isFinishing) loadDisplayWithRetry()
         }, delay)
+    }
+
+    private fun handleNativeSettingChanged(key: String, value: Any?) {
+        runOnUiThread {
+            try {
+                when (key) {
+                    "keep_screen_on", "screen_on_pref" -> {
+                        if (prefs.screenOn) screenMgr.keepScreenOn(this) else screenMgr.clearKeepScreenOn(this)
+                    }
+                    "kiosk", "kiosk_enabled", "kiosk_mode" -> {
+                        if (prefs.kioskEnabled) kioskMgr.hideSystemUI()
+                    }
+                    "light_sensor", "light_sensor_enabled" -> sensors.applyPreferenceChange(key)
+                    "motion", "motion_detect", "motion_detection", "motion_detection_enabled" -> {
+                        ensureRuntimePermissions()
+                        if (prefs.motionDetect) {
+                            frontCameraUploader?.stop()
+                            backCameraUploader?.stop()
+                            motionDetector?.start()
+                        } else {
+                            motionDetector?.stop()
+                            if (prefs.frontCameraEnabled) frontCameraUploader?.start()
+                            if (prefs.backCameraEnabled) backCameraUploader?.start()
+                        }
+                    }
+                    "front_camera", "front_camera_enabled", "back_camera", "back_camera_enabled",
+                    "camera_manual_only", "camera_silent", "camera_silent_mode", "camera_interval", "camera_interval_seconds" -> {
+                        ensureRuntimePermissions()
+                        if (!prefs.motionDetect) {
+                            if (prefs.frontCameraEnabled) frontCameraUploader?.start() else frontCameraUploader?.stop()
+                            if (prefs.backCameraEnabled) backCameraUploader?.start() else backCameraUploader?.stop()
+                        }
+                    }
+                }
+                sensors.reportNow()
+            } catch (e: Exception) {
+                Log.e("TickerDisplay", "native setting change failed: $key=$value", e)
+            }
+        }
     }
 
     private fun requestWriteSettings() {
@@ -472,9 +595,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun ensureRuntimePermissions() {
         val needed = mutableListOf<String>()
-        if ((prefs.frontCameraEnabled || prefs.backCameraEnabled) &&
+        if ((prefs.frontCameraEnabled || prefs.backCameraEnabled || prefs.motionDetect) &&
             androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             needed += android.Manifest.permission.CAMERA
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            needed += android.Manifest.permission.POST_NOTIFICATIONS
         }
         if (needed.isNotEmpty()) {
             androidx.core.app.ActivityCompat.requestPermissions(this, needed.distinct().toTypedArray(), runtimePermissionRequestCode)
@@ -488,14 +615,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         if (prefs.kioskEnabled) kioskMgr.hideSystemUI()
         ensureRuntimePermissions()
-        frontCameraUploader?.start()
-        backCameraUploader?.start()
+        motionDetector?.start()
+        // Motion detection owns the camera while active. Avoid opening a second
+        // camera preview in parallel on Android 9 wall tablets.
+        if (!prefs.motionDetect) {
+            frontCameraUploader?.start()
+            backCameraUploader?.start()
+        }
         
     }
 
     override fun onPause() {
         super.onPause()
         sensorManager?.unregisterListener(this)
+        motionDetector?.stop()
         frontCameraUploader?.stop()
         backCameraUploader?.stop()
         
@@ -505,6 +638,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         try {
             handler.removeCallbacksAndMessages(null)
             sensorManager?.unregisterListener(this)
+            motionDetector?.stop()
             connection.stop()
             sensors.stop()
             screenMgr.release()

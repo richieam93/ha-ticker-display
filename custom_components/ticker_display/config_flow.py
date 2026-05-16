@@ -4,7 +4,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 
-from .const import DOMAIN
+from .const import DEFAULT_HEARTBEAT_TIMEOUT, DOMAIN
 
 
 class TickerDisplayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -49,9 +49,9 @@ class TickerDisplayOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         "heartbeat_timeout",
                         default=self.config_entry.options.get(
-                            "heartbeat_timeout", 120
+                            "heartbeat_timeout", DEFAULT_HEARTBEAT_TIMEOUT
                         ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=30, max=600)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=30, max=3600)),
                 }
             ),
         )
