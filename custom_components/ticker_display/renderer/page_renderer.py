@@ -20,13 +20,11 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
     theme_css = _get_theme_css(theme, store.get_custom_themes())
     entities = _collect_entities(device_config)
     entities_json = json.dumps(entities).replace("</", "<\\/")
-    ticker_enabled = device_config.get("ticker", {}).get("enabled", True)
-
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta id="td-viewport" name="viewport" content="width=1920,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
 <meta name="theme-color" content="#121212">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -38,6 +36,8 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 
 <script>
 (function() {{
+  /* 3.0.8: fixed desktop-like layout viewport for Android/Kiosk browsers.
+     This keeps Home Assistant sections from switching to the narrow mobile grid. */
   function applyViewportVars() {{
     try {{
       var root = document.documentElement;
@@ -64,7 +64,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 <body>
 <div id="screen-container" class="screen-container"></div>
 
-<div id="ticker-bar" class="ticker-bar" {"" if ticker_enabled else "hidden"}>
+<div id="ticker-bar" class="ticker-bar" hidden>
   <div id="ticker-content" class="ticker-content"></div>
 </div>
 

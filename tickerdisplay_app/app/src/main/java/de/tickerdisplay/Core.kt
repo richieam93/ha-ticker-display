@@ -1034,10 +1034,11 @@ class WebViewManager(
             builtInZoomControls = false
             displayZoomControls = false
             textZoom = 100
-            // Browser-compatible viewport behavior: let Home Assistant handle
-            // its own responsive layout exactly like Chrome/Edge do.
+            // 3.0.8: Desktop-like overview mode for HA Sections.
+            // The display page uses a 1920px viewport so HA does not switch
+            // the sections dashboard to the narrow mobile layout.
             useWideViewPort = true
-            loadWithOverviewMode = false
+            loadWithOverviewMode = true
             layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
             loadsImagesAutomatically = true
             blockNetworkImage = false

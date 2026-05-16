@@ -1,5 +1,5 @@
 /*
- * Ticker Display 3.0.7 - Kiosk-only display engine.
+ * Ticker Display 3.0.8 - Kiosk-only display engine.
  * Kiosk-only display. Shows Home Assistant pages in a fullscreen iframe,
  * plus ticker/toast/banner/alert.
  */
@@ -378,33 +378,39 @@ function TickerManager(app) {
   this.bar = document.getElementById("ticker-bar");
   this.content = document.getElementById("ticker-content");
   this.messages = [];
+  this.fixedMessages = [];
   this.hideTimer = null;
 }
 TickerManager.prototype.init = function () { this.rebuild(); };
-TickerManager.prototype.rebuild = function () {
+TickerManager.prototype.applyVisibility = function (visible) {
   var cfg = this.app.config.ticker || {};
-  if (!this.bar || !this.content) return;
-  if (cfg.enabled === false) {
-    this.bar.hidden = true;
+  if (!this.bar) return;
+  var enabled = cfg.enabled !== false;
+  var show = !!visible && enabled;
+  var position = cfg.position || "bottom";
+  document.documentElement.classList.toggle("td-ticker-top", show && position === "top");
+  document.documentElement.classList.toggle("td-ticker-bottom", show && position !== "top");
+  this.bar.className = "ticker-bar ticker-" + position;
+  this.bar.hidden = !show;
+  var screen = document.getElementById("screen-container");
+  if (!show) {
     document.documentElement.style.setProperty("--td-ticker-offset", "0px");
-    var sc = document.getElementById("screen-container");
-    if (sc) sc.classList.add("no-ticker");
+    if (screen) screen.classList.add("no-ticker");
     return;
   }
-  var position = cfg.position || "bottom";
-  document.documentElement.classList.toggle("td-ticker-top", position === "top");
-  document.documentElement.classList.toggle("td-ticker-bottom", position !== "top");
-  this.bar.className = "ticker-bar ticker-" + position;
-  this.bar.hidden = false;
   var height = Utils.cleanInt(cfg.height || cfg.ticker_height || 36, 36, 20, 120);
   document.documentElement.style.setProperty("--td-ticker-height", height + "px");
   document.documentElement.style.setProperty("--td-ticker-offset", height + "px");
-  var screen = document.getElementById("screen-container");
   if (screen) screen.classList.remove("no-ticker");
+};
+TickerManager.prototype.rebuild = function () {
+  var cfg = this.app.config.ticker || {};
+  if (!this.bar || !this.content) return;
   var fixed = Utils.safeArray(cfg.fixed_messages || cfg.messages).map(function (m) {
     return typeof m === "string" ? m : (m && (m.text || m.message)) || "";
   }).filter(Boolean);
-  this.messages = fixed;
+  this.fixedMessages = fixed;
+  this.messages = fixed.slice();
   this.render();
 };
 TickerManager.prototype.render = function () {
@@ -412,13 +418,16 @@ TickerManager.prototype.render = function () {
   var list = this.messages.length ? this.messages : [];
   if (!list.length) {
     this.content.innerHTML = "";
+    this.applyVisibility(false);
     return;
   }
+  this.applyVisibility(true);
   var text = list.map(function (m) { return Utils.escapeHtml(m); }).join(' <span class="ticker-separator">│</span> ');
   this.content.innerHTML = '<span class="ticker-track">' + text + '</span>';
 };
 TickerManager.prototype.addMessages = function (messages) {
   var cfg = this.app.config.ticker || {};
+  if (cfg.enabled === false) return;
   var incoming = Utils.safeArray(messages).map(function (m) {
     return typeof m === "string" ? { message: m } : (m || {});
   });
@@ -434,10 +443,16 @@ TickerManager.prototype.addMessages = function (messages) {
   if (duration > 0) {
     var self = this;
     if (this.hideTimer) clearTimeout(this.hideTimer);
-    this.hideTimer = setTimeout(function () { self.rebuild(); }, duration * 1000);
+    this.hideTimer = setTimeout(function () {
+      self.messages = self.fixedMessages.slice();
+      self.render();
+    }, duration * 1000);
   }
 };
-TickerManager.prototype.clear = function () { this.messages = []; this.render(); };
+TickerManager.prototype.clear = function () {
+  this.messages = this.fixedMessages.slice();
+  this.render();
+};
 TickerManager.prototype.onEntityUpdate = function () {};
 TickerManager.prototype.setEntities = function () {};
 
