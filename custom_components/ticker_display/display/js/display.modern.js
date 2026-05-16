@@ -608,6 +608,7 @@ class ScreenManager {
     this._cameraIntervals = [];
     this._countdownIntervals = [];
     this._chartInstances = [];
+    this._backgroundIntervals = [];
     this._layoutResizeTimer = null;
     const onViewportChange = () => {
       clearTimeout(this._layoutResizeTimer);
@@ -942,16 +943,72 @@ _applyCommonWidgetStyle(widget, config) {
     this._doTransition(screen, transition);
   }
 
+    _screenBackgroundUrl(url) {
+      const text = String(url || "");
+      return text.split('"').join("%22").split("\\").join("%5C").split("\n").join("").split("\r").join("");
+  }
+  _applyScreenBackground(screen, config, imageUrl) {
+    if (!screen || !imageUrl) return;
+    const overlay = Number(config.background_overlay_opacity ?? 1);
+    const shade = Math.max(0, Math.min(1, 1 - overlay));
+    const safeUrl = this._screenBackgroundUrl(imageUrl);
+    screen.dataset.backgroundImage = safeUrl;
+    screen.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url("${safeUrl}")`;
+    screen.style.backgroundRepeat = "no-repeat, no-repeat";
+    screen.style.backgroundPosition = "center center, center center";
+    screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
+  }
+
+  _screenBackgroundPool(config) {
+    const raw = Array.isArray(config.background_carousel_images) ? config.background_carousel_images : [];
+    return [...new Set(raw.map((item) => String(item || "").trim()).filter(Boolean))];
+  }
+
+  _startBackgroundCarousel(screen, config, images) {
+    const pool = (images || []).filter(Boolean);
+    if (!pool.length) {
+      if (config.background_image) this._applyScreenBackground(screen, config, config.background_image);
+      return;
+    }
+    screen.classList.add("screen-bg-carousel");
+    const shuffle = config.background_carousel_shuffle === true;
+    let index = shuffle ? Math.floor(Math.random() * pool.length) : 0;
+    const applyAt = () => {
+      const url = pool[index % pool.length];
+      this._applyScreenBackground(screen, config, url);
+      const nextUrl = pool[(index + 1) % pool.length];
+      if (nextUrl) { try { const img = new Image(); img.src = nextUrl; } catch (e) {} }
+      index = shuffle ? Math.floor(Math.random() * pool.length) : (index + 1);
+    };
+    applyAt();
+    if (pool.length > 1) {
+      const seconds = Math.max(5, Number(config.background_carousel_interval || 30));
+      this._backgroundIntervals.push(setInterval(applyAt, seconds * 1000));
+    }
+  }
+
+  _fetchLocalBackgroundPool(screen, config) {
+    const fallback = () => { if (config.background_image) this._applyScreenBackground(screen, config, config.background_image); };
+    if (typeof fetch !== "function") { fallback(); return; }
+    fetch("/ticker-display/api/media/images", { credentials: "same-origin", cache: "no-store" })
+      .then((resp) => resp?.ok ? resp.json() : [])
+      .then((items) => {
+        const pool = (Array.isArray(items) ? items : []).map((img) => img?.url || "").filter(Boolean);
+        if (pool.length) this._startBackgroundCarousel(screen, config, pool);
+        else fallback();
+      })
+      .catch(() => fallback());
+  }
+
   _applyScreenStyle(screen, config) {
     screen.style.backgroundColor = config.background_color || "var(--td-bg, #121212)";
-    if (config.background_image) {
-      const overlay = Number(config.background_overlay_opacity ?? 1);
-      const shade = Math.max(0, Math.min(1, 1 - overlay));
-      screen.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url(${config.background_image})`;
-      screen.style.backgroundRepeat = "no-repeat, no-repeat";
-      screen.style.backgroundPosition = "center center, center center";
-      screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
+    const carousel = config.background_carousel_enabled === true || config.background_mode === "carousel";
+    if (carousel) {
+      const pool = this._screenBackgroundPool(config);
+      if (pool.length) { this._startBackgroundCarousel(screen, config, pool); return; }
+      if ((config.background_carousel_source || "all_local") === "all_local") { this._fetchLocalBackgroundPool(screen, config); return; }
     }
+    if (config.background_image) this._applyScreenBackground(screen, config, config.background_image);
   }
 
   _getScreenWeatherEffectConfig(config) {
@@ -2709,9 +2766,9 @@ _getChartConfig(type, histories, labels, config) {
 
   _clearIntervals() {
     this._clockIntervals.forEach(clearInterval); this._cameraIntervals.forEach(clearInterval);
-    this._countdownIntervals.forEach(clearInterval);
+    this._countdownIntervals.forEach(clearInterval); this._backgroundIntervals.forEach(clearInterval);
     this._chartInstances.forEach(c => { try { c.destroy(); } catch (e) {} });
-    this._clockIntervals = []; this._cameraIntervals = []; this._countdownIntervals = []; this._chartInstances = [];
+    this._clockIntervals = []; this._cameraIntervals = []; this._countdownIntervals = []; this._backgroundIntervals = []; this._chartInstances = [];
   }
 
   _getZoneColor(value, zones) {

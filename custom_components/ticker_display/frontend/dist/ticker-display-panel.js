@@ -725,6 +725,11 @@ function tdCreateScreenPreset(kind = "blank", index = 0, settings = {}) {
     background_image: "",
     background_image_size: "cover",
     background_overlay_opacity: 1,
+    background_carousel_enabled: false,
+    background_carousel_source: "all_local",
+    background_carousel_images: [],
+    background_carousel_interval: 30,
+    background_carousel_shuffle: false,
   };
 
   const mk = (type, col, row, extra = {}) =>
@@ -3960,9 +3965,10 @@ class TdScreenEditor extends LitElement {
   _getScreenBgStyle() {
     const cfg = this._cfg;
     let style = `background-color:${cfg.background_color || "#121212"};`;
-    if (cfg.background_image) {
+    const previewImage = this._screenPreviewBackgroundImage(cfg);
+    if (previewImage) {
       const shade = Math.max(0, Math.min(1, 1 - Number(cfg.background_overlay_opacity ?? 1)));
-      style += `background-image:linear-gradient(rgba(0,0,0,${shade}),rgba(0,0,0,${shade})),url(${cfg.background_image});`;
+      style += `background-image:linear-gradient(rgba(0,0,0,${shade}),rgba(0,0,0,${shade})),url(${previewImage});`;
       style += `background-size:100% 100%,${cfg.background_image_size || "cover"};`;
       style += `background-position:center;background-repeat:no-repeat;`;
     }
@@ -6196,42 +6202,187 @@ TdScreenEditor.prototype._renderEntityMetaEditor = function (w) {
   `;
 };
 
-/* ────── Background Image Picker ────── */
+/* ────── Background Image / Carousel Picker ────── */
+TdScreenEditor.prototype._bgImageUrl = function (img) {
+  if (!img) return "";
+  return img.url || `/ticker-display/media/images/${img.filename || img.name || ""}`;
+};
+
+TdScreenEditor.prototype._bgImageName = function (img) {
+  return (img && (img.filename || img.name || img.id)) || "Bild";
+};
+
+TdScreenEditor.prototype._carouselUrls = function () {
+  return Array.isArray(this._cfg?.background_carousel_images) ? this._cfg.background_carousel_images : [];
+};
+
+TdScreenEditor.prototype._screenPreviewBackgroundImage = function (cfg) {
+  if (!cfg) return "";
+  if (cfg.background_carousel_enabled) {
+    const selected = Array.isArray(cfg.background_carousel_images) ? cfg.background_carousel_images.filter(Boolean) : [];
+    if (selected.length) return selected[0];
+    if ((cfg.background_carousel_source || "all_local") === "all_local") {
+      const first = (this.images || []).map((img) => this._bgImageUrl(img)).filter(Boolean)[0];
+      if (first) return first;
+    }
+  }
+  return cfg.background_image || "";
+};
+
+TdScreenEditor.prototype._setBackgroundMode = function (mode) {
+  this._pushUndo();
+  const enable = mode === "carousel";
+  const patch = {
+    background_carousel_enabled: enable,
+    background_mode: enable ? "carousel" : "image",
+  };
+  if (enable && !this._cfg.background_carousel_source) patch.background_carousel_source = "all_local";
+  if (enable && !this._cfg.background_carousel_interval) patch.background_carousel_interval = 30;
+  this._cfg = { ...this._cfg, ...patch };
+  this.requestUpdate();
+};
+
+TdScreenEditor.prototype._setCarouselSource = function (source) {
+  this._pushUndo();
+  const patch = { background_carousel_source: source };
+  if (source === "selected" && !this._carouselUrls().length) {
+    patch.background_carousel_images = (this.images || []).map((img) => this._bgImageUrl(img)).filter(Boolean).slice(0, 12);
+  }
+  this._cfg = { ...this._cfg, ...patch };
+  this.requestUpdate();
+};
+
+TdScreenEditor.prototype._toggleCarouselImage = function (url, checked) {
+  if (!url) return;
+  const current = this._carouselUrls();
+  const next = checked ? [...new Set([...current, url])] : current.filter((item) => item !== url);
+  this._setScreen("background_carousel_images", next);
+};
+
+TdScreenEditor.prototype._setCarouselManualUrls = function (value) {
+  const urls = String(value || "").split(/\n|,/).map((s) => s.trim()).filter(Boolean);
+  this._setScreen("background_carousel_images", [...new Set(urls)]);
+};
+
+TdScreenEditor.prototype._selectAllCarouselImages = function () {
+  const urls = (this.images || []).map((img) => this._bgImageUrl(img)).filter(Boolean);
+  this._setScreen("background_carousel_images", urls);
+};
+
 TdScreenEditor.prototype._renderBackgroundImagePicker = function () {
   const cfg = this._cfg;
+  const carousel = cfg.background_carousel_enabled === true || cfg.background_mode === "carousel";
+  const source = cfg.background_carousel_source || "all_local";
+  const selected = this._carouselUrls();
+  const localImages = this.images || [];
   return html`
-    ${(this.images || []).length ? html`
-      <div class="pf2">
-        <label>Lokales Hintergrundbild</label>
-        <select .value=${cfg.background_image || ""}
-                @change=${(e) => this._setScreen("background_image", e.target.value)}>
-          <option value="">— Kein Bild —</option>
-          ${(this.images || []).map((img) => html`
-            <option value=${img.url || `/ticker-display/media/images/${img.filename || img.name}`}>
-              ${img.filename || img.name}
-            </option>
-          `)}
-        </select>
-      </div>
-    ` : ""}
-
-    ${(this.haImages || []).length ? html`
-      <div class="pf2">
-        <td-ha-media-picker
-          .items=${this.haImages || []}
-          .value=${cfg.background_image || ""}
-          label="HA Medienbild"
-          @value-changed=${(e) => this._setScreen("background_image", e.detail.value)}>
-        </td-ha-media-picker>
-      </div>
-    ` : ""}
-
     <div class="pf2">
-      <label>Bild-URL (direkt)</label>
-      <input .value=${cfg.background_image || ""}
-             placeholder="/ticker-display/media/images/bild.png"
-             @input=${(e) => this._setScreen("background_image", e.target.value)}>
+      <label>Hintergrundmodus</label>
+      <select .value=${carousel ? "carousel" : "image"}
+              @change=${(e) => this._setBackgroundMode(e.target.value)}>
+        <option value="image">Fixes Bild</option>
+        <option value="carousel">Bildkarussell</option>
+      </select>
     </div>
+
+    ${carousel ? html`
+      <div class="pf2-row">
+        <div class="pf2">
+          <label>Bildquelle</label>
+          <select .value=${source}
+                  @change=${(e) => this._setCarouselSource(e.target.value)}>
+            <option value="all_local">Alle lokalen Bilder aus dem Pool</option>
+            <option value="selected">Nur ausgewählte lokale Bilder</option>
+            <option value="manual">Manuelle URLs / HA Medien</option>
+          </select>
+        </div>
+        <div class="pf2">
+          <label>Wechsel alle Sekunden</label>
+          <input type="number" min="5" max="3600" step="5"
+                 .value=${cfg.background_carousel_interval || 30}
+                 @change=${(e) => this._setScreen("background_carousel_interval", Math.max(5, Number(e.target.value) || 30))}>
+        </div>
+      </div>
+      <label class="tog">
+        <input type="checkbox"
+               .checked=${cfg.background_carousel_shuffle === true}
+               @change=${(e) => this._setScreen("background_carousel_shuffle", e.target.checked)}>
+        <span>Zufällige Reihenfolge</span>
+      </label>
+      ${source === "all_local" ? html`
+        <div class="pf2-hint">
+          Das Display lädt automatisch alle Bilder aus dem Ticker-Display-Bilder-Pool.
+          Neue hochgeladene Bilder werden nach dem nächsten Neuladen ebenfalls verwendet.
+          Aktuell im Editor sichtbar: ${localImages.length} Bilder.
+        </div>
+      ` : ""}
+      ${source === "selected" ? html`
+        <div class="pf2">
+          <label>Lokale Bilder auswählen (${selected.length})</label>
+          <div class="carousel-actions">
+            <button class="prop-btn-sm" @click=${() => this._selectAllCarouselImages()}>Alle auswählen</button>
+            <button class="prop-btn-sm" @click=${() => this._setScreen("background_carousel_images", [])}>Auswahl leeren</button>
+          </div>
+          <div class="carousel-list">
+            ${localImages.length ? localImages.map((img) => {
+              const url = this._bgImageUrl(img);
+              return html`
+                <label class="carousel-img-row">
+                  <input type="checkbox"
+                         .checked=${selected.includes(url)}
+                         @change=${(e) => this._toggleCarouselImage(url, e.target.checked)}>
+                  <span>${this._bgImageName(img)}</span>
+                </label>
+              `;
+            }) : html`<div class="pf2-hint">Noch keine lokalen Bilder hochgeladen.</div>`}
+          </div>
+        </div>
+      ` : ""}
+      ${source === "manual" ? html`
+        <div class="pf2">
+          <label>Bild-URLs, eine pro Zeile</label>
+          <textarea rows="5"
+                    .value=${selected.join("\n")}
+                    placeholder="/ticker-display/media/images/bild1.png\n/media/local/bild2.jpg"
+                    @change=${(e) => this._setCarouselManualUrls(e.target.value)}></textarea>
+          <div class="pf2-hint">Hier kannst du auch HA-Medien- oder externe Bild-URLs eintragen.</div>
+        </div>
+      ` : ""}
+      ${cfg.background_image ? html`
+        <div class="pf2-hint">Fallback-Bild: ${cfg.background_image}</div>
+      ` : ""}
+    ` : html`
+      ${(localImages || []).length ? html`
+        <div class="pf2">
+          <label>Lokales Hintergrundbild</label>
+          <select .value=${cfg.background_image || ""}
+                  @change=${(e) => this._setScreen("background_image", e.target.value)}>
+            <option value="">— Kein Bild —</option>
+            ${(localImages || []).map((img) => html`
+              <option value=${this._bgImageUrl(img)}>${this._bgImageName(img)}</option>
+            `)}
+          </select>
+        </div>
+      ` : ""}
+
+      ${(this.haImages || []).length ? html`
+        <div class="pf2">
+          <td-ha-media-picker
+            .items=${this.haImages || []}
+            .value=${cfg.background_image || ""}
+            label="HA Medienbild"
+            @value-changed=${(e) => this._setScreen("background_image", e.detail.value)}>
+          </td-ha-media-picker>
+        </div>
+      ` : ""}
+
+      <div class="pf2">
+        <label>Bild-URL (direkt)</label>
+        <input .value=${cfg.background_image || ""}
+               placeholder="/ticker-display/media/images/bild.png"
+               @input=${(e) => this._setScreen("background_image", e.target.value)}>
+      </div>
+    `}
   `;
 };
 
@@ -6664,6 +6815,24 @@ const propsStyles = css`
   }
   .prop-btn-danger:hover { background: rgba(244,67,54,.1); }
 
+
+  /* Background carousel */
+  .carousel-actions { display: flex; gap: 6px; margin: 6px 0 8px; flex-wrap: wrap; }
+  .carousel-list {
+    max-height: 190px; overflow: auto;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px; padding: 6px;
+    background: rgba(255,255,255,.02);
+  }
+  .carousel-img-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 6px; border-radius: 6px;
+    font-size: 12px; cursor: pointer;
+  }
+  .carousel-img-row:hover { background: rgba(255,255,255,.05); }
+  .carousel-img-row input { width: 14px; height: 14px; accent-color: var(--primary-color); }
+  .carousel-img-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* Entity meta */
   .entity-meta-list {
     display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
@@ -7055,6 +7224,11 @@ class TdTemplateEditor extends LitElement {
           background_color: "#121212",
           background_image: "",
           background_image_size: "cover",
+          background_carousel_enabled: false,
+          background_carousel_source: "all_local",
+          background_carousel_images: [],
+          background_carousel_interval: 30,
+          background_carousel_shuffle: false,
         },
         variables: [],
       };

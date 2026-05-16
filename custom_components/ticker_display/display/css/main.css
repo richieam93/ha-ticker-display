@@ -76,6 +76,10 @@ html.td-ticker-bottom .screen-container {
   background: var(--td-bg, #121212);
 }
 
+.screen-bg-carousel {
+  transition: background-color .35s ease;
+}
+
 .screen[class*="screen-enter-"] { z-index: 2; }
 .screen[class*="screen-exit-"] { z-index: 1; }
 
