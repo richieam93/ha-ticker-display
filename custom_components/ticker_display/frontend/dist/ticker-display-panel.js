@@ -1,11 +1,11 @@
 /**
- * Ticker Display Panel 3.0.0
+ * Ticker Display Panel 3.0.1
  * Neuer Kiosk-Editor: keine eigenen Widget/Grid-Screens mehr.
  * Es werden nur noch Home-Assistant-Seiten/URLs mit Dauer und Reihenfolge verwaltet.
  */
 (function () {
   const API = "/ticker-display";
-  const VERSION = "3.0.0";
+  const VERSION = "3.0.1";
 
   const DEFAULT_PAGE_URL = "/dashboard-durchgang/4";
   const QUICK_PAGES = [
@@ -90,7 +90,6 @@
       this._selectedId = "";
       this._device = null;
       this._pages = [];
-      this._images = [];
       this._tab = "pages";
       this._loading = true;
       this._saving = false;
@@ -98,11 +97,23 @@
       this._error = "";
       this._pauseSeconds = 300;
       this._tickerEnabled = false;
+      this._fixedText = "";
+      this._target = "all";
+      this._tickerMessage = "Willkommen zuhause 👋";
+      this._tickerDuration = 15;
+      this._tickerColor = "#9ca3af";
+      this._toastMessage = "Geschirrspüler ist fertig";
+      this._toastDuration = 6;
+      this._toastColor = "#111827";
+      this._bannerTitle = "Info";
+      this._bannerMessage = "Fenster im Büro ist noch offen";
+      this._bannerColor = "#2196F3";
+      this._alertTitle = "Türklingel";
+      this._alertMessage = "Jemand steht vor der Haustür";
+      this._alertColor = "#ff9800";
       this._boundClick = this._onClick.bind(this);
       this._boundInput = this._onInput.bind(this);
       this._boundChange = this._onChange.bind(this);
-      this._boundDragOver = this._onDragOver.bind(this);
-      this._boundDrop = this._onDrop.bind(this);
     }
 
     set hass(value) {
@@ -113,8 +124,6 @@
       this.shadowRoot.addEventListener("click", this._boundClick);
       this.shadowRoot.addEventListener("input", this._boundInput);
       this.shadowRoot.addEventListener("change", this._boundChange);
-      this.shadowRoot.addEventListener("dragover", this._boundDragOver);
-      this.shadowRoot.addEventListener("drop", this._boundDrop);
       this._load();
     }
 
@@ -122,8 +131,6 @@
       this.shadowRoot.removeEventListener("click", this._boundClick);
       this.shadowRoot.removeEventListener("input", this._boundInput);
       this.shadowRoot.removeEventListener("change", this._boundChange);
-      this.shadowRoot.removeEventListener("dragover", this._boundDragOver);
-      this.shadowRoot.removeEventListener("drop", this._boundDrop);
     }
 
     async _fetchJson(url, options = {}) {
@@ -142,10 +149,10 @@
       this._render();
       try {
         const devices = await this._fetchJson(`${API}/api/config/devices`);
-        this._devices = Array.isArray(devices) ? devices : [];
+        this._devices = (Array.isArray(devices) ? devices : []).filter((d) => !(d && (d.virtual || String(d.id || "").startsWith("virtual_"))));
+        if (this._selectedId && !this._devices.some((d) => d.id === this._selectedId)) this._selectedId = "";
         if (!this._selectedId && this._devices.length) this._selectedId = this._devices[0].id;
         await this._loadSelectedDevice();
-        await this._loadImages(false);
       } catch (err) {
         this._error = `Laden fehlgeschlagen: ${err.message || err}`;
       } finally {
@@ -165,43 +172,58 @@
       this._pages = Array.isArray(device.screens) ? device.screens.map(screenToPage).filter((p) => p.url) : [];
       this._pauseSeconds = cleanInt((device.rotation && device.rotation.touch_pause_seconds), 300, 0, 86400);
       this._tickerEnabled = (device.ticker && device.ticker.enabled) === true;
+      const fixed = device.ticker && Array.isArray(device.ticker.fixed_messages) ? device.ticker.fixed_messages : [];
+      this._fixedText = fixed.map((item) => typeof item === "string" ? item : (item && item.text) || "").filter(Boolean).join("\n");
     }
 
-    async _loadImages(render = true) {
-      try {
-        const items = await this._fetchJson(`${API}/api/media/images`);
-        this._images = Array.isArray(items) ? items : [];
-      } catch (_err) {
-        this._images = [];
-      }
-      if (render) this._render();
+    _deviceOptions() {
+      return [
+        { id: "all", name: "Alle Geräte" },
+        ...this._devices.map((d) => ({ id: d.id || d.device_id || d.name, name: `${d.name || d.id} (${d.id || d.device_id || d.name})` })),
+      ];
     }
 
-    _setMessage(message, isError = false) {
-      this._message = isError ? "" : message;
-      this._error = isError ? message : "";
-      this._render();
+    _yamlEscape(value) {
+      return String(value == null ? "" : value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     }
 
-    async _save() {
+    _tickerYaml() {
+      return `action: ticker_display.send_ticker_message\ndata:\n  device: ${this._target}\n  message: "${this._yamlEscape(this._tickerMessage)}"\n  duration: ${cleanInt(this._tickerDuration, 15, 1, 3600)}\n  replace: true\n  color: "${this._yamlEscape(this._tickerColor)}"`;
+    }
+
+    _toastYaml() {
+      return `action: ticker_display.show_toast\ndata:\n  device: ${this._target}\n  message: "${this._yamlEscape(this._toastMessage)}"\n  duration: ${cleanInt(this._toastDuration, 6, 1, 3600)}\n  color: "${this._yamlEscape(this._toastColor)}"`;
+    }
+
+    _bannerYaml() {
+      return `action: ticker_display.show_banner\ndata:\n  device: ${this._target}\n  title: "${this._yamlEscape(this._bannerTitle)}"\n  message: "${this._yamlEscape(this._bannerMessage)}"\n  color: "${this._yamlEscape(this._bannerColor)}"`;
+    }
+
+    _alertYaml() {
+      return `action: ticker_display.show_alert\ndata:\n  device: ${this._target}\n  title: "${this._yamlEscape(this._alertTitle)}"\n  message: "${this._yamlEscape(this._alertMessage)}"\n  severity: warning\n  mode: fullscreen\n  color: "${this._yamlEscape(this._alertColor)}"\n  duration: 10`;
+    }
+
+    _fixedPreviewText() {
+      const list = String(this._fixedText || "").split(/\n+/).map((x) => x.trim()).filter(Boolean);
+      return list.length ? list.join(" │ ") : "Erste Meldung │ Zweite Meldung │ Dritte Meldung";
+    }
+
+    async _saveTickerList() {
       if (!this._device) return;
       this._saving = true;
-      this._setMessage("Speichere...");
-      const pages = this._pages.map((p, i) => pageToScreen(p, i)).filter((p) => p.enabled !== false && p.url);
+      this._setMessage("Speichere feste Tickerliste...");
+      const fixedMessages = String(this._fixedText || "")
+        .split(/\n+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
       const payload = {
         ...this._device,
-        screens: pages,
-        rotation: {
-          ...(this._device.rotation || {}),
-          enabled: pages.length > 1,
-          transition: (this._device.rotation && this._device.rotation.transition) || "fade",
-          touch_pause_seconds: cleanInt(this._pauseSeconds, 300, 0, 86400),
-        },
         ticker: {
           ...(this._device.ticker || {}),
           enabled: !!this._tickerEnabled,
+          show_list: true,
+          fixed_messages: fixedMessages,
         },
-        browser_mode: "ha_kiosk",
       };
       try {
         await this._fetchJson(`${API}/api/config/device/${encodeURIComponent(this._device.id)}`, {
@@ -210,111 +232,13 @@
           body: JSON.stringify(payload),
         });
         this._device = payload;
-        this._setMessage("Gespeichert. Das Display lädt die neue Kiosk-Konfiguration automatisch neu.");
-        await this._load();
+        this._setMessage("Feste Tickerliste gespeichert.");
+        await this._loadSelectedDevice();
       } catch (err) {
-        this._setMessage(`Speichern fehlgeschlagen: ${err.message || err}`, true);
+        this._setMessage(`Tickerliste konnte nicht gespeichert werden: ${err.message || err}`, true);
       } finally {
         this._saving = false;
         this._render();
-      }
-    }
-
-    _addPage(url = DEFAULT_PAGE_URL, name = "") {
-      const page = {
-        id: uid("page"),
-        name: name || `Seite ${this._pages.length + 1}`,
-        url: normalizeHaUrl(url),
-        duration: 60,
-        enabled: true,
-        kiosk: true,
-      };
-      this._pages = [...this._pages, page];
-      this._render();
-    }
-
-    _movePage(index, delta) {
-      const target = index + delta;
-      if (target < 0 || target >= this._pages.length) return;
-      const pages = [...this._pages];
-      const [item] = pages.splice(index, 1);
-      pages.splice(target, 0, item);
-      this._pages = pages;
-      this._render();
-    }
-
-    _deletePage(index) {
-      this._pages = this._pages.filter((_, i) => i !== index);
-      this._render();
-    }
-
-    _updatePage(index, key, value) {
-      const pages = [...this._pages];
-      const current = { ...(pages[index] || {}) };
-      if (key === "url") current[key] = normalizeHaUrl(value);
-      else if (key === "duration") current[key] = cleanInt(value, 60, 5, 86400);
-      else if (key === "enabled" || key === "kiosk") current[key] = !!value;
-      else current[key] = value;
-      pages[index] = current;
-      this._pages = pages;
-    }
-
-    async _createVirtualDevice() {
-      const name = prompt("Name für virtuelles Kiosk-Gerät:", "Kiosk Browser");
-      if (!name) return;
-      try {
-        const data = await this._fetchJson(`${API}/api/config/device/virtual`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        });
-        this._selectedId = data.device_id;
-        this._setMessage("Virtuelles Gerät erstellt.");
-        await this._load();
-      } catch (err) {
-        this._setMessage(`Gerät konnte nicht erstellt werden: ${err.message || err}`, true);
-      }
-    }
-
-    async _uploadImages(files) {
-      const list = Array.from(files || []).filter((f) => f && f.type && f.type.startsWith("image/"));
-      if (!list.length) return;
-      const form = new FormData();
-      list.forEach((file) => form.append("files", file, file.name));
-      this._setMessage(`${list.length} Bild(er) werden hochgeladen...`);
-      try {
-        const result = await this._fetchJson(`${API}/api/media/image/upload`, { method: "POST", body: form });
-        const count = (result && result.count !== undefined ? result.count : (result && result.items ? result.items.length : 1));
-        const skipped = (result && result.skipped ? result.skipped.length : 0);
-        this._setMessage(`${count} Bild(er) hochgeladen${skipped ? `, ${skipped} übersprungen` : ""}.`);
-        await this._loadImages(true);
-      } catch (err) {
-        this._setMessage(`Upload fehlgeschlagen: ${err.message || err}`, true);
-      }
-    }
-
-    async _deleteImage(id) {
-      if (!id) return;
-      if (!confirm("Bild wirklich löschen?")) return;
-      try {
-        await this._fetchJson(`${API}/api/media/image/${encodeURIComponent(id)}`, { method: "DELETE" });
-        this._setMessage("Bild gelöscht.");
-        await this._loadImages(true);
-      } catch (err) {
-        this._setMessage(`Löschen fehlgeschlagen: ${err.message || err}`, true);
-      }
-    }
-
-    _onDragOver(ev) {
-      if (ev.target.closest(".upload")) {
-        ev.preventDefault();
-      }
-    }
-
-    _onDrop(ev) {
-      if (ev.target.closest(".upload")) {
-        ev.preventDefault();
-        this._uploadImages((ev.dataTransfer && ev.dataTransfer.files));
       }
     }
 
@@ -325,7 +249,7 @@
       const index = Number(target.dataset.index);
       if (action === "reload") this._load();
       if (action === "save") this._save();
-      if (action === "create-virtual") this._createVirtualDevice();
+      if (action === "save-ticker-list") this._saveTickerList();
       if (action === "tab") { this._tab = target.dataset.tab || "pages"; this._render(); }
       if (action === "select-device") { this._selectedId = target.dataset.id || ""; this._loadSelectedDevice().then(() => this._render()); }
       if (action === "add-page") this._addPage();
@@ -333,24 +257,42 @@
       if (action === "move-up") this._movePage(index, -1);
       if (action === "move-down") this._movePage(index, 1);
       if (action === "delete-page") this._deletePage(index);
-      if (action === "delete-image") this._deleteImage(target.dataset.id || "");
       if (action === "copy") {
         const text = target.dataset.copy || "";
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
-        this._setMessage("Link kopiert.");
+        this._setMessage("Kopiert.");
       }
     }
 
     _onInput(ev) {
       const el = ev.target;
       if (!el || !el.dataset) return;
+      let liveRefresh = false;
+      const liveFields = new Set(["target", "fixedText", "tickerMessage", "tickerDuration", "tickerColor", "toastMessage", "toastDuration", "toastColor", "bannerTitle", "bannerMessage", "bannerColor", "alertTitle", "alertMessage", "alertColor"]);
       if (el.dataset.field === "pauseSeconds") {
         this._pauseSeconds = cleanInt(el.value, 300, 0, 86400);
       }
+      if (el.dataset.field === "target") this._target = el.value || "all";
+      if (el.dataset.field === "fixedText") this._fixedText = el.value;
+      if (el.dataset.field === "tickerMessage") this._tickerMessage = el.value;
+      if (el.dataset.field === "tickerDuration") this._tickerDuration = cleanInt(el.value, 15, 1, 3600);
+      if (el.dataset.field === "tickerColor") this._tickerColor = el.value;
+      if (el.dataset.field === "toastMessage") this._toastMessage = el.value;
+      if (el.dataset.field === "toastDuration") this._toastDuration = cleanInt(el.value, 6, 1, 3600);
+      if (el.dataset.field === "toastColor") this._toastColor = el.value;
+      if (el.dataset.field === "bannerTitle") this._bannerTitle = el.value;
+      if (el.dataset.field === "bannerMessage") this._bannerMessage = el.value;
+      if (el.dataset.field === "bannerColor") this._bannerColor = el.value;
+      if (el.dataset.field === "alertTitle") this._alertTitle = el.value;
+      if (el.dataset.field === "alertMessage") this._alertMessage = el.value;
+      if (el.dataset.field === "alertColor") this._alertColor = el.value;
+      if (liveFields.has(el.dataset.field)) liveRefresh = true;
       const index = el.dataset.index;
       const key = el.dataset.key;
       if (index !== undefined && key) {
         this._updatePage(Number(index), key, el.value);
+      } else if (liveRefresh) {
+        this._render();
       }
     }
 
@@ -358,7 +300,7 @@
       const el = ev.target;
       if (!el || !el.dataset) return;
       if (el.dataset.field === "tickerEnabled") this._tickerEnabled = !!el.checked;
-      if (el.dataset.field === "imageUpload") this._uploadImages(el.files);
+      if (el.dataset.field === "target") { this._target = el.value || "all"; this._render(); return; }
       const index = el.dataset.index;
       const key = el.dataset.key;
       if (index !== undefined && key) {
@@ -369,7 +311,7 @@
 
     _renderDeviceList() {
       if (!this._devices.length) {
-        return `<div class="empty-mini">Noch kein Android-Gerät registriert.<br><button class="small" data-action="create-virtual">Virtuelles Gerät erstellen</button></div>`;
+        return `<div class="empty-mini">Noch kein Android-Gerät registriert.<br>Starte die Android-App einmal, damit das echte Gerät hier erscheint.</div>`;
       }
       return this._devices.map((d) => {
         const selected = d.id === this._selectedId ? "selected" : "";
@@ -428,21 +370,71 @@
         </div>`;
     }
 
-    _renderMedia() {
-      const imgs = this._images.map((img) => `
-        <div class="img-card">
-          <img src="${esc(img.url)}" alt="${esc(img.name || img.id || "Bild")}">
-          <div><b>${esc(img.name || img.id || "Bild")}</b><small>${esc(img.url || "")}</small></div>
-          <button class="icon danger" data-action="delete-image" data-id="${esc(img.id || img.name || "")}">✕</button>
-        </div>`).join("");
+    _renderMessages() {
+      const devs = this._deviceOptions();
+      const fixedPreview = this._fixedPreviewText();
       return `
-        <div class="hero"><div><h1>Medien</h1><p>Mehrere Bilder auswählen und hochladen. Für die neuen HA-Kiosk-Seiten verwendest du Bilder danach direkt in Lovelace/YAML.</p></div></div>
-        <div class="card upload">
-          <h2>Bilder hochladen</h2>
-          <input type="file" accept="image/*" multiple data-field="imageUpload">
-          <p class="hint">PNG, JPG, GIF, SVG, WebP. Mehrfachauswahl und Drag & Drop werden unterstützt.</p>
+        <div class="hero"><div><h1>Ticker & Meldungen</h1><p>Hier findest du getrennte Bereiche für Live-Ticker, feste Liste, Toast, Banner und Alert – jeweils mit Vorschau und kopierbarer Beispiel-Aktion für das Entwicklerwerkzeug.</p></div></div>
+        <div class="card">
+          <h2>Zielgerät für Beispiele</h2>
+          <label>Zielgerät
+            <select data-field="target">${devs.map((d) => `<option value="${esc(d.id)}" ${d.id === this._target ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
+          </label>
+          <p class="hint">Die kopierten Aktionen kannst du direkt unter Entwicklerwerkzeuge → Aktionen oder in Automationen verwenden.</p>
         </div>
-        <div class="card"><h2>Bilder-Pool</h2><div class="image-grid">${imgs || `<div class="empty-big">Noch keine Bilder vorhanden.</div>`}</div></div>`;
+        <div class="message-grid">
+          <div class="card msg-card">
+            <h2>▶️ Live-Ticker</h2>
+            <div class="subgrid">
+              <label>Nachricht<input data-field="tickerMessage" value="${esc(this._tickerMessage)}"></label>
+              <label>Dauer (s)<input type="number" min="1" max="3600" data-field="tickerDuration" value="${esc(this._tickerDuration)}"></label>
+            </div>
+            <label>Akzent/Farbe<input data-field="tickerColor" value="${esc(this._tickerColor)}"></label>
+            <div class="preview-wrap"><div class="ticker-preview" style="background:linear-gradient(90deg, ${esc(this._tickerColor)}, rgba(0,0,0,.65));">${esc(this._tickerMessage)}</div></div>
+            <pre class="code">${esc(this._tickerYaml())}</pre>
+            <button class="primary" data-action="copy" data-copy="${esc(this._tickerYaml())}">Aktion kopieren</button>
+          </div>
+
+          <div class="card msg-card">
+            <h2>🗂️ Feste Tickerliste</h2>
+            <p class="hint">Die feste Liste gehört jetzt zum ausgewählten echten Android-Gerät. Eine Meldung pro Zeile. Sie wird angezeigt, wenn die Ticker-Leiste aktiv ist.</p>
+            <textarea rows="6" data-field="fixedText" placeholder="Erste Meldung\nZweite Meldung\nDritte Meldung">${esc(this._fixedText)}</textarea>
+            <div class="preview-wrap"><div class="ticker-preview dark">${esc(fixedPreview)}</div></div>
+            <button class="primary" data-action="save-ticker-list" ${!this._device || this._saving ? "disabled" : ""}>Feste Tickerliste speichern</button>
+          </div>
+
+          <div class="card msg-card">
+            <h2>💬 Toast</h2>
+            <div class="subgrid">
+              <label>Nachricht<input data-field="toastMessage" value="${esc(this._toastMessage)}"></label>
+              <label>Dauer (s)<input type="number" min="1" max="3600" data-field="toastDuration" value="${esc(this._toastDuration)}"></label>
+            </div>
+            <label>Farbe<input data-field="toastColor" value="${esc(this._toastColor)}"></label>
+            <div class="preview-wrap"><div class="toast-preview" style="background:${esc(this._toastColor)};">${esc(this._toastMessage)}</div></div>
+            <pre class="code">${esc(this._toastYaml())}</pre>
+            <button class="primary" data-action="copy" data-copy="${esc(this._toastYaml())}">Aktion kopieren</button>
+          </div>
+
+          <div class="card msg-card">
+            <h2>📣 Banner</h2>
+            <label>Titel<input data-field="bannerTitle" value="${esc(this._bannerTitle)}"></label>
+            <label>Nachricht<textarea rows="3" data-field="bannerMessage">${esc(this._bannerMessage)}</textarea></label>
+            <label>Farbe<input data-field="bannerColor" value="${esc(this._bannerColor)}"></label>
+            <div class="preview-wrap"><div class="banner-preview" style="background:${esc(this._bannerColor)};"><strong>${esc(this._bannerTitle)}</strong><span>${esc(this._bannerMessage)}</span></div></div>
+            <pre class="code">${esc(this._bannerYaml())}</pre>
+            <button class="primary" data-action="copy" data-copy="${esc(this._bannerYaml())}">Aktion kopieren</button>
+          </div>
+
+          <div class="card msg-card">
+            <h2>🚨 Alert</h2>
+            <label>Titel<input data-field="alertTitle" value="${esc(this._alertTitle)}"></label>
+            <label>Nachricht<textarea rows="3" data-field="alertMessage">${esc(this._alertMessage)}</textarea></label>
+            <label>Farbe<input data-field="alertColor" value="${esc(this._alertColor)}"></label>
+            <div class="preview-wrap"><div class="alert-preview" style="background:${esc(this._alertColor)};"><div><div class="alert-title-preview">${esc(this._alertTitle)}</div><div>${esc(this._alertMessage)}</div></div></div></div>
+            <pre class="code">${esc(this._alertYaml())}</pre>
+            <button class="primary" data-action="copy" data-copy="${esc(this._alertYaml())}">Aktion kopieren</button>
+          </div>
+        </div>`;
     }
 
     _renderHelp() {
@@ -452,15 +444,15 @@
           <h2>Was sich geändert hat</h2>
           <p>Der alte Widget-/Grid-Editor ist aus der Oberfläche entfernt. Du baust deine Seiten in Home Assistant, z.B. als Lovelace-Dashboard unter <code>/dashboard-durchgang/4</code>, und trägst diese URL hier als Kiosk-Seite ein.</p>
           <h2>Hintergrund/Bildkarussell</h2>
-          <p>Für Hintergrundbilder oder ein Bildkarussell ist der beste Ort jetzt deine Lovelace-Seite selbst. Du kannst dafür z.B. Picture-Elements, Mushroom/Stack-in-Card, Card-Mod oder ein YAML-Dashboard verwenden. Dadurch sieht die Seite im Browser, in Home Assistant und auf dem Android-Display gleich aus.</p>
+          <p>Für Hintergrundbilder oder ein Bildkarussell ist der beste Ort jetzt deine Lovelace-Seite selbst, z.B. per YAML, Picture-Elements, Card-Mod oder einer passenden Lovelace-Karte. Der frühere Medienbereich wurde aus diesem Admin entfernt.</p>
           <h2>Automatisierung</h2>
-          <p>Die Smartphone-Schalter und Stellregler aus Home Assistant bleiben erhalten. Nur der eigene Layout-Editor wird nicht mehr benötigt.</p>
+          <p>Die Smartphone-Schalter und Stellregler aus Home Assistant bleiben erhalten. Live-Ticker, Toast, Banner und Alert findest du im Bereich <b>Ticker & Meldungen</b>.</p>
         </div>`;
     }
 
     _renderContent() {
       if (this._loading) return `<div class="card">Lade Konfiguration...</div>`;
-      if (this._tab === "media") return this._renderMedia();
+      if (this._tab === "messages") return this._renderMessages();
       if (this._tab === "help") return this._renderHelp();
       return this._renderPages();
     }
@@ -473,12 +465,11 @@
             <div class="brand"><span>📱</span><div><b>Ticker Display</b><small>Kiosk Editor ${VERSION}</small></div></div>
             <nav>
               <button class="${this._tab === "pages" ? "active" : ""}" data-action="tab" data-tab="pages">Kiosk-Seiten</button>
-              <button class="${this._tab === "media" ? "active" : ""}" data-action="tab" data-tab="media">Medien</button>
+              <button class="${this._tab === "messages" ? "active" : ""}" data-action="tab" data-tab="messages">Ticker & Meldungen</button>
               <button class="${this._tab === "help" ? "active" : ""}" data-action="tab" data-tab="help">Hinweise</button>
             </nav>
             <div class="side-title">Geräte</div>
             <div class="devices">${this._renderDeviceList()}</div>
-            <button class="small wide" data-action="create-virtual">Virtuelles Gerät</button>
             <button class="small wide" data-action="reload">Neu laden</button>
           </aside>
           <main>
@@ -492,7 +483,7 @@
     _styles() {
       return `
         :host{display:block;min-height:100vh;background:#0b1020;color:#e5e7eb;font-family:Roboto,Arial,sans-serif;--card:#111827;--muted:#94a3b8;--line:rgba(255,255,255,.1);--accent:#38bdf8;}
-        *{box-sizing:border-box} button,input{font:inherit} .app{display:grid;grid-template-columns:300px 1fr;min-height:100vh} aside{background:#08111f;border-right:1px solid var(--line);padding:18px;position:sticky;top:0;height:100vh;overflow:auto} main{padding:24px;max-width:1400px;width:100%;margin:0 auto}.brand{display:flex;align-items:center;gap:12px;margin-bottom:20px}.brand span{font-size:32px}.brand b{display:block;font-size:18px}.brand small,.device small,.hint{color:var(--muted)}nav{display:grid;gap:8px;margin-bottom:20px}button,a{border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.05);color:#e5e7eb;text-decoration:none;padding:10px 12px;cursor:pointer}button:hover,a:hover{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.5)}button.active,.primary{background:linear-gradient(135deg,#0891b2,#2563eb);border-color:transparent;color:white;font-weight:700}button:disabled{opacity:.6;cursor:wait}.side-title{text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-size:12px;margin:18px 0 8px}.devices{display:grid;gap:8px}.device{width:100%;text-align:left;display:grid;grid-template-columns:12px 1fr;gap:10px;align-items:center}.device.selected{border-color:var(--accent);background:rgba(56,189,248,.14)}.dot{width:10px;height:10px;border-radius:50%;background:#64748b}.dot.online{background:#22c55e}.dot.offline{background:#ef4444}.wide{width:100%;margin-top:8px}.small{font-size:13px;padding:8px 10px}.hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.hero h1{margin:0 0 6px;font-size:32px}.hero p{margin:0;color:var(--muted);max-width:820px;line-height:1.45}.card{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:18px;box-shadow:0 18px 60px rgba(0,0,0,.18)}.card h2{margin:0 0 12px;font-size:18px}.quick-list{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.quick-list button{display:flex;flex-direction:column;align-items:flex-start;gap:3px}.quick-list small{color:#bae6fd}.settings-grid{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:end}.page-row{display:grid;grid-template-columns:42px 180px minmax(260px,1fr) 130px 90px 130px 128px;gap:10px;align-items:end;border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;background:rgba(255,255,255,.035)}.page-number{width:32px;height:32px;border-radius:50%;background:rgba(56,189,248,.15);display:flex;align-items:center;justify-content:center;font-weight:700;color:#7dd3fc}label{display:grid;gap:6px;color:#cbd5e1;font-size:12px}input{width:100%;border:1px solid var(--line);border-radius:10px;background:#020617;color:#f8fafc;padding:10px 11px}.check{display:flex;gap:8px;align-items:center;min-height:40px}.check input{width:auto}.row-actions{display:flex;gap:6px}.icon{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center}.danger{color:#fecaca;border-color:rgba(239,68,68,.35)}.links{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.links h2{width:100%}.toast{border-radius:14px;padding:12px 14px;margin-bottom:14px;border:1px solid}.toast.ok{background:rgba(22,163,74,.12);border-color:rgba(34,197,94,.4);color:#bbf7d0}.toast.error{background:rgba(220,38,38,.12);border-color:rgba(248,113,113,.45);color:#fecaca}.empty-big,.empty-mini{color:var(--muted);line-height:1.5}.upload{border-style:dashed}.image-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.img-card{border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(255,255,255,.035);display:grid;grid-template-columns:64px 1fr 36px;gap:10px;align-items:center}.img-card img{width:64px;height:48px;object-fit:cover;border-radius:10px;background:#020617}.img-card small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.prose{line-height:1.55}.prose code,.empty-big code{background:#020617;border:1px solid var(--line);padding:2px 6px;border-radius:6px;color:#bfdbfe}@media(max-width:980px){.app{grid-template-columns:1fr}aside{position:relative;height:auto}.page-row{grid-template-columns:1fr}.settings-grid{grid-template-columns:1fr}.hero{display:block}.hero .primary{margin-top:12px;width:100%}}`;
+        *{box-sizing:border-box} button,input,select,textarea{font:inherit} .app{display:grid;grid-template-columns:300px 1fr;min-height:100vh} aside{background:#08111f;border-right:1px solid var(--line);padding:18px;position:sticky;top:0;height:100vh;overflow:auto} main{padding:24px;max-width:1400px;width:100%;margin:0 auto}.brand{display:flex;align-items:center;gap:12px;margin-bottom:20px}.brand span{font-size:32px}.brand b{display:block;font-size:18px}.brand small,.device small,.hint{color:var(--muted)}nav{display:grid;gap:8px;margin-bottom:20px}button,a{border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.05);color:#e5e7eb;text-decoration:none;padding:10px 12px;cursor:pointer}button:hover,a:hover{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.5)}button.active,.primary{background:linear-gradient(135deg,#0891b2,#2563eb);border-color:transparent;color:white;font-weight:700}button:disabled{opacity:.6;cursor:wait}.side-title{text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-size:12px;margin:18px 0 8px}.devices{display:grid;gap:8px}.device{width:100%;text-align:left;display:grid;grid-template-columns:12px 1fr;gap:10px;align-items:center}.device.selected{border-color:var(--accent);background:rgba(56,189,248,.14)}.dot{width:10px;height:10px;border-radius:50%;background:#64748b}.dot.online{background:#22c55e}.dot.offline{background:#ef4444}.wide{width:100%;margin-top:8px}.small{font-size:13px;padding:8px 10px}.hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.hero h1{margin:0 0 6px;font-size:32px}.hero p{margin:0;color:var(--muted);max-width:820px;line-height:1.45}.card{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:18px;box-shadow:0 18px 60px rgba(0,0,0,.18)}.card h2{margin:0 0 12px;font-size:18px}.quick-list{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.quick-list button{display:flex;flex-direction:column;align-items:flex-start;gap:3px}.quick-list small{color:#bae6fd}.settings-grid{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:end}.page-row{display:grid;grid-template-columns:42px 180px minmax(260px,1fr) 130px 90px 130px 128px;gap:10px;align-items:end;border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;background:rgba(255,255,255,.035)}.page-number{width:32px;height:32px;border-radius:50%;background:rgba(56,189,248,.15);display:flex;align-items:center;justify-content:center;font-weight:700;color:#7dd3fc}label{display:grid;gap:6px;color:#cbd5e1;font-size:12px}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;background:#020617;color:#f8fafc;padding:10px 11px}textarea{resize:vertical;min-height:78px}.check{display:flex;gap:8px;align-items:center;min-height:40px}.check input{width:auto}.row-actions{display:flex;gap:6px}.icon{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center}.danger{color:#fecaca;border-color:rgba(239,68,68,.35)}.links{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.links h2{width:100%}.toast{border-radius:14px;padding:12px 14px;margin-bottom:14px;border:1px solid}.toast.ok{background:rgba(22,163,74,.12);border-color:rgba(34,197,94,.4);color:#bbf7d0}.toast.error{background:rgba(220,38,38,.12);border-color:rgba(248,113,113,.45);color:#fecaca}.empty-big,.empty-mini{color:var(--muted);line-height:1.5}.upload{border-style:dashed}.image-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.img-card{border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(255,255,255,.035);display:grid;grid-template-columns:64px 1fr 36px;gap:10px;align-items:center}.img-card img{width:64px;height:48px;object-fit:cover;border-radius:10px;background:#020617}.img-card small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.message-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}.msg-card{display:grid;gap:12px}.subgrid{display:grid;grid-template-columns:1fr 150px;gap:10px}.preview-wrap{border:1px dashed var(--line);border-radius:14px;padding:12px;background:rgba(255,255,255,.025)}.ticker-preview{display:flex;align-items:center;width:100%;min-height:38px;padding:0 14px;border-radius:10px;color:#fff;overflow:hidden;white-space:nowrap}.ticker-preview.dark{background:rgba(12,18,28,.78)}.toast-preview{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:16px;color:#fff}.banner-preview{display:grid;gap:4px;min-height:60px;padding:12px 14px;border-radius:12px;color:#fff}.alert-preview{display:grid;place-items:center;min-height:140px;border-radius:18px;color:#fff;text-align:center;padding:20px}.alert-title-preview{font-size:24px;font-weight:700;margin-bottom:8px}.code{background:#020617;color:#dbeafe;padding:12px;border-radius:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);margin:0}.prose{line-height:1.55}.prose code,.empty-big code{background:#020617;border:1px solid var(--line);padding:2px 6px;border-radius:6px;color:#bfdbfe}@media(max-width:980px){.app{grid-template-columns:1fr}aside{position:relative;height:auto}.page-row{grid-template-columns:1fr}.settings-grid{grid-template-columns:1fr}.subgrid{grid-template-columns:1fr}.hero{display:block}.hero .primary{margin-top:12px;width:100%}}`;
     }
   }
 

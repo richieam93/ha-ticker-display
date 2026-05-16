@@ -97,7 +97,6 @@ class TickerDisplayAPI:
 
         # Config API
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
-        app.router.add_post(f"{API_BASE}/api/config/device/virtual", self._config_device_virtual)
         app.router.add_get(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_get)
         app.router.add_post(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_save)
         app.router.add_get(f"{API_BASE}/api/config/templates", self._config_templates)
@@ -1394,6 +1393,8 @@ class TickerDisplayAPI:
         devices = self.store.get_devices()
         result = []
         for did, config in devices.items():
+            if config.get("virtual") or str(did).startswith("virtual_"):
+                continue
             item = dict(config)
             status = self.coordinator.get_device_status(
                 did,
