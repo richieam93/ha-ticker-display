@@ -878,7 +878,38 @@ _applyCommonWidgetStyle(widget, config) {
 
   pauseRotation() { this.isPaused = true; this._stopRotation(); }
 
+  pauseRotationFor(seconds) {
+    const s = Math.max(0, Number(seconds || 0));
+    if (!s) return;
+    this.isPaused = true;
+    this._stopRotation(false);
+    if (this._pauseResumeTimer) clearTimeout(this._pauseResumeTimer);
+    this._pauseResumeTimer = setTimeout(() => {
+      this._pauseResumeTimer = null;
+      this.resumeRotation();
+    }, s * 1000);
+    this._showPauseHint(s);
+  }
+
+  _showPauseHint(seconds) {
+    try {
+      const old = document.getElementById("td-kiosk-pause-hint");
+      if (old) old.remove();
+      const el = document.createElement("div");
+      el.id = "td-kiosk-pause-hint";
+      el.className = "td-kiosk-pause-hint";
+      const mins = Math.round(Number(seconds || 0) / 60);
+      el.textContent = "Seitenwechsel pausiert" + (mins > 0 ? " – " + mins + " Min." : "");
+      document.body.appendChild(el);
+      setTimeout(() => { if (el && el.parentNode) el.parentNode.removeChild(el); }, 2400);
+    } catch (_err) {}
+  }
+
   resumeRotation() {
+    if (this._pauseResumeTimer) {
+      clearTimeout(this._pauseResumeTimer);
+      this._pauseResumeTimer = null;
+    }
     this.isPaused = false;
     this.temporaryScreen = null;
     this._showScreen(this.currentIndex);
@@ -931,6 +962,9 @@ _applyCommonWidgetStyle(widget, config) {
     this._applyScreenStyle(screen, config);
 
     switch (config.type) {
+      case "ha-page":
+      case "kiosk-page":
+      case "webview": this._buildHaPageScreen(screen, config); break;
       case "clock": this._buildClockScreen(screen, config); break;
       case "weather": this._buildWeatherScreen(screen, config); break;
       case "camera": this._buildCameraScreen(screen, config); break;
@@ -947,6 +981,15 @@ _applyCommonWidgetStyle(widget, config) {
       const text = String(url || "");
       return text.split('"').join("%22").split("\\").join("%5C").split("\n").join("").split("\r").join("");
   }
+  _screenBackgroundSize(size) {
+    const value = String(size || "cover").trim().toLowerCase();
+    // A display background must fill the configured screen area. "auto" can render
+    // as a tiny image in older Android WebViews, so treat it as cover.
+    if (!value || value === "auto" || value === "default") return "cover";
+    if (value === "cover" || value === "contain") return value;
+    if (value === "stretch" || value === "fill" || value === "full") return "100% 100%";
+    return "cover";
+  }
   _applyScreenBackground(screen, config, imageUrl) {
     if (!screen || !imageUrl) return;
     const overlay = Number(config.background_overlay_opacity ?? 1);
@@ -956,7 +999,11 @@ _applyCommonWidgetStyle(widget, config) {
     screen.style.backgroundImage = `linear-gradient(rgba(0,0,0,${shade}), rgba(0,0,0,${shade})), url("${safeUrl}")`;
     screen.style.backgroundRepeat = "no-repeat, no-repeat";
     screen.style.backgroundPosition = "center center, center center";
-    screen.style.backgroundSize = `100% 100%, ${config.background_image_size || "cover"}`;
+    const bgSize = this._screenBackgroundSize(config.background_image_size || config.background_size || "cover");
+    screen.classList.add("screen-has-background");
+    screen.style.backgroundSize = `100% 100%, ${bgSize}`;
+    screen.style.backgroundOrigin = "border-box, border-box";
+    screen.style.backgroundClip = "border-box, border-box";
   }
 
   _screenBackgroundPool(config) {
@@ -1123,6 +1170,53 @@ _applyCommonWidgetStyle(widget, config) {
     requestAnimationFrame(() => this._fitDashboardLayout(grid));
     setTimeout(() => this._fitDashboardLayout(grid), 250);
     console.log("✅ Dashboard erstellt mit", widgets.length, "Widgets");
+  }
+
+  _buildHaPageScreen(screen, config) {
+    let rawUrl = String(config.url || config.page_url || config.kiosk_url || "/lovelace").trim();
+    if (!rawUrl) rawUrl = "/lovelace";
+    let isExternal = /^https?:\/\//i.test(rawUrl);
+    let normalized = rawUrl;
+    try {
+      const parsed = new URL(rawUrl, window.location.origin);
+      isExternal = parsed.origin !== window.location.origin;
+      normalized = isExternal ? parsed.href : (parsed.pathname + parsed.search + parsed.hash);
+    } catch (_err) {
+      normalized = rawUrl.charAt(0) === "/" ? rawUrl : "/" + rawUrl.replace(/^\/+/, "");
+    }
+    const kiosk = config.kiosk !== false;
+    const src = (!isExternal && kiosk) ? this._applyHaEmbedKiosk(normalized) : normalized;
+    const pauseSeconds = Number(config.touch_pause_seconds || this.app.config.rotation?.touch_pause_seconds || 300);
+    screen.classList.add("ha-kiosk-screen");
+    screen.dataset.kioskUrl = src;
+    screen.innerHTML = `<iframe class="ha-kiosk-frame" src="${Utils.escapeHtml(src)}" title="${Utils.escapeHtml(config.name || 'Home Assistant')}" allow="fullscreen; clipboard-read; clipboard-write; autoplay" referrerpolicy="same-origin"></iframe><div class="ha-kiosk-loading"><div class="loading-spinner"></div><span>${Utils.escapeHtml(config.name || 'Home Assistant')}</span></div>`;
+    const iframe = screen.querySelector(".ha-kiosk-frame");
+    const loading = screen.querySelector(".ha-kiosk-loading");
+    const pause = () => { if (pauseSeconds > 0) this.pauseRotationFor(pauseSeconds); };
+    screen.addEventListener("pointerdown", pause, true);
+    screen.addEventListener("touchstart", pause, true);
+    if (iframe) {
+      iframe.addEventListener("load", () => {
+        if (loading) loading.classList.add("hidden");
+        if (kiosk && !isExternal) this._applyHaEmbedKioskStyles(iframe);
+        this._attachHaKioskPauseHooks(iframe, pause);
+      });
+      setTimeout(() => {
+        if (kiosk && !isExternal) this._applyHaEmbedKioskStyles(iframe);
+        this._attachHaKioskPauseHooks(iframe, pause);
+      }, 1500);
+    }
+  }
+
+  _attachHaKioskPauseHooks(iframe, pause) {
+    try {
+      const doc = iframe && (iframe.contentDocument || iframe.contentWindow?.document);
+      if (!doc || doc.__tickerDisplayPauseHooked) return;
+      doc.__tickerDisplayPauseHooked = true;
+      ["pointerdown", "touchstart", "mousedown", "click", "keydown"].forEach((eventName) => {
+        doc.addEventListener(eventName, pause, true);
+      });
+    } catch (_err) {}
   }
 
   _buildClockScreen(screen) {

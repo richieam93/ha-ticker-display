@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-INTEGRATION_VERSION = "2.7.3"
+INTEGRATION_VERSION = "3.0.0"
 PLATFORMS = ["sensor", "binary_sensor", "switch", "number", "media_player", "camera"]
 
 API_BASE = "/ticker-display"
@@ -30,7 +30,7 @@ SCREEN_TYPES = [
     "dashboard", "graph", "weather", "camera", "single-value",
     "energy", "persons", "calendar", "media-player", "status-board",
     "clock", "countdown", "table", "qr-code", "floorplan",
-    "webview", "image",
+    "webview", "ha-page", "kiosk-page", "image",
 ]
 
 ALERT_SEVERITIES = ["info", "warning", "critical"]
