@@ -223,6 +223,15 @@
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="Aktionen" android:textColor="@color/td_primary" android:textSize="12sp"
                 android:textStyle="bold" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_test_connection" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Verbindung testen" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_primary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_copy_info" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Diagnose kopieren" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
+            <Button android:id="@+id/btn_copy_logs" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Log-Auszug kopieren" android:textAllCaps="false"
+                android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
             <Button android:id="@+id/btn_change_pin" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="PIN ändern" android:textAllCaps="false"
                 android:textColor="@color/td_text" android:background="@drawable/bg_button_secondary" android:layout_marginBottom="8dp" />
