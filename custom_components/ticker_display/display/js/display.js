@@ -1,5 +1,5 @@
 /*
- * Ticker Display 3.0.6 - Kiosk-only display engine.
+ * Ticker Display 3.0.7 - Kiosk-only display engine.
  * Kiosk-only display. Shows Home Assistant pages in a fullscreen iframe,
  * plus ticker/toast/banner/alert.
  */
@@ -250,22 +250,6 @@ function KioskPageManager(app) {
   this.pauseTimer = null;
   this.pausedUntil = 0;
 }
-
-var TD_HA_KIOSK_STYLE = [
-  "html,body{width:100%!important;height:100%!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}",
-  "body{position:relative!important;overscroll-behavior:none!important;-webkit-text-size-adjust:100%!important;touch-action:manipulation!important}",
-  "app-header,app-toolbar,ha-top-app-bar-fixed,ha-drawer,ha-sidebar,ha-menu-button,.toolbar,.header,.mdc-top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important;min-height:0!important;height:0!important;overflow:hidden!important}",
-  "home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{--app-header-height:0px!important;--header-height:0px!important;--mdc-top-app-bar-height:0px!important;--safe-area-inset-top:0px!important;--safe-area-inset-bottom:0px!important}",
-  "home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{display:block!important;width:100%!important;max-width:none!important;min-width:0!important;height:100%!important;max-height:none!important;margin:0!important;padding:0!important;inset:auto!important;overflow:hidden!important;transform:none!important}",
-  "ha-panel-lovelace,hui-root{overflow:auto!important;-webkit-overflow-scrolling:touch!important;background:var(--lovelace-background,var(--primary-background-color,#000))!important}",
-  "main,#view,#root,.view,.container,.content,.page,.columns,.section-container,.sections-container{width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:0!important;box-sizing:border-box!important;left:0!important;right:0!important;top:0!important;transform:none!important}",
-  "hui-view,hui-masonry-view,hui-sections-view{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:8px!important;box-sizing:border-box!important;overflow:visible!important;transform:none!important}",
-  "hui-sections-view{--column-width:minmax(0,1fr)!important;--section-max-width:100%!important;--ha-view-sections-column-gap:8px!important;--ha-view-sections-row-gap:8px!important}",
-  ".sections,.columns,.section-container,.content,.container{width:100%!important;max-width:100%!important;min-width:0!important;margin-left:0!important;margin-right:0!important;box-sizing:border-box!important;transform:none!important}",
-  ".sections{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr))!important;gap:8px!important;align-items:start!important}",
-  "hui-section,.section,ha-card,.card{max-width:100%!important;min-width:0!important;box-sizing:border-box!important}",
-  "@media(max-width:700px){hui-view,hui-masonry-view,hui-sections-view{padding:6px!important}.sections,.columns{display:block!important}.section,hui-section{width:100%!important;max-width:100%!important;margin:0 0 8px 0!important}}"
-].join("\n");
 KioskPageManager.prototype.rebuild = function () {
   this.stop();
   this.pages = [];
@@ -310,84 +294,24 @@ KioskPageManager.prototype.show = function (index) {
   if (iframe) {
     iframe.addEventListener("load", function () {
       if (loading) loading.className += " hidden";
-      self.applyKioskStyles(iframe);
+      if (page.kiosk !== false) self.applyKioskStyles(iframe);
       self.attachPauseHooks(iframe, pause);
     });
     setTimeout(function () {
-      self.applyKioskStyles(iframe);
+      if (page.kiosk !== false) self.applyKioskStyles(iframe);
       self.attachPauseHooks(iframe, pause);
     }, 1500);
   }
   if (this.app.wsClient) this.app.wsClient.send({ type: "status", screen: page.name || page.id || "page" });
 };
 KioskPageManager.prototype.applyKioskStyles = function (iframe) {
-  var self = this;
   try {
     var doc = iframe && (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document));
-    if (!doc || !doc.documentElement) return;
-
-    function ensureViewport() {
-      try {
-        var head = doc.head || doc.getElementsByTagName("head")[0];
-        if (!head) return;
-        var meta = doc.querySelector('meta[name="viewport"]');
-        if (!meta) {
-          meta = doc.createElement("meta");
-          meta.setAttribute("name", "viewport");
-          head.appendChild(meta);
-        }
-        meta.setAttribute("content", "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
-      } catch (e) {}
-    }
-
-    function injectIntoRoot(root) {
-      try {
-        if (!root || root.__tdKioskStyleApplied) return;
-        var style = doc.createElement("style");
-        style.id = "td-kiosk-style";
-        style.textContent = TD_HA_KIOSK_STYLE;
-        if (root.head) root.head.appendChild(style);
-        else root.appendChild(style);
-        root.__tdKioskStyleApplied = true;
-      } catch (e) {}
-    }
-
-    function walk(node, depth) {
-      if (!node || depth > 8) return;
-      try {
-        if (node.shadowRoot) {
-          injectIntoRoot(node.shadowRoot);
-          walk(node.shadowRoot, depth + 1);
-        }
-        var children = node.children || node.querySelectorAll && node.querySelectorAll("*");
-        if (!children) return;
-        for (var i = 0; i < children.length; i++) walk(children[i], depth + 1);
-      } catch (e) {}
-    }
-
-    function applyOnce() {
-      try {
-        if (doc.documentElement) doc.documentElement.classList.add("td-kiosk-embedded");
-        if (doc.body) doc.body.classList.add("td-kiosk-embedded");
-        ensureViewport();
-        injectIntoRoot(doc);
-        walk(doc.documentElement, 0);
-        if (iframe && iframe.contentWindow) {
-          try { iframe.contentWindow.dispatchEvent(new Event("resize")); } catch (e) {}
-        }
-      } catch (e) {}
-    }
-
-    applyOnce();
-    [250, 800, 1600, 3200, 6000].forEach(function (delay) { setTimeout(applyOnce, delay); });
-
-    if (!doc.__tdKioskObserver && doc.documentElement && typeof MutationObserver !== "undefined") {
-      doc.__tdKioskObserver = new MutationObserver(function () { applyOnce(); });
-      doc.__tdKioskObserver.observe(doc.documentElement, { childList: true, subtree: true });
-      setTimeout(function () {
-        try { if (doc.__tdKioskObserver) doc.__tdKioskObserver.disconnect(); } catch (e) {}
-      }, 20000);
-    }
+    if (!doc || !doc.head || doc.getElementById("td-kiosk-style")) return;
+    var style = doc.createElement("style");
+    style.id = "td-kiosk-style";
+    style.textContent = 'app-header,app-toolbar,ha-top-app-bar-fixed,ha-drawer,ha-sidebar,ha-menu-button,.toolbar,.header,.mdc-top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important}home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}ha-panel-lovelace,hui-root,.view,.container,main,#view,#root,body{margin-top:0!important;padding-top:0!important;top:0!important}';
+    doc.head.appendChild(style);
   } catch (err) {}
 };
 KioskPageManager.prototype.attachPauseHooks = function (iframe, pause) {

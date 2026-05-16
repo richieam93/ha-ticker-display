@@ -1,10 +1,10 @@
 /**
- * Ticker Display Panel 3.0.6
+ * Ticker Display Panel 3.0.7
  * Kiosk-Verwaltung mit Modul-Einstellungen fuer Uhr, Wetter und Kamera.
  */
 (function () {
   const API = "/ticker-display";
-  const VERSION = "3.0.6";
+  const VERSION = "3.0.7";
   const DEFAULT_PAGE_URL = "/dashboard-durchgang/4";
   const QUICK_PAGES = [
     ["Durchgang", "/dashboard-durchgang/4"],
