@@ -1031,6 +1031,37 @@ _applyCommonWidgetStyle(widget, config) {
     screen.appendChild(overlay);
   }
 
+  _normalizeDashboardGridConfig(gridCfg, widgets) {
+    const cfg = gridCfg && typeof gridCfg === "object" ? gridCfg : {};
+    const safeInt = (value, fallback, min, max) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, Math.round(n)));
+    };
+    const widgetList = Utils.safeArray(widgets);
+    let cols = safeInt(cfg.columns !== undefined ? cfg.columns : cfg.cols, 3, 1, 12);
+    let rows = safeInt(cfg.rows, 2, 1, 12);
+    let maxCol = 1;
+    let maxRow = 1;
+    widgetList.forEach((w) => {
+      if (!w) return;
+      const col = safeInt(w.col, 0, 0, 11);
+      const row = safeInt(w.row, 0, 0, 11);
+      const colspan = safeInt(w.colspan, 1, 1, 12);
+      const rowspan = safeInt(w.rowspan, 1, 1, 12);
+      maxCol = Math.max(maxCol, col + colspan);
+      maxRow = Math.max(maxRow, row + rowspan);
+    });
+    cols = Math.max(cols, Math.min(12, maxCol));
+    rows = Math.max(rows, Math.min(12, maxRow));
+    return {
+      cols,
+      rows,
+      gap: safeInt(cfg.gap, 12, 0, 80),
+      adaptive: cfg.adaptive !== false
+    };
+  }
+
   /* ────── Screen Builders ────── */
   /** Dashboard Screen - adaptiv für Tablet/WebView */
   _buildDashboardScreen(screen, config) {
@@ -1038,12 +1069,14 @@ _applyCommonWidgetStyle(widget, config) {
     const grid = document.createElement("div");
     grid.className = "dashboard-grid td-layout-adaptive";
 
-    const gridCfg = config.grid || {};
-    const cols = Math.max(1, Number(gridCfg.columns || 3));
-    const rows = Math.max(1, Number(gridCfg.rows || 2));
-    const gap = Math.max(0, Number(gridCfg.gap || 12));
-    const adaptive = gridCfg.adaptive !== false;
+    const widgets = Utils.safeArray(config.widgets);
+    const gridFit = this._normalizeDashboardGridConfig(config.grid || {}, widgets);
+    const cols = gridFit.cols;
+    const rows = gridFit.rows;
+    const gap = gridFit.gap;
+    const adaptive = gridFit.adaptive;
 
+    grid.classList.toggle("td-single-widget", widgets.length === 1);
     grid.dataset.cols = String(cols);
     grid.dataset.rows = String(rows);
     grid.dataset.gap = String(gap);
@@ -1054,8 +1087,7 @@ _applyCommonWidgetStyle(widget, config) {
     grid.style.setProperty("--td-adaptive-gap", `${gap}px`);
     grid.style.setProperty("--td-adaptive-padding", `${gap}px`);
 
-    const widgets = Utils.safeArray(config.widgets);
-    console.log("📊 Widgets:", widgets.length);
+    console.log("📊 Widgets:", widgets.length, "Grid:", cols + "×" + rows);
 
     widgets.forEach((wc, index) => {
       if (!wc) return;
@@ -1063,15 +1095,16 @@ _applyCommonWidgetStyle(widget, config) {
       widget.style.setProperty("--widget-enter-delay", `${index * 60}ms`);
       widget.classList.add("widget-enter");
 
-      const col = Number(wc.col);
-      const row = Number(wc.row);
-      const colspan = Math.max(1, Math.min(cols, Number(wc.colspan || 1)));
-      const rowspan = Math.max(1, Math.min(rows, Number(wc.rowspan || 1)));
-      if (wc.col !== undefined && Number.isFinite(col)) {
-        widget.style.gridColumn = `${Math.max(0, col) + 1}/span ${colspan}`;
-      }
-      if (wc.row !== undefined && Number.isFinite(row)) {
-        widget.style.gridRow = `${Math.max(0, row) + 1}/span ${rowspan}`;
+      const rawCol = Number(wc.col);
+      const rawRow = Number(wc.row);
+      const col = Number.isFinite(rawCol) ? Math.max(0, Math.min(cols - 1, Math.round(rawCol))) : 0;
+      const row = Number.isFinite(rawRow) ? Math.max(0, Math.min(rows - 1, Math.round(rawRow))) : 0;
+      const colspan = Math.max(1, Math.min(cols - col, Math.round(Number(wc.colspan || 1)) || 1));
+      const rowspan = Math.max(1, Math.min(rows - row, Math.round(Number(wc.rowspan || 1)) || 1));
+      widget.style.gridColumn = `${col + 1}/span ${colspan}`;
+      widget.style.gridRow = `${row + 1}/span ${rowspan}`;
+      if (col === 0 && row === 0 && colspan >= cols && rowspan >= rows) {
+        widget.classList.add("td-widget-fullscreen");
       }
 
       widget.style.setProperty("--widget-priority", wc.priority || "normal");
@@ -2721,15 +2754,36 @@ _getChartConfig(type, histories, labels, config) {
   }
 
   _weatherFxMarkup(kind, layers = 1) {
-    const base = (kind === "rain" || kind === "storm" || kind === "snow") ? 6 : 3;
-    const count = Math.max(1, Number(layers || 1)) * base;
+    const isRain = kind === "rain" || kind === "storm";
+    const isSnow = kind === "snow";
+    const isCloud = kind === "clouds" || kind === "fog" || kind === "wind";
+    const base = (isRain || isSnow) ? 14 : 6;
+    const safeLayers = Math.max(1, Math.min(5, Number(layers || 1)));
+    const count = safeLayers * base;
     return Array.from({ length: count }, (_, i) => {
-      const left = ((i * 17) % 96) + 2;
-      const top = kind === "rain" || kind === "storm" ? -20 : ((i * 29) % 80) + 8;
-      const delay = -((i % base) * 0.65);
-      const size = kind === "clouds" || kind === "fog" || kind === "wind" ? 140 + ((i * 31) % 90) : (kind === "snow" ? 8 + (i % 4) * 2 : 3);
-      const height = kind === "clouds" || kind === "fog" || kind === "wind" ? 36 + ((i * 13) % 22) : (kind === "snow" ? size : 38);
-      return `<span style="--fx-left:${left}%;--fx-top:${top}%;--fx-delay:${delay}s;--fx-width:${size}px;--fx-height:${height}px"></span>`;
+      const left = ((i * 37 + Math.floor(i / base) * 11) % 98) + 1;
+      const top = isRain ? -28 : (isSnow ? -14 : ((i * 29) % 84) + 4);
+      const delay = -((i * 0.37) % (isSnow ? 7 : isRain ? 2.4 : 18));
+      const duration = isRain ? (0.85 + (i % 5) * 0.12) : (isSnow ? (5.2 + (i % 6) * 0.45) : (15 + (i % 5) * 1.6));
+      const width = isCloud ? 120 + ((i * 31) % 130) : (isSnow ? 7 + (i % 5) * 2 : 2 + (i % 3));
+      const height = isCloud ? 30 + ((i * 13) % 36) : (isSnow ? width : 34 + (i % 4) * 8);
+      const drift = isRain ? (-16 + (i % 7) * 3) : (isSnow ? (-18 + (i % 9) * 5) : 0);
+      const style = [
+        `--fx-left:${left}%`,
+        `--fx-top:${top}%`,
+        `--fx-delay:${delay}s`,
+        `--fx-width:${width}px`,
+        `--fx-height:${height}px`,
+        `--fx-duration:${duration}s`,
+        `--fx-drift:${drift}px`,
+        `left:${left}%`,
+        `top:${top}%`,
+        `width:${width}px`,
+        `height:${height}px`,
+        `animation-delay:${delay}s`,
+        `animation-duration:${duration}s`
+      ].join(";");
+      return `<span style="${style}"></span>`;
     }).join("");
   }
 

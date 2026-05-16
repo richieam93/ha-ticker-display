@@ -326,6 +326,50 @@ function uniqueId(prefix = "w") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+
+function tdClampInt(value, fallback, min = 1, max = 12) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function tdNormalizeGridConfig(grid = {}, widgets = [], defaults = {}) {
+  const g = grid && typeof grid === "object" ? grid : {};
+  const fallbackCols = tdClampInt(defaults.columns ?? 3, 3, 1, 12);
+  const fallbackRows = tdClampInt(defaults.rows ?? 2, 2, 1, 12);
+  let columns = tdClampInt(g.columns ?? g.cols, fallbackCols, 1, 12);
+  let rows = tdClampInt(g.rows, fallbackRows, 1, 12);
+  let maxCol = 1;
+  let maxRow = 1;
+  for (const w of Array.isArray(widgets) ? widgets : []) {
+    if (!w || typeof w !== "object") continue;
+    const col = tdClampInt(w.col, 0, 0, 11);
+    const row = tdClampInt(w.row, 0, 0, 11);
+    const colspan = tdClampInt(w.colspan, 1, 1, 12);
+    const rowspan = tdClampInt(w.rowspan, 1, 1, 12);
+    maxCol = Math.max(maxCol, col + colspan);
+    maxRow = Math.max(maxRow, row + rowspan);
+  }
+  columns = Math.max(columns, Math.min(12, maxCol));
+  rows = Math.max(rows, Math.min(12, maxRow));
+  const normalized = { ...g, columns, rows };
+  if (g.gap != null) normalized.gap = tdClampInt(g.gap, 12, 0, 80);
+  return normalized;
+}
+
+function tdNormalizeWidgetBounds(widget = {}, grid = {}) {
+  const cols = tdClampInt(grid.columns, 3, 1, 12);
+  const rows = tdClampInt(grid.rows, 2, 1, 12);
+  const w = { ...widget };
+  const col = tdClampInt(w.col, 0, 0, Math.max(0, cols - 1));
+  const row = tdClampInt(w.row, 0, 0, Math.max(0, rows - 1));
+  w.col = col;
+  w.row = row;
+  w.colspan = tdClampInt(w.colspan, 1, 1, Math.max(1, cols - col));
+  w.rowspan = tdClampInt(w.rowspan, 1, 1, Math.max(1, rows - row));
+  return w;
+}
+
 function downloadJson(filename, data) {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: "application/json" });
@@ -636,7 +680,9 @@ function tdNormalizeWidgetRuntime(widget = {}) {
 
 function tdNormalizeScreenRuntime(screen = {}) {
   const s = deepClone(screen);
-  s.widgets = (s.widgets || []).map((widget) => tdNormalizeWidgetRuntime(widget));
+  const normalizedWidgets = (s.widgets || []).map((widget) => tdNormalizeWidgetRuntime(widget));
+  s.grid = tdNormalizeGridConfig(s.grid || {}, normalizedWidgets, { columns: 3, rows: 2 });
+  s.widgets = normalizedWidgets.map((widget) => tdNormalizeWidgetBounds(widget, s.grid));
   return s;
 }
 
@@ -2941,7 +2987,7 @@ class TdScreenEditor extends LitElement {
 
   updated(changed) {
     if (changed.has("screenConfig") && this.screenConfig) {
-      this._cfg = deepClone(this.screenConfig);
+      this._cfg = tdNormalizeScreenRuntime(this.screenConfig);
     }
   }
 
@@ -4693,10 +4739,14 @@ class TdScreenEditor extends LitElement {
      ══════════════════════════════════════════════════════════ */
 
   _setGrid(key, value) {
-    this._cfg = {
-      ...this._cfg,
-      grid: { ...(this._cfg.grid || { columns: 3, rows: 2 }), [key]: value },
-    };
+    const normalized = tdNormalizeGridConfig(
+      { ...(this._cfg.grid || { columns: 3, rows: 2 }), [key]: value },
+      this._cfg.widgets || [],
+      { columns: 3, rows: 2 }
+    );
+    const widgets = (this._cfg.widgets || []).map((widget) => tdNormalizeWidgetBounds(widget, normalized));
+    this._pushUndo();
+    this._cfg = { ...this._cfg, grid: normalized, widgets };
   }
 
   _openDraftPreview() {
@@ -9365,9 +9415,9 @@ class TdImageManager extends LitElement {
            @dragleave=${() => this._dragOver = false}
            @drop=${(e) => this._onDrop(e)}>
         <div class="upload-icon">🖼️</div>
-        <div>Bild hochladen oder hierher ziehen</div>
-        <div class="upload-hint">PNG, JPG, SVG, GIF, WebP · max. 10 MB</div>
-        <input id="img-input" type="file" accept=".png,.jpg,.jpeg,.svg,.gif,.webp"
+        <div>Bilder hochladen oder hierher ziehen</div>
+        <div class="upload-hint">PNG, JPG, SVG, GIF, WebP · max. 10 MB pro Bild · Mehrfachauswahl möglich</div>
+        <input id="img-input" type="file" multiple accept=".png,.jpg,.jpeg,.svg,.gif,.webp"
                @change=${(e) => this._onFile(e)}>
       </div>
 
@@ -9418,16 +9468,16 @@ class TdImageManager extends LitElement {
   }
 
   _onFile(e) {
-    const f = e.target.files?.[0];
-    if (f) this._emit("upload-image", { file: f });
+    const files = Array.from(e.target.files || []).filter(Boolean);
+    if (files.length) this._emit("upload-images", { files });
     e.target.value = "";
   }
 
   _onDrop(e) {
     e.preventDefault();
     this._dragOver = false;
-    const f = e.dataTransfer?.files?.[0];
-    if (f) this._emit("upload-image", { file: f });
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter(Boolean);
+    if (files.length) this._emit("upload-images", { files });
   }
 
   _emit(name, detail) {
@@ -10392,6 +10442,7 @@ class TickerDisplayPanel extends LitElement {
       default: return html`
         <td-image-manager .hass=${this.hass} .images=${this._images}
           @upload-image=${(e) => this._uploadMedia("image", e.detail.file)}
+          @upload-images=${(e) => this._uploadMediaMany("image", e.detail.files)}
           @delete-image=${(e) => this._deleteMedia("image", e.detail.imageId)}>
         </td-image-manager>`;
     }
@@ -10406,7 +10457,7 @@ class TickerDisplayPanel extends LitElement {
         <div class="card" style="margin-bottom:16px">
           <h3>🩺 Diagnose & Verbindungsstatus</h3>
           <div class="muted">
-            Backend v${diag.integration_version || "2.4.0"} · ${diag.device_count ?? devices.length} Geräte ·
+            Backend v${diag.integration_version || "2.7.2"} · ${diag.device_count ?? devices.length} Geräte ·
             ${diag.online_count ?? devices.filter((d) => d.online).length} online ·
             ${diag.connected_count ?? devices.filter((d) => d.connected).length} WebSocket verbunden
           </div>
@@ -10659,7 +10710,8 @@ TickerDisplayPanel.prototype._saveScreen = async function (device, screenConfig)
   if (!device) return;
   try {
     const screens = [...(device.screens || [])];
-    screens[this._scrIdx] = tdNormalizeScreenRuntime(screenConfig);
+    const normalizedScreen = tdNormalizeScreenRuntime(screenConfig);
+    screens[this._scrIdx] = normalizedScreen;
     await this._post(`/api/config/device/${this._devId}`, tdNormalizeDeviceRuntime({ ...device, screens }));
     await this._loadAll();
     this._toast("✅ Screen gespeichert", "success");
@@ -10947,6 +10999,58 @@ TickerDisplayPanel.prototype._uploadMedia = async function (type, file) {
   }
 };
 
+TickerDisplayPanel.prototype._uploadMediaMany = async function (type, files) {
+  const list = Array.from(files || []).filter(Boolean);
+  if (!list.length) return;
+  if (list.length === 1) return this._uploadMedia(type, list[0]);
+
+  const maxSizes = { sound: 5, font: 10, image: 10 };
+  const maxMB = maxSizes[type] || 10;
+  const allowedTypes = {
+    sound: [".mp3", ".wav", ".ogg"],
+    font:  [".woff2", ".ttf", ".otf"],
+    image: [".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"],
+  };
+  const typeIcons = { sound: "🔊", font: "🔤", image: "🖼️" };
+  const label = type === "image" ? "Bilder" : type === "sound" ? "Sounds" : "Dateien";
+  let uploaded = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  this._toast(`⬆️ ${list.length} ${label} werden hochgeladen …`, "info");
+
+  for (const file of list) {
+    const ext = `.${(file.name || "").split(".").pop()?.toLowerCase()}`;
+    if (file.size > maxMB * 1024 * 1024) {
+      skipped += 1;
+      console.warn(`Skipping ${file.name}: too large`);
+      continue;
+    }
+    if (allowedTypes[type] && !allowedTypes[type].includes(ext)) {
+      skipped += 1;
+      console.warn(`Skipping ${file.name}: unsupported type`);
+      continue;
+    }
+    try {
+      await this._upload(`/api/media/${type}/upload`, file);
+      uploaded += 1;
+    } catch (e) {
+      failed += 1;
+      console.error(`Upload ${type} failed for ${file.name}:`, e);
+    }
+  }
+
+  await this._loadAll();
+
+  if (uploaded && !failed && !skipped) {
+    this._toast(`${typeIcons[type] || "📁"} ${uploaded} ${label} hochgeladen`, "success");
+  } else if (uploaded) {
+    this._toast(`${typeIcons[type] || "📁"} ${uploaded} hochgeladen · ${skipped} übersprungen · ${failed} fehlgeschlagen`, failed ? "warning" : "success");
+  } else {
+    this._toast(`❌ Kein Upload erfolgreich · ${skipped} übersprungen · ${failed} fehlgeschlagen`, "error");
+  }
+};
+
 TickerDisplayPanel.prototype._deleteMedia = async function (type, itemId) {
   const ok = await this._confirm(
     `${type === "sound" ? "Sound" : type === "font" ? "Font" : "Bild"} löschen`,
@@ -10990,7 +11094,7 @@ TickerDisplayPanel.prototype._createBackup = async function () {
     // Enrich with metadata
     const enriched = {
       _ticker_display_backup: true,
-      _version: "2.4.0",
+      _version: "2.7.2",
       _created: new Date().toISOString(),
       _ha_version: this.hass?.config?.version || "unknown",
       ...backup,
@@ -11080,7 +11184,7 @@ TickerDisplayPanel.prototype._exportAllConfig = async function () {
     const date = new Date().toISOString().slice(0, 10);
     downloadJson(`ticker-display-full-export-${date}.json`, {
       _ticker_display_backup: true,
-      _version: "2.4.0",
+      _version: "2.7.2",
       _created: new Date().toISOString(),
       _ha_version: this.hass?.config?.version || "unknown",
       devices: this._devices,

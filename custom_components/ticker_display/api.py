@@ -199,6 +199,50 @@ class TickerDisplayAPI:
             value = min(maximum, value)
         return value
 
+    def _clean_int(self, value, default: int, *, minimum: int = 0, maximum: int = 999) -> int:
+        try:
+            number = int(float(value))
+        except (TypeError, ValueError):
+            return default
+        return max(minimum, min(maximum, number))
+
+    def _normalize_screen_config(self, screen: dict) -> dict:
+        if not isinstance(screen, dict):
+            return {}
+        normalized = dict(screen)
+        widgets = [dict(w) for w in normalized.get("widgets", []) if isinstance(w, dict)]
+        grid = normalized.get("grid") if isinstance(normalized.get("grid"), dict) else {}
+        columns = self._clean_int(grid.get("columns", grid.get("cols", 3)), 3, minimum=1, maximum=12)
+        rows = self._clean_int(grid.get("rows", 2), 2, minimum=1, maximum=12)
+        max_col = 1
+        max_row = 1
+        for widget in widgets:
+            col = self._clean_int(widget.get("col", 0), 0, minimum=0, maximum=11)
+            row = self._clean_int(widget.get("row", 0), 0, minimum=0, maximum=11)
+            colspan = self._clean_int(widget.get("colspan", 1), 1, minimum=1, maximum=12)
+            rowspan = self._clean_int(widget.get("rowspan", 1), 1, minimum=1, maximum=12)
+            max_col = max(max_col, col + colspan)
+            max_row = max(max_row, row + rowspan)
+        columns = max(columns, min(12, max_col))
+        rows = max(rows, min(12, max_row))
+        normalized_grid = dict(grid)
+        normalized_grid["columns"] = columns
+        normalized_grid["rows"] = rows
+        if "gap" in normalized_grid:
+            normalized_grid["gap"] = self._clean_int(normalized_grid.get("gap"), 12, minimum=0, maximum=80)
+        normalized["grid"] = normalized_grid
+        fixed_widgets = []
+        for widget in widgets:
+            col = self._clean_int(widget.get("col", 0), 0, minimum=0, maximum=max(0, columns - 1))
+            row = self._clean_int(widget.get("row", 0), 0, minimum=0, maximum=max(0, rows - 1))
+            widget["col"] = col
+            widget["row"] = row
+            widget["colspan"] = self._clean_int(widget.get("colspan", 1), 1, minimum=1, maximum=max(1, columns - col))
+            widget["rowspan"] = self._clean_int(widget.get("rowspan", 1), 1, minimum=1, maximum=max(1, rows - row))
+            fixed_widgets.append(widget)
+        normalized["widgets"] = fixed_widgets
+        return normalized
+
     def _sanitize_device_config(self, device_id: str, config: dict) -> dict:
         allowed = {
             "name", "model", "android_version", "screen_resolution", "screens",
@@ -209,6 +253,7 @@ class TickerDisplayAPI:
         cleaned["id"] = device_id
         if not isinstance(cleaned.get("screens", []), list):
             raise web.HTTPBadRequest(text=json.dumps({"error": "screens must be a list"}), content_type="application/json")
+        cleaned["screens"] = [self._normalize_screen_config(screen) for screen in cleaned.get("screens", [])]
         if not isinstance(cleaned.get("rotation", {}), dict):
             raise web.HTTPBadRequest(text=json.dumps({"error": "rotation must be an object"}), content_type="application/json")
         if not isinstance(cleaned.get("ticker", {}), dict):
@@ -474,27 +519,49 @@ class TickerDisplayAPI:
         return web.json_response(self.media.get_images())
 
     async def _upload_media(self, request):
-        if request.content_length and request.content_length > 25 * 1024 * 1024:
-            return self._error("file too large", status=413)
+        path = request.path
+        # Images can be uploaded in batches from the media tab. Keep the per-file
+        # limit strict, but allow a larger multipart request for several images.
+        max_request_bytes = 250 * 1024 * 1024 if "image" in path else 25 * 1024 * 1024
+        max_file_bytes = 25 * 1024 * 1024
+        if request.content_length and request.content_length > max_request_bytes:
+            return self._error("upload too large", status=413)
 
         reader = await request.multipart()
-        field = await reader.next()
-        if field is None or not getattr(field, "filename", None):
+        results = []
+        skipped = []
+        total_bytes = 0
+
+        while True:
+            field = await reader.next()
+            if field is None:
+                break
+            if not getattr(field, "filename", None):
+                continue
+            filename = _safe_filename(field.filename)
+            if not filename:
+                skipped.append({"filename": field.filename, "error": "invalid filename"})
+                continue
+            data = await field.read(decode=False)
+            total_bytes += len(data)
+            if total_bytes > max_request_bytes:
+                return self._error("upload too large", status=413)
+            if len(data) > max_file_bytes:
+                skipped.append({"filename": filename, "error": "file too large"})
+                continue
+            if "sound" in path:
+                result = await self.media.async_save_sound(filename, data)
+            elif "font" in path:
+                result = await self.media.async_save_font(filename, data)
+            else:
+                result = await self.media.async_save_image(filename, data)
+            results.append(result)
+
+        if not results and not skipped:
             return web.json_response({"error": "file required"}, status=400)
-        filename = _safe_filename(field.filename)
-        data = await field.read(decode=False)
-        if len(data) > 25 * 1024 * 1024:
-            return self._error("file too large", status=413)
-        if not filename:
-            return web.json_response({"error": "invalid filename"}, status=400)
-        path = request.path
-        if "sound" in path:
-            result = await self.media.async_save_sound(filename, data)
-        elif "font" in path:
-            result = await self.media.async_save_font(filename, data)
-        else:
-            result = await self.media.async_save_image(filename, data)
-        return web.json_response(result)
+        if len(results) == 1 and not skipped:
+            return web.json_response(results[0])
+        return web.json_response({"items": results, "skipped": skipped, "count": len(results)})
 
     async def _delete_media(self, request):
         item_id = request.match_info["item_id"]

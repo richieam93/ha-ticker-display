@@ -428,6 +428,42 @@ html.td-ticker-bottom .screen-container {
   --td-widget-icon-size: clamp(16px, calc(var(--td-cell-min, 150px) * 0.16), 34px);
 }
 
+
+/* Fullscreen/single-widget dashboard fixes */
+.dashboard-grid.td-single-widget {
+  gap: 0;
+}
+
+.dashboard-grid.td-single-widget > .td-widget-fullscreen {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dashboard-grid.td-single-widget > .td-widget-fullscreen:not(.widget-camera):not(.widget-image):not(.widget-web-embed) {
+  --td-widget-value-size: clamp(34px, min(11vw, 16vh), 120px);
+  --td-widget-unit-size: clamp(16px, min(4vw, 5vh), 42px);
+  --td-widget-name-size: clamp(16px, min(3vw, 4vh), 34px);
+  --td-widget-subtitle-size: clamp(14px, min(2.4vw, 3.4vh), 28px);
+  --td-widget-icon-size: clamp(40px, min(9vw, 12vh), 96px);
+}
+
+.dashboard-grid.td-single-widget > .td-widget-fullscreen.widget-camera,
+.dashboard-grid.td-single-widget > .td-widget-fullscreen.widget-image,
+.dashboard-grid.td-single-widget > .td-widget-fullscreen.widget-web-embed {
+  padding: 0 !important;
+  border-radius: var(--td-widget-radius, 14px);
+}
+
+.dashboard-grid.td-single-widget > .td-widget-fullscreen .widget-camera-image,
+.dashboard-grid.td-single-widget > .td-widget-fullscreen .widget-image-tag,
+.dashboard-grid.td-single-widget > .td-widget-fullscreen .widget-web-embed-frame-wrap,
+.dashboard-grid.td-single-widget > .td-widget-fullscreen .widget-web-embed-frame {
+  width: 100%;
+  height: 100%;
+}
+
 .dashboard-grid.td-layout-compact .widget {
   box-shadow: 0 1px 2px rgba(0,0,0,.10), 0 5px 14px rgba(0,0,0,.10);
 }
@@ -2607,4 +2643,95 @@ button,
   content: "Keine Daten";
   color: var(--td-text-secondary, rgba(255,255,255,.6));
   font-size: 13px;
+}
+
+
+/* WEATHER FX DISTRIBUTION FIX 2.7.3
+   Keep rain/snow/cloud/fog particles distributed across the complete widget/card,
+   weather screen and optional full-screen overlay. Inline values from display.js
+   are used for every generated particle, so additional layers no longer fall on
+   the left edge when nth-child rules are exhausted. */
+.weather-animated-bg,
+.popup-weather-bg,
+.screen-weather-overlay {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.screen-weather-overlay {
+  z-index: 40;
+}
+
+.weather-screen-card,
+.weather-card .w-name,
+.weather-card .widget-subvalue,
+.weather-card-reading,
+.weather-card-top,
+.popup-weather-main,
+.popup-eyebrow,
+.popup-big-icon,
+.popup-big-value,
+.popup-subtitle,
+.popup-grid-info {
+  position: relative;
+  z-index: 45;
+}
+
+.weather-animated-bg.clouds span,
+.weather-animated-bg.fog span,
+.weather-animated-bg.wind span,
+.popup-weather-bg.clouds span,
+.popup-weather-bg.fog span,
+.popup-weather-bg.wind span,
+.screen-weather-overlay.clouds span,
+.screen-weather-overlay.fog span,
+.screen-weather-overlay.wind span {
+  left: var(--fx-left, 10%) !important;
+  top: var(--fx-top, 20%) !important;
+  width: var(--fx-width, 180px) !important;
+  height: var(--fx-height, 44px) !important;
+  animation-delay: var(--fx-delay, 0s) !important;
+  animation-duration: var(--fx-duration, 18s) !important;
+}
+
+.weather-animated-bg.rain span,
+.weather-animated-bg.storm span,
+.popup-weather-bg.rain span,
+.popup-weather-bg.storm span,
+.screen-weather-overlay.rain span,
+.screen-weather-overlay.storm span {
+  left: var(--fx-left, 10%) !important;
+  top: var(--fx-top, -24%) !important;
+  width: var(--fx-width, 3px) !important;
+  height: var(--fx-height, 38px) !important;
+  animation-delay: var(--fx-delay, 0s) !important;
+  animation-duration: var(--fx-duration, 1.1s) !important;
+}
+
+.weather-animated-bg.snow span,
+.popup-weather-bg.snow span,
+.screen-weather-overlay.snow span {
+  left: var(--fx-left, 10%) !important;
+  top: var(--fx-top, -12%) !important;
+  width: var(--fx-width, 12px) !important;
+  height: var(--fx-height, 12px) !important;
+  animation-delay: var(--fx-delay, 0s) !important;
+  animation-duration: var(--fx-duration, 6s) !important;
+}
+
+@keyframes tdRain {
+  from { transform: translate3d(0, -40px, 0); opacity: 0; }
+  10% { opacity: 1; }
+  to { transform: translate3d(var(--fx-drift, -10px), calc(var(--td-app-height, 100vh) + 160px), 0); opacity: 0; }
+}
+
+@keyframes tdSnow {
+  from { transform: translate3d(0, -28px, 0); opacity: 0; }
+  12% { opacity: 1; }
+  to { transform: translate3d(var(--fx-drift, 26px), calc(var(--td-app-height, 100vh) + 160px), 0); opacity: 0; }
+}
+
+@keyframes tdCloudMove {
+  from { transform: translateX(-18vw); }
+  to { transform: translateX(calc(var(--td-app-width, 100vw) + 260px)); }
 }
