@@ -7,6 +7,7 @@ import base64
 import json
 import re
 import inspect
+from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -90,6 +91,7 @@ class TickerDisplayAPI:
         app.router.add_get(f"{API_BASE}/api/diagnostics", self._diagnostics)
         app.router.add_get(f"{API_BASE}/api/device/{{device_id}}/diagnostics", self._device_diagnostics)
         app.router.add_post(f"{API_BASE}/api/device/{{device_id}}/notify-error", self._device_frontend_error)
+        app.router.add_post(f"{API_BASE}/api/device/{{device_id}}/test", self._device_test_command)
 
         # Config API
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
@@ -195,6 +197,20 @@ class TickerDisplayAPI:
             return default
         return max(minimum, min(maximum, number))
 
+    def _slug_identifier(self, value: str | None, fallback: str = "page") -> str:
+        """Return a stable identifier for pages even when a name contains spaces."""
+        raw = str(value or "").strip().lower()
+        slug = re.sub(r"[^a-z0-9_.:-]+", "_", raw).strip("_.:-")
+        return (slug or fallback)[:80]
+
+    def _normalize_position(self, value: str | None, default: str = "top-right") -> str:
+        pos = str(value or default).strip().lower().replace("_", "-")
+        if pos == "full":
+            pos = "fullscreen"
+        if pos not in {"top-left", "top-right", "bottom-left", "bottom-right", "center", "fullscreen"}:
+            pos = default
+        return pos
+
     def _normalize_screen_config(self, screen: dict) -> dict:
         """Keep only Home Assistant Kiosk page data."""
         if not isinstance(screen, dict):
@@ -213,7 +229,36 @@ class TickerDisplayAPI:
 
         duration = self._clean_int(screen.get("duration"), 60, minimum=5, maximum=86400)
         name = str(screen.get("name") or screen.get("title") or "Home Assistant").strip()[:120]
-        page_id = self._clean_identifier(screen.get("id") or name or "page", field="id", max_len=80)
+        raw_page_id = screen.get("id") or screen.get("page_id") or name or "page"
+        try:
+            page_id = self._clean_identifier(raw_page_id, field="id", max_len=80)
+        except web.HTTPBadRequest:
+            page_id = self._slug_identifier(raw_page_id, fallback="page")
+
+        fit_mode = str(
+            screen.get("fit_mode")
+            or screen.get("fitMode")
+            or screen.get("viewport_mode")
+            or screen.get("display_mode")
+            or "desktop-fit"
+        ).strip().lower().replace("_", "-")
+        if fit_mode not in {"desktop-fit", "desktop-fill", "native", "original"}:
+            fit_mode = "desktop-fit"
+        if fit_mode == "original":
+            fit_mode = "native"
+
+        viewport_width = self._clean_int(
+            screen.get("viewport_width") or screen.get("desktop_width") or screen.get("design_width"),
+            1644,
+            minimum=320,
+            maximum=4096,
+        )
+        viewport_height = self._clean_int(
+            screen.get("viewport_height") or screen.get("desktop_height") or screen.get("design_height"),
+            866,
+            minimum=240,
+            maximum=4096,
+        )
 
         return {
             "id": page_id,
@@ -227,6 +272,9 @@ class TickerDisplayAPI:
             "pause_on_touch": bool(screen.get("pause_on_touch", True)),
             "background_color": str(screen.get("background_color") or "#000000")[:32],
             "transition": "fade",
+            "fit_mode": fit_mode,
+            "viewport_width": viewport_width,
+            "viewport_height": viewport_height,
         }
 
     def _sanitize_device_config(self, device_id: str, config: dict) -> dict:
@@ -294,7 +342,7 @@ class TickerDisplayAPI:
     def _sanitize_modules_config(self, modules: dict | None) -> dict:
         defaults = self._default_modules_config()
         src = modules if isinstance(modules, dict) else {}
-        out = deepcopy(defaults) if 'deepcopy' in globals() else json.loads(json.dumps(defaults))
+        out = deepcopy(defaults)
 
         def _bool(v, default=False):
             if isinstance(v, bool):
@@ -312,7 +360,7 @@ class TickerDisplayAPI:
             "show_date": _bool(clock.get("show_date"), out["clock"]["show_date"]),
             "show_seconds": _bool(clock.get("show_seconds"), out["clock"]["show_seconds"]),
             "time_zone": _text(clock.get("time_zone"), out["clock"]["time_zone"], 80),
-            "position": _text(clock.get("position"), out["clock"]["position"], 32),
+            "position": self._normalize_position(_text(clock.get("position"), out["clock"]["position"], 32), "top-right"),
             "size": _text(clock.get("size"), out["clock"]["size"], 32),
             "color": _text(clock.get("color"), out["clock"]["color"], 32),
             "background": _text(clock.get("background"), out["clock"]["background"], 80),
@@ -323,7 +371,7 @@ class TickerDisplayAPI:
         out["weather"].update({
             "entity_id": _text(weather.get("entity_id"), out["weather"]["entity_id"], 255),
             "title": _text(weather.get("title"), out["weather"]["title"], 120),
-            "position": _text(weather.get("position"), out["weather"]["position"], 32),
+            "position": self._normalize_position(_text(weather.get("position"), out["weather"]["position"], 32), "top-left"),
             "layout": _text(weather.get("layout"), out["weather"]["layout"], 32),
             "show_forecast": _bool(weather.get("show_forecast"), out["weather"]["show_forecast"]),
             "refresh_seconds": self._clean_int(weather.get("refresh_seconds"), out["weather"]["refresh_seconds"], minimum=30, maximum=3600),
@@ -337,7 +385,7 @@ class TickerDisplayAPI:
         out["camera"].update({
             "entity_id": _text(camera.get("entity_id"), out["camera"]["entity_id"], 255),
             "title": _text(camera.get("title"), out["camera"]["title"], 120),
-            "position": _text(camera.get("position"), out["camera"]["position"], 32),
+            "position": self._normalize_position(_text(camera.get("position"), out["camera"]["position"], 32), "fullscreen"),
             "mode": mode,
             "refresh_seconds": self._clean_int(camera.get("refresh_seconds"), out["camera"]["refresh_seconds"], minimum=2, maximum=3600),
             "duration": self._clean_int(camera.get("duration"), out["camera"]["duration"], minimum=0, maximum=86400),
@@ -1456,6 +1504,53 @@ class TickerDisplayAPI:
     # ══════════════════════════════════════════════════════
     # Config API
     # ══════════════════════════════════════════════════════
+
+    async def _device_test_command(self, request):
+        """Send a safe test command to a connected display from the admin page."""
+        device_id = self._clean_identifier(request.match_info.get("device_id"), field="device_id")
+        if device_id == "all":
+            target = "all"
+            config = {}
+        else:
+            config = self.store.get_device(device_id) or {}
+            if not config:
+                return web.json_response({"error": "not found"}, status=404)
+            target = device_id
+        data = await self._parse_json(request)
+        kind = str(data.get("test") or data.get("kind") or "selftest").strip().lower().replace("-", "_")
+        modules = self._sanitize_modules_config(config.get("modules") if isinstance(config, dict) else {})
+
+        if kind in {"selftest", "all", "sequence"}:
+            message = {"type": "command", "command": "run_self_test", "data": {"duration": self._clean_int(data.get("duration"), 4, minimum=1, maximum=60)}}
+        elif kind == "ticker":
+            message = {"type": "ticker", "messages": [{"message": "Test Live-Ticker ✅", "duration": 12, "replace": True, "color": "#0f172a"}]}
+        elif kind == "toast":
+            message = {"type": "alert", "data": {"mode": "toast", "title": "Test", "message": "Toast funktioniert ✅", "duration": 6, "color": "#111827"}}
+        elif kind == "banner":
+            message = {"type": "alert", "data": {"mode": "banner", "title": "Test", "message": "Banner funktioniert ✅", "duration": 8, "color": "#2563eb"}}
+        elif kind == "alert":
+            message = {"type": "alert", "data": {"mode": "fullscreen", "title": "Test-Alert", "message": "Alert funktioniert ✅", "duration": 8, "color": "#ff9800", "severity": "warning"}}
+        elif kind == "clock":
+            cfg = dict(modules.get("clock") or {})
+            cfg.update({"position": data.get("position") or "fullscreen", "duration": self._clean_int(data.get("duration"), 12, minimum=1, maximum=60)})
+            message = {"type": "module", "module": "clock", "data": cfg}
+        elif kind == "weather":
+            cfg = dict(modules.get("weather") or {})
+            cfg.update({"duration": self._clean_int(data.get("duration"), 15, minimum=1, maximum=120)})
+            message = {"type": "module", "module": "weather", "data": cfg}
+        elif kind == "camera":
+            cfg = dict(modules.get("camera") or {})
+            cfg.update({"duration": self._clean_int(data.get("duration"), 15, minimum=1, maximum=120)})
+            message = {"type": "module", "module": "camera", "data": cfg}
+        elif kind == "clear":
+            message = {"type": "command", "command": "clear_all"}
+        elif kind == "reload":
+            message = {"type": "reload"}
+        else:
+            return web.json_response({"error": "unknown test", "test": kind}, status=400)
+
+        await self.ws.send_command(target, message)
+        return web.json_response({"status": "ok", "device_id": device_id, "test": kind, "message": message})
 
     async def _config_devices(self, request):
         devices = self.store.get_devices()

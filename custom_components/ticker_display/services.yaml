@@ -327,6 +327,28 @@ show_camera:
       description: Display einschalten bevor die Kamera angezeigt wird.
       example: true
 
+clear_module:
+  name: Clear module
+  description: Schließt aktive Uhr-, Wetter- oder Kamera-Overlays auf einem oder mehreren Geräten.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+test_display:
+  name: Test display
+  description: Startet einen sichtbaren Selbsttest auf dem Display, um Ticker, Toast, Banner, Alert, Uhr und Overlays zu prüfen.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    duration:
+      name: Duration
+      description: Dauer pro Testschritt in Sekunden.
+      example: 4
+
 clear_alert:
   name: Clear alert
   description: Schließt aktive Toasts, Banner und Alerts auf einem oder mehreren Geräten.

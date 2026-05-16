@@ -1,5 +1,5 @@
 /*
- * Ticker Display 3.0.4 - Kiosk-only display engine.
+ * Ticker Display 3.0.7 - Kiosk-only display engine.
  * Kiosk-only display. Shows Home Assistant pages in a fullscreen iframe,
  * plus ticker/toast/banner/alert.
  */
@@ -231,13 +231,17 @@ function normalizePageUrl(raw, kiosk) {
 function pageFromConfig(raw, index) {
   raw = raw && typeof raw === "object" ? raw : {};
   var url = raw.url || raw.page_url || raw.kiosk_url || "/lovelace";
+  var fitMode = raw.fit_mode || raw.fitMode || raw.viewport_mode || raw.display_mode || "desktop-fit";
   return {
     id: raw.id || ("page_" + index),
     name: raw.name || raw.title || ("Seite " + (index + 1)),
     url: normalizePageUrl(url, raw.kiosk !== false),
     duration: Utils.cleanInt(raw.duration, 60, 5, 86400),
     enabled: raw.enabled !== false,
-    kiosk: raw.kiosk !== false
+    kiosk: raw.kiosk !== false,
+    fit_mode: String(fitMode || "desktop-fit"),
+    viewport_width: Utils.cleanInt(raw.viewport_width || raw.desktop_width || raw.design_width, 1644, 320, 4096),
+    viewport_height: Utils.cleanInt(raw.viewport_height || raw.desktop_height || raw.design_height, 866, 240, 4096)
   };
 }
 
@@ -281,28 +285,86 @@ KioskPageManager.prototype.show = function (index) {
   screen.className = "screen ha-kiosk-screen";
   var title = Utils.escapeHtml(page.name || "Home Assistant");
   var src = Utils.escapeHtml(page.url || "/lovelace");
-  screen.innerHTML = '<iframe class="ha-kiosk-frame" src="' + src + '" title="' + title + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay" referrerpolicy="same-origin"></iframe><div class="ha-kiosk-loading"><div class="loading-spinner"></div><span>' + title + '</span></div>';
+  screen.innerHTML = '<div class="ha-kiosk-viewport"><iframe class="ha-kiosk-frame" src="' + src + '" title="' + title + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay" referrerpolicy="same-origin"></iframe></div><div class="ha-kiosk-loading"><div class="loading-spinner"></div><span>' + title + '</span></div>';
   this.container.appendChild(screen);
   if (old) setTimeout(function () { try { old.remove(); } catch (e) {} }, 80);
   var self = this;
   var iframe = screen.querySelector("iframe");
   var loading = screen.querySelector(".ha-kiosk-loading");
   var pause = function () { self.pauseForTouch(); };
+  var applyScale = function () { self.applyFrameScale(screen, page); };
   screen.addEventListener("pointerdown", pause, true);
   screen.addEventListener("touchstart", pause, true);
   screen.addEventListener("click", pause, true);
+  applyScale();
   if (iframe) {
     iframe.addEventListener("load", function () {
       if (loading) loading.className += " hidden";
+      applyScale();
       self.applyKioskStyles(iframe);
       self.attachPauseHooks(iframe, pause);
     });
     setTimeout(function () {
+      applyScale();
       self.applyKioskStyles(iframe);
       self.attachPauseHooks(iframe, pause);
     }, 1500);
+    if (!screen.__tdResizeHooked) {
+      screen.__tdResizeHooked = true;
+      window.addEventListener("resize", applyScale);
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", applyScale);
+      window.addEventListener("orientationchange", function () { setTimeout(applyScale, 250); });
+    }
   }
   if (this.app.wsClient) this.app.wsClient.send({ type: "status", screen: page.name || page.id || "page" });
+};
+KioskPageManager.prototype.shouldScalePage = function (page) {
+  var mode = String((page && page.fit_mode) || "desktop-fit").toLowerCase();
+  return !(mode === "native" || mode === "original" || mode === "off" || mode === "none");
+};
+KioskPageManager.prototype.applyFrameScale = function (screen, page) {
+  try {
+    var viewport = screen && screen.querySelector(".ha-kiosk-viewport");
+    var iframe = screen && screen.querySelector(".ha-kiosk-frame");
+    if (!viewport || !iframe || !this.container) return;
+    var cw = Math.max(1, this.container.clientWidth || window.innerWidth || 1);
+    var ch = Math.max(1, this.container.clientHeight || window.innerHeight || 1);
+    if (!this.shouldScalePage(page)) {
+      viewport.className = "ha-kiosk-viewport native";
+      viewport.style.cssText = "";
+      iframe.style.cssText = "";
+      return;
+    }
+    var mode = String((page && page.fit_mode) || "desktop-fit").toLowerCase();
+    var designW = Utils.cleanInt(page && page.viewport_width, 1644, 320, 4096);
+    var designH = Utils.cleanInt(page && page.viewport_height, Math.round(designW * ch / Math.max(1, cw)), 240, 4096);
+    var scaleX = cw / designW;
+    var scaleY = ch / designH;
+    var scale = mode.indexOf("fill") >= 0 ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+    scale = Math.max(0.08, Math.min(4, scale));
+    var visualW = Math.ceil(designW * scale);
+    var visualH = Math.ceil(designH * scale);
+    viewport.className = "ha-kiosk-viewport scaled" + (mode.indexOf("fill") >= 0 ? " fill" : " fit");
+    viewport.style.position = "absolute";
+    viewport.style.left = Math.floor((cw - visualW) / 2) + "px";
+    viewport.style.top = Math.floor((ch - visualH) / 2) + "px";
+    viewport.style.width = visualW + "px";
+    viewport.style.height = visualH + "px";
+    viewport.style.overflow = "hidden";
+    iframe.style.position = "absolute";
+    iframe.style.left = "0";
+    iframe.style.top = "0";
+    iframe.style.width = designW + "px";
+    iframe.style.height = designH + "px";
+    iframe.style.maxWidth = "none";
+    iframe.style.maxHeight = "none";
+    iframe.style.transformOrigin = "0 0";
+    iframe.style.transform = "scale(" + scale + ")";
+    iframe.dataset.tdScale = String(scale);
+    iframe.dataset.tdViewport = designW + "x" + designH;
+  } catch (err) {
+    console.warn("Kiosk frame scale failed", err);
+  }
 };
 KioskPageManager.prototype.applyKioskStyles = function (iframe) {
   try {
@@ -310,7 +372,13 @@ KioskPageManager.prototype.applyKioskStyles = function (iframe) {
     if (!doc || !doc.head || doc.getElementById("td-kiosk-style")) return;
     var style = doc.createElement("style");
     style.id = "td-kiosk-style";
-    style.textContent = 'app-header,app-toolbar,ha-top-app-bar-fixed,ha-drawer,ha-sidebar,ha-menu-button,.toolbar,.header,.mdc-top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important}home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}ha-panel-lovelace,hui-root,.view,.container,main,#view,#root,body{margin-top:0!important;padding-top:0!important;top:0!important}';
+    style.textContent = [
+      ':root{--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}',
+      'body{margin:0!important;overflow:hidden!important;background:#000!important}',
+      'home-assistant > home-assistant-main app-header,home-assistant > home-assistant-main app-toolbar,home-assistant > home-assistant-main ha-top-app-bar-fixed,home-assistant > home-assistant-main ha-drawer,home-assistant > home-assistant-main ha-sidebar,home-assistant > home-assistant-main ha-menu-button,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important}',
+      'home-assistant,home-assistant-main,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{height:100vh!important;min-height:100vh!important;top:0!important;margin-top:0!important;padding-top:0!important}',
+      'ha-panel-lovelace{--header-height:0px!important}'
+    ].join('');
     doc.head.appendChild(style);
   } catch (err) {}
 };
@@ -492,7 +560,7 @@ AlertManager.prototype.armClose = function (data) {
 };
 AlertManager.prototype.showFullscreen = function (data) {
   if (!this.overlay) return;
-  var color = data.color || (data.severity === "critical" ? "#dc2626" : "#ff9800");
+  var color = data.color || (data.severity === "critical" ? "#dc2626" : (data.severity === "success" ? "#16a34a" : (data.severity === "info" ? "#2563eb" : "#ff9800")));
   this.overlay.className = "alert-overlay fullscreen-mode severity-" + Utils.escapeHtml(data.severity || "warning");
   this.overlay.innerHTML = '<div class="alert-card alert-card-full" style="--alert-color:' + Utils.escapeHtml(color) + '"><div class="alert-title">' + Utils.escapeHtml(data.title || "") + '</div><div class="alert-message">' + Utils.escapeHtml(data.message || "") + '</div>' + this.actionsMarkup(data) + '</div>';
   this.overlay.hidden = false;
@@ -578,6 +646,7 @@ ModuleManager.prototype.card = function (kind, cfg, inner) {
   return el;
 };
 ModuleManager.prototype.show = function (name, data) {
+  name = String(name || "").toLowerCase().replace(/^show_/, "");
   if (name === "clock") this.showClock(data);
   else if (name === "weather") this.showWeather(data);
   else if (name === "camera") this.showCamera(data);
@@ -777,13 +846,21 @@ TickerDisplayApp.prototype.init = function () {
 };
 TickerDisplayApp.prototype.onCommand = function (cmd, data) {
   data = data || {};
-  if (cmd === "clear_alert") { this.alertManager.clearAll(); if (this.moduleManager) this.moduleManager.clear(); }
+  if (cmd === "clear_alert" || cmd === "clear_all") { this.alertManager.clearAll(); if (this.moduleManager) this.moduleManager.clear(); }
+  else if (cmd === "clear_module") { if (this.moduleManager) this.moduleManager.clear(); }
+  else if (cmd === "run_self_test") this.runSelfTest(data);
   else if (cmd === "clear_ticker") this.tickerManager.clear();
   else if (cmd === "update_ticker_config") { this.config.ticker = Object.assign({}, this.config.ticker || {}, data); this.tickerManager.rebuild(); }
   else if (cmd === "identify") this.showIdentify();
+  else if (cmd === "show_clock") this.onModule("clock", data);
+  else if (cmd === "show_weather") this.onModule("weather", data);
+  else if (cmd === "show_camera") this.onModule("camera", data);
 };
 TickerDisplayApp.prototype.onAlert = function (data) { this.alertManager.show(data || {}); };
-TickerDisplayApp.prototype.onModule = function (moduleName, data) { if (this.moduleManager) this.moduleManager.show(moduleName, data || {}); };
+TickerDisplayApp.prototype.onModule = function (moduleName, data) {
+  if (!this.moduleManager) this.moduleManager = new ModuleManager(this);
+  if (this.moduleManager) this.moduleManager.show(moduleName, data || {});
+};
 TickerDisplayApp.prototype.onTickerMessages = function (messages) { this.tickerManager.addMessages(messages || []); };
 TickerDisplayApp.prototype.onDisplayControl = function (data) {
   if (data.brightness !== undefined) this.bridge.setScreenBrightness(data.brightness);
@@ -835,6 +912,26 @@ TickerDisplayApp.prototype.onConfigChanged = function (cfg) {
   this.screenManager.rebuild();
   this.tickerManager.rebuild();
 };
+TickerDisplayApp.prototype.runSelfTest = function (data) {
+  data = data || {};
+  var self = this;
+  var step = Utils.cleanInt(data.duration, 4, 1, 60) * 1000;
+  function later(multiplier, fn) { setTimeout(fn, Math.max(0, multiplier * step)); }
+  try {
+    this.alertManager.clearAll();
+    if (this.moduleManager) this.moduleManager.clear();
+    this.onTickerMessages([{ message: "Ticker Display Test ✅", duration: Math.ceil(step / 1000) + 2, replace: true, color: "#0f172a" }]);
+    this.alertManager.show({ mode: "toast", title: "Test", message: "Toast funktioniert ✅", duration: Math.ceil(step / 1000), color: "#111827" });
+    later(1, function () { self.alertManager.show({ mode: "banner", title: "Test", message: "Banner funktioniert ✅", duration: Math.ceil(step / 1000), color: "#2563eb" }); });
+    later(2, function () { self.onModule("clock", { position: "fullscreen", duration: Math.ceil(step / 1000), format: "24h", show_date: true, show_seconds: true, time_zone: "Europe/Zurich" }); });
+    later(3, function () { self.alertManager.show({ mode: "fullscreen", title: "Selbsttest", message: "Alert funktioniert ✅", duration: Math.ceil(step / 1000), color: "#ff9800", severity: "warning" }); });
+    later(4, function () { self.alertManager.clearAll(); if (self.moduleManager) self.moduleManager.clear(); });
+  } catch (err) {
+    console.warn("Self test failed", err);
+    this.reportFrontendError((err && err.message) || String(err), "run_self_test");
+  }
+};
+
 TickerDisplayApp.prototype.reportSensorsNow = function () {
   if (!this.bridge || !this.bridge.isAvailable()) return;
   var d = this.bridge.getAllSensorData();

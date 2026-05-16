@@ -30,6 +30,8 @@ ACTIVE_SERVICES = [
     "show_clock",
     "show_weather",
     "show_camera",
+    "clear_module",
+    "test_display",
     "clear_alert",
     # Kiosk-Seiten / Navigation
     "next_screen",
@@ -365,16 +367,50 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     async def handle_clear_alert(call):
         await websocket.send_command(_dev(call), {"type": "command", "command": "clear_alert", "data": _data(call)})
 
+    async def handle_clear_module(call):
+        await websocket.send_command(_dev(call), {"type": "command", "command": "clear_module", "data": _data(call)})
+
+    async def handle_test_display(call):
+        d = _data(call)
+        if "duration" in d:
+            d["duration"] = _int(d.get("duration"), 4, 1, 60)
+        await websocket.send_command(_dev(call), {"type": "command", "command": "run_self_test", "data": d})
+
     async def _send_module(call, module_name: str):
+        """Send a Kiosk module command to the display.
+
+        The primary payload is type=module. A command fallback is sent as well
+        so displays that still have a mixed/cached Kiosk script after an update
+        can still render clock/weather/camera once the current script is loaded.
+        """
         d = _data(call)
         if "duration" in d:
             d["duration"] = _int(d.get("duration"), 0, 0, 86400)
         if "refresh_seconds" in d:
             d["refresh_seconds"] = _int(d.get("refresh_seconds"), 0, 0, 3600)
+        # Normalize common values so the frontend receives predictable data.
+        if module_name == "clock":
+            d["format"] = "12h" if str(d.get("format", "24h")).lower() == "12h" else "24h"
+            if "show_date" in d:
+                d["show_date"] = _bool(d.get("show_date"), True)
+            if "show_seconds" in d:
+                d["show_seconds"] = _bool(d.get("show_seconds"), False)
+            if not d.get("time_zone"):
+                d["time_zone"] = str(hass.config.time_zone or "Europe/Zurich")
+        if module_name in ("clock", "weather", "camera"):
+            pos = str(d.get("position") or "").strip().lower().replace("_", "-")
+            if pos == "full":
+                pos = "fullscreen"
+            if pos and pos not in ("top-left", "top-right", "bottom-left", "bottom-right", "center", "fullscreen"):
+                pos = "top-right" if module_name != "camera" else "fullscreen"
+            if pos:
+                d["position"] = pos
         device = _dev(call)
         if _bool(d.get("wake_screen"), False):
             await websocket.send_command(device, {"type": "display_control", "screen_power": True})
-        await websocket.send_command(device, {"type": "module", "module": module_name, "data": d})
+        payload = {"type": "module", "module": module_name, "data": d}
+        await websocket.send_command(device, payload)
+        await websocket.send_command(device, {"type": "command", "command": f"show_{module_name}", "data": d})
 
     async def handle_show_clock(call):
         await _send_module(call, "clock")
@@ -553,6 +589,8 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         "show_clock": handle_show_clock,
         "show_weather": handle_show_weather,
         "show_camera": handle_show_camera,
+        "clear_module": handle_clear_module,
+        "test_display": handle_test_display,
         "clear_alert": handle_clear_alert,
         "next_screen": handle_next_screen,
         "previous_screen": handle_previous_screen,

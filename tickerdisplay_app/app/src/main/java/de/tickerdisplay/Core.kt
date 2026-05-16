@@ -1040,7 +1040,7 @@ class WebViewManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/2.4.0"
+            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.7"
         }
 
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
