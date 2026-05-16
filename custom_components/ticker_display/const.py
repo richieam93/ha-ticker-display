@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-INTEGRATION_VERSION = "3.0.7"
+INTEGRATION_VERSION = "3.0.8"
 PLATFORMS = ["sensor", "binary_sensor", "switch", "number", "media_player", "camera"]
 
 API_BASE = "/ticker-display"

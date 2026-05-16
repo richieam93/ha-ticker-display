@@ -240,12 +240,12 @@ class TickerDisplayAPI:
             or screen.get("fitMode")
             or screen.get("viewport_mode")
             or screen.get("display_mode")
-            or "desktop-fit"
+            or "device-fit"
         ).strip().lower().replace("_", "-")
-        if fit_mode not in {"desktop-fit", "desktop-fill", "native", "original"}:
-            fit_mode = "desktop-fit"
-        if fit_mode == "original":
-            fit_mode = "native"
+        if fit_mode not in {"device-fit", "auto", "smart-fit", "desktop-fit", "desktop-fill", "native", "original"}:
+            fit_mode = "device-fit"
+        if fit_mode in {"original", "native", "auto", "smart-fit"}:
+            fit_mode = "device-fit"
 
         viewport_width = self._clean_int(
             screen.get("viewport_width") or screen.get("desktop_width") or screen.get("design_width"),
@@ -260,6 +260,8 @@ class TickerDisplayAPI:
             maximum=4096,
         )
 
+        force_desktop_scaling = bool(screen.get("force_desktop_scaling", False))
+
         return {
             "id": page_id,
             "type": "ha-page",
@@ -273,6 +275,7 @@ class TickerDisplayAPI:
             "background_color": str(screen.get("background_color") or "#000000")[:32],
             "transition": "fade",
             "fit_mode": fit_mode,
+            "force_desktop_scaling": force_desktop_scaling,
             "viewport_width": viewport_width,
             "viewport_height": viewport_height,
         }
