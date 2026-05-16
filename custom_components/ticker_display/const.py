@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-INTEGRATION_VERSION = "3.0.8"
+INTEGRATION_VERSION = "3.0.6"
 PLATFORMS = ["sensor", "binary_sensor", "switch", "number", "media_player", "camera"]
 
 API_BASE = "/ticker-display"
@@ -21,7 +21,7 @@ WIDGET_TYPES = []
 
 SCREEN_TYPES = ["ha-page", "kiosk-page"]
 
-ALERT_SEVERITIES = ["info", "success", "warning", "critical"]
+ALERT_SEVERITIES = ["info", "warning", "critical"]
 ALERT_MODES = ["fullscreen", "banner", "toast", "notification"]
 TRANSITION_TYPES = ["fade", "slide", "flip", "zoom", "dissolve", "crossfade", "none"]
 BUILTIN_THEMES = ["dark", "light", "high-contrast", "night"]

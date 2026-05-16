@@ -1,5 +1,5 @@
 /*
- * Ticker Display 3.0.8 - Kiosk-only display engine.
+ * Ticker Display 3.0.6 - Kiosk-only display engine.
  * Kiosk-only display. Shows Home Assistant pages in a fullscreen iframe,
  * plus ticker/toast/banner/alert.
  */
@@ -40,60 +40,6 @@ var Utils = {
     if (fallback === undefined) fallback = "";
     if (value === null || value === undefined || value === "") return fallback;
     return String(value);
-  }
-};
-
-var DeviceViewport = {
-  last: { width: 1, height: 1, physicalWidth: 0, physicalHeight: 0, scale: 1 },
-  parseResolution: function (value) {
-    var m = String(value || "").match(/(\d+)\s*x\s*(\d+)/i);
-    if (!m) return null;
-    return { width: Math.max(1, parseInt(m[1], 10)), height: Math.max(1, parseInt(m[2], 10)) };
-  },
-  bridgeResolution: function () {
-    try {
-      if (window.TickerBridge && typeof window.TickerBridge.getScreenResolution === "function") {
-        return this.parseResolution(window.TickerBridge.getScreenResolution());
-      }
-    } catch (err) {}
-    return null;
-  },
-  measure: function (container) {
-    var root = document.documentElement;
-    var vv = window.visualViewport || null;
-    var cssW = Math.max(1, Math.round((container && container.clientWidth) || (vv && vv.width) || window.innerWidth || root.clientWidth || 1));
-    var cssH = Math.max(1, Math.round((container && container.clientHeight) || (vv && vv.height) || window.innerHeight || root.clientHeight || 1));
-    var phys = this.bridgeResolution();
-    var sw = Math.max(screen.width || 0, screen.availWidth || 0, screen.height || 0, screen.availHeight || 0);
-    var sh = Math.min(
-      screen.width || cssW,
-      screen.availWidth || cssW,
-      screen.height || cssH,
-      screen.availHeight || cssH
-    );
-    var physicalW = phys ? phys.width : Math.max(cssW, sw || cssW);
-    var physicalH = phys ? phys.height : Math.max(cssH, sh || cssH);
-    this.last = {
-      width: cssW,
-      height: cssH,
-      physicalWidth: physicalW,
-      physicalHeight: physicalH,
-      scale: cssW > 0 ? (physicalW / cssW) : 1
-    };
-    return this.last;
-  },
-  applyVars: function (container) {
-    var m = this.measure(container);
-    var root = document.documentElement;
-    root.style.setProperty("--td-app-width", m.width + "px");
-    root.style.setProperty("--td-app-height", m.height + "px");
-    root.style.setProperty("--td-viewport-min", Math.min(m.width, m.height) + "px");
-    root.style.setProperty("--td-viewport-max", Math.max(m.width, m.height) + "px");
-    root.style.setProperty("--td-device-physical-width", m.physicalWidth + "px");
-    root.style.setProperty("--td-device-physical-height", m.physicalHeight + "px");
-    root.classList.toggle("td-landscape", m.width >= m.height);
-    root.classList.toggle("td-portrait", m.height > m.width);
-    return m;
   }
 };
 
@@ -285,22 +231,13 @@ function normalizePageUrl(raw, kiosk) {
 function pageFromConfig(raw, index) {
   raw = raw && typeof raw === "object" ? raw : {};
   var url = raw.url || raw.page_url || raw.kiosk_url || "/lovelace";
-  var fitMode = raw.fit_mode || raw.fitMode || raw.viewport_mode || raw.display_mode || "device-fit";
-  var forceDesktop = raw.force_desktop_scaling === true || String(raw.force_desktop_scaling || "").toLowerCase() === "true";
-  if ((String(fitMode).toLowerCase().replace(/_/g, "-") === "desktop-fit" || String(fitMode).toLowerCase().replace(/_/g, "-") === "desktop-fill") && !forceDesktop) {
-    fitMode = "device-fit";
-  }
   return {
     id: raw.id || ("page_" + index),
     name: raw.name || raw.title || ("Seite " + (index + 1)),
     url: normalizePageUrl(url, raw.kiosk !== false),
     duration: Utils.cleanInt(raw.duration, 60, 5, 86400),
     enabled: raw.enabled !== false,
-    kiosk: raw.kiosk !== false,
-    fit_mode: String(fitMode || "device-fit"),
-    viewport_width: Utils.cleanInt(raw.viewport_width || raw.desktop_width || raw.design_width, 1644, 320, 4096),
-    viewport_height: Utils.cleanInt(raw.viewport_height || raw.desktop_height || raw.design_height, 866, 240, 4096),
-    force_desktop_scaling: forceDesktop
+    kiosk: raw.kiosk !== false
   };
 }
 
@@ -313,6 +250,22 @@ function KioskPageManager(app) {
   this.pauseTimer = null;
   this.pausedUntil = 0;
 }
+
+var TD_HA_KIOSK_STYLE = [
+  "html,body{width:100%!important;height:100%!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}",
+  "body{position:relative!important;overscroll-behavior:none!important;-webkit-text-size-adjust:100%!important;touch-action:manipulation!important}",
+  "app-header,app-toolbar,ha-top-app-bar-fixed,ha-drawer,ha-sidebar,ha-menu-button,.toolbar,.header,.mdc-top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important;min-height:0!important;height:0!important;overflow:hidden!important}",
+  "home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{--app-header-height:0px!important;--header-height:0px!important;--mdc-top-app-bar-height:0px!important;--safe-area-inset-top:0px!important;--safe-area-inset-bottom:0px!important}",
+  "home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{display:block!important;width:100%!important;max-width:none!important;min-width:0!important;height:100%!important;max-height:none!important;margin:0!important;padding:0!important;inset:auto!important;overflow:hidden!important;transform:none!important}",
+  "ha-panel-lovelace,hui-root{overflow:auto!important;-webkit-overflow-scrolling:touch!important;background:var(--lovelace-background,var(--primary-background-color,#000))!important}",
+  "main,#view,#root,.view,.container,.content,.page,.columns,.section-container,.sections-container{width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:0!important;box-sizing:border-box!important;left:0!important;right:0!important;top:0!important;transform:none!important}",
+  "hui-view,hui-masonry-view,hui-sections-view{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:8px!important;box-sizing:border-box!important;overflow:visible!important;transform:none!important}",
+  "hui-sections-view{--column-width:minmax(0,1fr)!important;--section-max-width:100%!important;--ha-view-sections-column-gap:8px!important;--ha-view-sections-row-gap:8px!important}",
+  ".sections,.columns,.section-container,.content,.container{width:100%!important;max-width:100%!important;min-width:0!important;margin-left:0!important;margin-right:0!important;box-sizing:border-box!important;transform:none!important}",
+  ".sections{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr))!important;gap:8px!important;align-items:start!important}",
+  "hui-section,.section,ha-card,.card{max-width:100%!important;min-width:0!important;box-sizing:border-box!important}",
+  "@media(max-width:700px){hui-view,hui-masonry-view,hui-sections-view{padding:6px!important}.sections,.columns{display:block!important}.section,hui-section{width:100%!important;max-width:100%!important;margin:0 0 8px 0!important}}"
+].join("\n");
 KioskPageManager.prototype.rebuild = function () {
   this.stop();
   this.pages = [];
@@ -344,117 +297,97 @@ KioskPageManager.prototype.show = function (index) {
   screen.className = "screen ha-kiosk-screen";
   var title = Utils.escapeHtml(page.name || "Home Assistant");
   var src = Utils.escapeHtml(page.url || "/lovelace");
-  screen.innerHTML = '<div class="ha-kiosk-viewport"><iframe class="ha-kiosk-frame" src="' + src + '" title="' + title + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay" referrerpolicy="same-origin"></iframe></div><div class="ha-kiosk-loading"><div class="loading-spinner"></div><span>' + title + '</span></div>';
+  screen.innerHTML = '<iframe class="ha-kiosk-frame" src="' + src + '" title="' + title + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay" referrerpolicy="same-origin"></iframe><div class="ha-kiosk-loading"><div class="loading-spinner"></div><span>' + title + '</span></div>';
   this.container.appendChild(screen);
   if (old) setTimeout(function () { try { old.remove(); } catch (e) {} }, 80);
   var self = this;
   var iframe = screen.querySelector("iframe");
   var loading = screen.querySelector(".ha-kiosk-loading");
   var pause = function () { self.pauseForTouch(); };
-  var applyScale = function () { self.applyFrameScale(screen, page); };
   screen.addEventListener("pointerdown", pause, true);
   screen.addEventListener("touchstart", pause, true);
   screen.addEventListener("click", pause, true);
-  applyScale();
   if (iframe) {
     iframe.addEventListener("load", function () {
       if (loading) loading.className += " hidden";
-      applyScale();
       self.applyKioskStyles(iframe);
       self.attachPauseHooks(iframe, pause);
     });
     setTimeout(function () {
-      applyScale();
       self.applyKioskStyles(iframe);
       self.attachPauseHooks(iframe, pause);
     }, 1500);
-    if (!screen.__tdResizeHooked) {
-      screen.__tdResizeHooked = true;
-      window.addEventListener("resize", applyScale);
-      if (window.visualViewport) window.visualViewport.addEventListener("resize", applyScale);
-      window.addEventListener("orientationchange", function () { setTimeout(applyScale, 250); });
-    }
   }
   if (this.app.wsClient) this.app.wsClient.send({ type: "status", screen: page.name || page.id || "page" });
 };
-KioskPageManager.prototype.shouldScalePage = function (page) {
-  var mode = String((page && page.fit_mode) || "device-fit").toLowerCase();
-  return !(mode === "device-fit" || mode === "native" || mode === "original" || mode === "off" || mode === "none");
-};
-KioskPageManager.prototype.applyFrameScale = function (screen, page) {
-  try {
-    var viewport = screen && screen.querySelector(".ha-kiosk-viewport");
-    var iframe = screen && screen.querySelector(".ha-kiosk-frame");
-    if (!viewport || !iframe || !this.container) return;
-    var measured = this.app && this.app.updateViewportVars ? this.app.updateViewportVars() : DeviceViewport.applyVars(this.container);
-    var cw = Math.max(1, measured.width || this.container.clientWidth || window.innerWidth || 1);
-    var ch = Math.max(1, measured.height || this.container.clientHeight || window.innerHeight || 1);
-    var mode = String((page && page.fit_mode) || "device-fit").toLowerCase().replace(/_/g, "-");
-
-    // Kiosk default: render Home Assistant with the actual Android/WebView resolution.
-    // This avoids the broken desktop-transform behavior where Lovelace sections become tiny vertical strips.
-    if (mode === "auto" || mode === "smart" || mode === "smart-fit" || mode === "device" || mode === "device-fit" || mode === "native" || mode === "original" || mode === "off" || mode === "none") {
-      viewport.className = "ha-kiosk-viewport native device-fit";
-      viewport.style.cssText = "position:absolute;inset:0;width:" + cw + "px;height:" + ch + "px;overflow:hidden;background:#000;";
-      iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;transform:none;max-width:none;max-height:none;";
-      iframe.dataset.tdScale = "1";
-      iframe.dataset.tdViewport = cw + "x" + ch;
-      return;
-    }
-
-    var designW = Utils.cleanInt(page && page.viewport_width, Math.max(320, cw), 320, 4096);
-    var designH = Utils.cleanInt(page && page.viewport_height, Math.max(240, ch), 240, 4096);
-    var scaleX = cw / designW;
-    var scaleY = ch / designH;
-    var scale = mode.indexOf("fill") >= 0 ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
-    scale = Math.max(0.08, Math.min(4, scale));
-    var visualW = Math.ceil(designW * scale);
-    var visualH = Math.ceil(designH * scale);
-    viewport.className = "ha-kiosk-viewport scaled" + (mode.indexOf("fill") >= 0 ? " fill" : " fit");
-    viewport.style.position = "absolute";
-    viewport.style.left = Math.floor((cw - visualW) / 2) + "px";
-    viewport.style.top = Math.floor((ch - visualH) / 2) + "px";
-    viewport.style.width = visualW + "px";
-    viewport.style.height = visualH + "px";
-    viewport.style.overflow = "hidden";
-    viewport.style.background = "#000";
-    iframe.style.position = "absolute";
-    iframe.style.left = "0";
-    iframe.style.top = "0";
-    iframe.style.width = designW + "px";
-    iframe.style.height = designH + "px";
-    iframe.style.maxWidth = "none";
-    iframe.style.maxHeight = "none";
-    iframe.style.border = "0";
-    iframe.style.background = "#000";
-    iframe.style.transformOrigin = "0 0";
-    iframe.style.transform = "scale(" + scale + ")";
-    iframe.dataset.tdScale = String(scale);
-    iframe.dataset.tdViewport = designW + "x" + designH;
-  } catch (err) {
-    console.warn("Kiosk frame scale failed", err);
-  }
-};
 KioskPageManager.prototype.applyKioskStyles = function (iframe) {
+  var self = this;
   try {
     var doc = iframe && (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document));
-    if (!doc || !doc.head || doc.getElementById("td-kiosk-style")) return;
-    try {
-      var meta = doc.querySelector('meta[name="viewport"]') || doc.createElement("meta");
-      meta.name = "viewport";
-      meta.content = "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no";
-      if (!meta.parentNode) doc.head.appendChild(meta);
-    } catch (metaErr) {}
-    var style = doc.createElement("style");
-    style.id = "td-kiosk-style";
-    style.textContent = [
-      ':root{--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}',
-      'body{margin:0!important;background:#000!important}',
-      'home-assistant > home-assistant-main app-header,home-assistant > home-assistant-main app-toolbar,home-assistant > home-assistant-main ha-top-app-bar-fixed,home-assistant > home-assistant-main ha-drawer,home-assistant > home-assistant-main ha-sidebar,home-assistant > home-assistant-main ha-menu-button,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important}',
-      'home-assistant,home-assistant-main,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{height:100vh!important;min-height:100vh!important;top:0!important;margin-top:0!important;padding-top:0!important}',
-      'ha-panel-lovelace{--header-height:0px!important}'
-    ].join('');
-    doc.head.appendChild(style);
+    if (!doc || !doc.documentElement) return;
+
+    function ensureViewport() {
+      try {
+        var head = doc.head || doc.getElementsByTagName("head")[0];
+        if (!head) return;
+        var meta = doc.querySelector('meta[name="viewport"]');
+        if (!meta) {
+          meta = doc.createElement("meta");
+          meta.setAttribute("name", "viewport");
+          head.appendChild(meta);
+        }
+        meta.setAttribute("content", "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
+      } catch (e) {}
+    }
+
+    function injectIntoRoot(root) {
+      try {
+        if (!root || root.__tdKioskStyleApplied) return;
+        var style = doc.createElement("style");
+        style.id = "td-kiosk-style";
+        style.textContent = TD_HA_KIOSK_STYLE;
+        if (root.head) root.head.appendChild(style);
+        else root.appendChild(style);
+        root.__tdKioskStyleApplied = true;
+      } catch (e) {}
+    }
+
+    function walk(node, depth) {
+      if (!node || depth > 8) return;
+      try {
+        if (node.shadowRoot) {
+          injectIntoRoot(node.shadowRoot);
+          walk(node.shadowRoot, depth + 1);
+        }
+        var children = node.children || node.querySelectorAll && node.querySelectorAll("*");
+        if (!children) return;
+        for (var i = 0; i < children.length; i++) walk(children[i], depth + 1);
+      } catch (e) {}
+    }
+
+    function applyOnce() {
+      try {
+        if (doc.documentElement) doc.documentElement.classList.add("td-kiosk-embedded");
+        if (doc.body) doc.body.classList.add("td-kiosk-embedded");
+        ensureViewport();
+        injectIntoRoot(doc);
+        walk(doc.documentElement, 0);
+        if (iframe && iframe.contentWindow) {
+          try { iframe.contentWindow.dispatchEvent(new Event("resize")); } catch (e) {}
+        }
+      } catch (e) {}
+    }
+
+    applyOnce();
+    [250, 800, 1600, 3200, 6000].forEach(function (delay) { setTimeout(applyOnce, delay); });
+
+    if (!doc.__tdKioskObserver && doc.documentElement && typeof MutationObserver !== "undefined") {
+      doc.__tdKioskObserver = new MutationObserver(function () { applyOnce(); });
+      doc.__tdKioskObserver.observe(doc.documentElement, { childList: true, subtree: true });
+      setTimeout(function () {
+        try { if (doc.__tdKioskObserver) doc.__tdKioskObserver.disconnect(); } catch (e) {}
+      }, 20000);
+    }
   } catch (err) {}
 };
 KioskPageManager.prototype.attachPauseHooks = function (iframe, pause) {
@@ -524,52 +457,39 @@ function TickerManager(app) {
   this.hideTimer = null;
 }
 TickerManager.prototype.init = function () { this.rebuild(); };
-TickerManager.prototype.setBarVisible = function (visible) {
-  if (!this.bar) return;
-  var screen = document.getElementById("screen-container");
-  if (!visible) {
-    this.bar.hidden = true;
-    document.documentElement.style.setProperty("--td-ticker-offset", "0px");
-    if (screen) screen.classList.add("no-ticker");
-    return;
-  }
-  var cfg = this.app.config.ticker || {};
-  var height = Utils.cleanInt(cfg.height || cfg.ticker_height || 36, 36, 20, 120);
-  document.documentElement.style.setProperty("--td-ticker-height", height + "px");
-  document.documentElement.style.setProperty("--td-ticker-offset", height + "px");
-  if (screen) screen.classList.remove("no-ticker");
-  this.bar.hidden = false;
-};
 TickerManager.prototype.rebuild = function () {
   var cfg = this.app.config.ticker || {};
   if (!this.bar || !this.content) return;
   if (cfg.enabled === false) {
-    this.messages = [];
-    this.setBarVisible(false);
-    this.content.innerHTML = "";
+    this.bar.hidden = true;
+    document.documentElement.style.setProperty("--td-ticker-offset", "0px");
+    var sc = document.getElementById("screen-container");
+    if (sc) sc.classList.add("no-ticker");
     return;
   }
   var position = cfg.position || "bottom";
   document.documentElement.classList.toggle("td-ticker-top", position === "top");
   document.documentElement.classList.toggle("td-ticker-bottom", position !== "top");
   this.bar.className = "ticker-bar ticker-" + position;
+  this.bar.hidden = false;
+  var height = Utils.cleanInt(cfg.height || cfg.ticker_height || 36, 36, 20, 120);
+  document.documentElement.style.setProperty("--td-ticker-height", height + "px");
+  document.documentElement.style.setProperty("--td-ticker-offset", height + "px");
+  var screen = document.getElementById("screen-container");
+  if (screen) screen.classList.remove("no-ticker");
   var fixed = Utils.safeArray(cfg.fixed_messages || cfg.messages).map(function (m) {
     return typeof m === "string" ? m : (m && (m.text || m.message)) || "";
   }).filter(Boolean);
-  this.fixedMessages = fixed;
-  this.messages = fixed.slice();
+  this.messages = fixed;
   this.render();
 };
 TickerManager.prototype.render = function () {
   if (!this.content) return;
-  var cfg = this.app.config.ticker || {};
   var list = this.messages.length ? this.messages : [];
-  if (cfg.enabled === false || !list.length) {
+  if (!list.length) {
     this.content.innerHTML = "";
-    this.setBarVisible(false);
     return;
   }
-  this.setBarVisible(true);
   var text = list.map(function (m) { return Utils.escapeHtml(m); }).join(' <span class="ticker-separator">│</span> ');
   this.content.innerHTML = '<span class="ticker-track">' + text + '</span>';
 };
@@ -578,7 +498,7 @@ TickerManager.prototype.addMessages = function (messages) {
   var incoming = Utils.safeArray(messages).map(function (m) {
     return typeof m === "string" ? { message: m } : (m || {});
   });
-  if (!incoming.length || cfg.enabled === false) return;
+  if (!incoming.length) return;
   var first = incoming[0];
   var text = first.message || first.text || "";
   if (!text) return;
@@ -590,20 +510,10 @@ TickerManager.prototype.addMessages = function (messages) {
   if (duration > 0) {
     var self = this;
     if (this.hideTimer) clearTimeout(this.hideTimer);
-    this.hideTimer = setTimeout(function () {
-      if (self.fixedMessages && self.fixedMessages.length) {
-        self.messages = self.fixedMessages.slice();
-        self.render();
-      } else {
-        self.clear();
-      }
-    }, duration * 1000);
+    this.hideTimer = setTimeout(function () { self.rebuild(); }, duration * 1000);
   }
 };
-TickerManager.prototype.clear = function () {
-  this.messages = [];
-  this.render();
-};
+TickerManager.prototype.clear = function () { this.messages = []; this.render(); };
 TickerManager.prototype.onEntityUpdate = function () {};
 TickerManager.prototype.setEntities = function () {};
 
@@ -658,7 +568,7 @@ AlertManager.prototype.armClose = function (data) {
 };
 AlertManager.prototype.showFullscreen = function (data) {
   if (!this.overlay) return;
-  var color = data.color || (data.severity === "critical" ? "#dc2626" : (data.severity === "success" ? "#16a34a" : (data.severity === "info" ? "#2563eb" : "#ff9800")));
+  var color = data.color || (data.severity === "critical" ? "#dc2626" : "#ff9800");
   this.overlay.className = "alert-overlay fullscreen-mode severity-" + Utils.escapeHtml(data.severity || "warning");
   this.overlay.innerHTML = '<div class="alert-card alert-card-full" style="--alert-color:' + Utils.escapeHtml(color) + '"><div class="alert-title">' + Utils.escapeHtml(data.title || "") + '</div><div class="alert-message">' + Utils.escapeHtml(data.message || "") + '</div>' + this.actionsMarkup(data) + '</div>';
   this.overlay.hidden = false;
@@ -872,10 +782,6 @@ function TickerDisplayApp() {
   window.addEventListener("error", function (e) { self.reportFrontendError(e.message || "JavaScript error", e.filename || "window.error", e.lineno, e.colno); });
   window.addEventListener("unhandledrejection", function (e) { self.reportFrontendError((e.reason && e.reason.message) || String(e.reason || "Unhandled promise rejection"), "unhandledrejection"); });
 }
-TickerDisplayApp.prototype.updateViewportVars = function () {
-  try { return DeviceViewport.applyVars(document.getElementById("screen-container")); }
-  catch (err) { return DeviceViewport.measure(document.getElementById("screen-container")); }
-};
 TickerDisplayApp.prototype.reportFrontendError = function (message, source, line, column) {
   this.frontendErrorCount += 1;
   try {
@@ -922,11 +828,6 @@ TickerDisplayApp.prototype.init = function () {
   try {
     this.setLoadingStatus("Kiosk-Seiten werden geladen...");
     this.bridge = new BridgeWrapper();
-    this.updateViewportVars();
-    var selfForViewport = this;
-    window.addEventListener("resize", function () { selfForViewport.updateViewportVars(); });
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", function () { selfForViewport.updateViewportVars(); });
-    window.addEventListener("orientationchange", function () { setTimeout(function () { selfForViewport.updateViewportVars(); }, 250); });
     this.themeManager = new ThemeManager();
     this.screenManager = new KioskPageManager(this);
     this.tickerManager = new TickerManager(this);
@@ -953,9 +854,7 @@ TickerDisplayApp.prototype.init = function () {
 };
 TickerDisplayApp.prototype.onCommand = function (cmd, data) {
   data = data || {};
-  if (cmd === "clear_alert" || cmd === "clear_all") { this.alertManager.clearAll(); if (this.moduleManager) this.moduleManager.clear(); }
-  else if (cmd === "clear_module") { if (this.moduleManager) this.moduleManager.clear(); }
-  else if (cmd === "run_self_test") this.runSelfTest(data);
+  if (cmd === "clear_alert") { this.alertManager.clearAll(); if (this.moduleManager) this.moduleManager.clear(); }
   else if (cmd === "clear_ticker") this.tickerManager.clear();
   else if (cmd === "update_ticker_config") { this.config.ticker = Object.assign({}, this.config.ticker || {}, data); this.tickerManager.rebuild(); }
   else if (cmd === "identify") this.showIdentify();
@@ -1019,26 +918,6 @@ TickerDisplayApp.prototype.onConfigChanged = function (cfg) {
   this.screenManager.rebuild();
   this.tickerManager.rebuild();
 };
-TickerDisplayApp.prototype.runSelfTest = function (data) {
-  data = data || {};
-  var self = this;
-  var step = Utils.cleanInt(data.duration, 4, 1, 60) * 1000;
-  function later(multiplier, fn) { setTimeout(fn, Math.max(0, multiplier * step)); }
-  try {
-    this.alertManager.clearAll();
-    if (this.moduleManager) this.moduleManager.clear();
-    this.onTickerMessages([{ message: "Ticker Display Test ✅", duration: Math.ceil(step / 1000) + 2, replace: true, color: "#0f172a" }]);
-    this.alertManager.show({ mode: "toast", title: "Test", message: "Toast funktioniert ✅", duration: Math.ceil(step / 1000), color: "#111827" });
-    later(1, function () { self.alertManager.show({ mode: "banner", title: "Test", message: "Banner funktioniert ✅", duration: Math.ceil(step / 1000), color: "#2563eb" }); });
-    later(2, function () { self.onModule("clock", { position: "fullscreen", duration: Math.ceil(step / 1000), format: "24h", show_date: true, show_seconds: true, time_zone: "Europe/Zurich" }); });
-    later(3, function () { self.alertManager.show({ mode: "fullscreen", title: "Selbsttest", message: "Alert funktioniert ✅", duration: Math.ceil(step / 1000), color: "#ff9800", severity: "warning" }); });
-    later(4, function () { self.alertManager.clearAll(); if (self.moduleManager) self.moduleManager.clear(); });
-  } catch (err) {
-    console.warn("Self test failed", err);
-    this.reportFrontendError((err && err.message) || String(err), "run_self_test");
-  }
-};
-
 TickerDisplayApp.prototype.reportSensorsNow = function () {
   if (!this.bridge || !this.bridge.isAvailable()) return;
   var d = this.bridge.getAllSensorData();

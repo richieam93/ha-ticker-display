@@ -1030,8 +1030,12 @@ class WebViewManager(
             builtInZoomControls = false
             displayZoomControls = false
             textZoom = 100
-            useWideViewPort = false
-            loadWithOverviewMode = false
+            // Browser-kompatibles Viewport-Verhalten fuer Home-Assistant-Dashboards.
+            // Besonders die neue "sections"-Ansicht reagiert in alten WebViews/Kiosk-Browsern
+            // sonst oft mit einer zu schmalen Layout-Breite oder horizontal verschobenem Inhalt.
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
             loadsImagesAutomatically = true
             blockNetworkImage = false
             javaScriptCanOpenWindowsAutomatically = false
@@ -1040,7 +1044,7 @@ class WebViewManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.7"
+            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.6"
         }
 
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)

@@ -30,8 +30,6 @@ ACTIVE_SERVICES = [
     "show_clock",
     "show_weather",
     "show_camera",
-    "clear_module",
-    "test_display",
     "clear_alert",
     # Kiosk-Seiten / Navigation
     "next_screen",
@@ -367,21 +365,12 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
     async def handle_clear_alert(call):
         await websocket.send_command(_dev(call), {"type": "command", "command": "clear_alert", "data": _data(call)})
 
-    async def handle_clear_module(call):
-        await websocket.send_command(_dev(call), {"type": "command", "command": "clear_module", "data": _data(call)})
-
-    async def handle_test_display(call):
-        d = _data(call)
-        if "duration" in d:
-            d["duration"] = _int(d.get("duration"), 4, 1, 60)
-        await websocket.send_command(_dev(call), {"type": "command", "command": "run_self_test", "data": d})
-
     async def _send_module(call, module_name: str):
         """Send a Kiosk module command to the display.
 
         The primary payload is type=module. A command fallback is sent as well
         so displays that still have a mixed/cached Kiosk script after an update
-        can still render clock/weather/camera once the current script is loaded.
+        can still render clock/weather/camera once the 3.0.6 script is loaded.
         """
         d = _data(call)
         if "duration" in d:
@@ -589,8 +578,6 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
         "show_clock": handle_show_clock,
         "show_weather": handle_show_weather,
         "show_camera": handle_show_camera,
-        "clear_module": handle_clear_module,
-        "test_display": handle_test_display,
         "clear_alert": handle_clear_alert,
         "next_screen": handle_next_screen,
         "previous_screen": handle_previous_screen,
