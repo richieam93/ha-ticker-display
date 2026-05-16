@@ -1,358 +1,11 @@
-show_dashboard:
-  name: Show dashboard
-  description: Zeigt den Dashboard-/Webseiten-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, kommagetrennte Liste, YAML-Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    dashboard:
-      name: Dashboard path
-      description: Optionaler Dashboard-Pfad oder HA-URL.
-      example: /lovelace/default_view
-
-show_graph:
-  name: Show graph
-  description: Zeigt einen Graph-/Chart-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    graph_id:
-      name: Graph ID
-      description: Optionale gespeicherte Graph-Konfiguration.
-      example: energy_today
-    entity_id:
-      name: Primary entity
-      description: Optionale Haupt-Entity für den Graphen.
-      example: sensor.stromverbrauch_heute
-
-show_camera:
-  name: Show camera
-  description: Zeigt einen Kamera-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    entity_id:
-      name: Camera entity
-      description: Kamera-Entity, die angezeigt werden soll.
-      example: camera.front_door
-    title:
-      name: Title
-      description: Optionaler Titel auf dem Screen.
-      example: Haustür
-
-show_weather:
-  name: Show weather
-  description: Zeigt einen Wetter-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    entity_id:
-      name: Weather entity
-      description: Wetter-Entity für die Anzeige.
-      example: weather.home
-
-show_single_value:
-  name: Show single value
-  description: Zeigt einen Einzelwert-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    entity_id:
-      name: Entity
-      description: Sensor oder Entity, die groß dargestellt werden soll.
-      example: sensor.wohnzimmer_temperatur
-    label:
-      name: Label
-      description: Optionales eigenes Label.
-      example: Wohnzimmer
-
-show_clock:
-  name: Show clock
-  description: Zeigt den Uhr-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-show_status_board:
-  name: Show status board
-  description: Zeigt ein Status-Board auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    board_id:
-      name: Board ID
-      description: Optionale ID eines gespeicherten Boards.
-      example: daily_status
-
-show_image:
-  name: Show image
-  description: Zeigt einen Bild-Screen auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    image_url:
-      name: Image URL
-      description: Bild-URL oder lokaler HA-Pfad.
-      example: /media/local/family.jpg
-    title:
-      name: Title
-      description: Optionaler Titel.
-      example: Familienfoto
-
-show_template:
-  name: Show template
-  description: Zeigt eine gespeicherte Screen-Vorlage auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    template_id:
-      name: Template ID
-      description: Gespeicherte Template-ID aus dem Editor.
-      example: template_wohnzimmer
-
-show_alert:
-  name: Show alert
-  description: Zeigt einen Alert auf einem oder mehreren Geräten an. Unterstützt Banner, Overlay, Vollbild, Fortschritt, Buttons, Sound und TTS.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    title:
-      name: Title
-      description: Alert-Titel.
-      example: Türklingel
-    message:
-      name: Message
-      description: Alert-Text.
-      example: Jemand steht vor der Haustür
-    severity:
-      name: Severity
-      description: info, warning, critical oder success.
-      example: warning
-    mode:
-      name: Mode
-      description: fullscreen, banner, overlay, toast, pip, split oder notification.
-      example: fullscreen
-    color:
-      name: Color
-      description: Banner-/Akzentfarbe als Hex-Wert.
-      example: "#ff9800"
-    duration:
-      name: Duration
-      description: Dauer in Sekunden. 0 = manuell schließen.
-      example: 10
-    wake_screen:
-      name: Wake screen
-      description: Display bei Eingang des Alerts einschalten.
-      example: true
-    sound:
-      name: Sound
-      description: Interner Sound oder Alias, z. B. alarm, notification oder doorbell.
-      example: doorbell
-    volume:
-      name: Volume
-      description: Lautstärke in Prozent.
-      example: 90
-    tag:
-      name: Tag
-      description: Freies Kennzeichen für Ersetzen/Schließen desselben Alerts.
-      example: frontdoor
-    source:
-      name: Source
-      description: Quelle oder Bereich.
-      example: Haustür
-    progress_value:
-      name: Progress value
-      description: Fortschritt in Prozent von 0 bis 100.
-      example: 65
-    progress_text:
-      name: Progress text
-      description: Text unter der Fortschrittsanzeige.
-      example: 2 von 3 erledigt
-    require_ack:
-      name: Require acknowledge
-      description: Muss vom Nutzer bestätigt werden.
-      example: true
-    ack_label:
-      name: Ack label
-      description: Text des Bestätigen-Buttons.
-      example: Bestätigen
-    secondary_label:
-      name: Secondary label
-      description: Text des zweiten Buttons.
-      example: Schließen
-    actions:
-      name: Actions
-      description: Zusätzliche Buttons als Liste, z. B. [{"id":"open_cam","label":"Kamera"}].
-      example: '[{"id":"open_cam","label":"Kamera"}]'
-    template_id:
-      name: Template ID
-      description: Optionale gespeicherte Alert-Vorlage als Basis.
-      example: doorbell
-    tts_message:
-      name: TTS message
-      description: Optionaler TTS-Text für denselben Alert.
-      example: Achtung. Jemand steht vor der Haustür.
-    tts_language:
-      name: TTS language
-      description: Sprachcode für Android/HA-TTS.
-      example: de-DE
-    tts_engine_id:
-      name: TTS engine
-      description: Optionale HA-TTS-Engine.
-      example: google_translate
-
-show_alert_template:
-  name: Show alert template
-  description: Zeigt eine gespeicherte Alert-Vorlage an und erlaubt Überschreibungen.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    template_id:
-      name: Template ID
-      description: Gespeicherte Alert-Vorlage.
-      example: doorbell
-    title:
-      name: Title override
-      description: Optionaler Titel-Override.
-      example: Haustür
-    message:
-      name: Message override
-      description: Optionaler Nachrichten-Override.
-      example: Paketbote erkannt
-    severity:
-      name: Severity
-      description: info, warning, critical oder success.
-      example: warning
-    mode:
-      name: Mode
-      description: fullscreen, banner, overlay, toast, pip, split oder notification.
-      example: overlay
-
-show_alert_sequence:
-  name: Show alert sequence
-  description: Zeigt mehrere Alerts nacheinander auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    alerts:
-      name: Alerts
-      description: Liste kompletter Alert-Payloads.
-      example: '[{"title":"Tür","message":"Jemand da","duration":5},{"title":"Garage","message":"Tor offen","mode":"banner"}]'
-
-show_notification:
-  name: Show notification
-  description: Zeigt einen Notification-/Banner-Alert auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    title:
-      name: Title
-      description: Benachrichtigungstitel.
-      example: Info
-    message:
-      name: Message
-      description: Benachrichtigungstext.
-      example: Waschmaschine fertig
-    color:
-      name: Color
-      description: Optionale Bannerfarbe.
-      example: "#2196f3"
-
-show_toast:
-  name: Show toast
-  description: Zeigt einen kleinen Toast-Hinweis auf einem oder mehreren Geräten an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    title:
-      name: Title
-      description: Optionaler kurzer Titel.
-      example: Info
-    message:
-      name: Message
-      description: Toast-Text.
-      example: Willkommen zuhause
-    duration:
-      name: Duration
-      description: Anzeigedauer in Sekunden.
-      example: 6
-    color:
-      name: Color
-      description: Hintergrundfarbe.
-      example: "#111827"
-    text_color:
-      name: Text color
-      description: Textfarbe.
-      example: "#f9fafb"
-    accent_color:
-      name: Accent color
-      description: Akzentfarbe links/oben.
-      example: "#60a5fa"
-    border_radius:
-      name: Border radius
-      description: Radius in Pixel.
-      example: 16
-    font_size:
-      name: Font size
-      description: Schriftgröße in Pixel.
-      example: 16
-    position:
-      name: Position
-      description: bottom, top, center.
-      example: bottom
-    wake_screen:
-      name: Wake screen
-      description: Display für den Toast aufwecken.
-      example: true
-
-clear_alert:
-  name: Clear alert
-  description: Schließt aktive Alerts auf einem oder mehreren Geräten.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    tag:
-      name: Tag
-      description: Optional nur einen Alert mit passendem Tag schließen.
-      example: frontdoor
-
 send_ticker_message:
   name: Send ticker message
-  description: Sendet eine oder mehrere Meldungen an die Ticker-Leiste.
+  description: Sendet eine oder mehrere Live-Meldungen an die Ticker-Leiste.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     message:
       name: Message
       description: Einzelne Ticker-Meldung.
@@ -364,41 +17,399 @@ send_ticker_message:
     color:
       name: Color
       description: Optionale Farbe für die Einzelmeldung.
-      example: "#f3f4f6"
+      example: "#9ca3af"
     icon:
       name: Icon
       description: Optionales Emoji/Icon vor der Meldung.
       example: "📢"
     replace:
       name: Replace
-      description: Vorherige Live-Meldungen auf dem Gerät ersetzen.
+      description: Vorherige Live-Meldungen ersetzen.
       example: true
     duration:
       name: Duration
       description: Sichtbarkeit der Live-Meldung in Sekunden.
       example: 15
 
-set_ticker_entities:
-  name: Set ticker entities
-  description: Konfiguriert Entity-basierte Ticker-Meldungen auf dem Gerät.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    entities:
-      name: Entities
-      description: Liste von Entity-Konfigurationen mit Template.
-      example: '[{"entity_id":"sensor.temp","template":"🌡️ {friendly_name}: {state}{unit}"}]'
-
 clear_ticker:
   name: Clear ticker
-  description: Löscht die aktuelle Ticker-Leiste auf einem oder mehreren Geräten.
+  description: Löscht die aktuelle Live-Ticker-Meldung und zeigt wieder die feste Tickerliste.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
+
+update_ticker_config:
+  name: Update ticker config
+  description: Aktualisiert Ticker-Einstellungen wie feste Meldungen, Höhe, Position oder Aktivierung.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    enabled:
+      name: Enabled
+      description: Ticker-Leiste aktivieren/deaktivieren.
+      example: true
+    fixed_messages:
+      name: Fixed messages
+      description: Feste Meldungen als YAML-Liste.
+      example: '["Erste Meldung", "Zweite Meldung"]'
+    messages:
+      name: Messages
+      description: Alias für fixed_messages.
+      example: '["Erste Meldung", "Zweite Meldung"]'
+    position:
+      name: Position
+      description: top oder bottom.
+      example: bottom
+    height:
+      name: Height
+      description: Höhe in Pixel.
+      example: 36
+    auto_hide_seconds:
+      name: Auto hide
+      description: Nach wie vielen Sekunden Live-Meldungen verschwinden.
+      example: 15
+
+show_toast:
+  name: Show toast
+  description: Zeigt einen kleinen Toast-Hinweis auf einem oder mehreren Geräten.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    title:
+      name: Title
+      description: Optionaler kurzer Titel.
+      example: Info
+    message:
+      name: Message
+      description: Toast-Text.
+      example: Geschirrspüler ist fertig
+    duration:
+      name: Duration
+      description: Anzeigedauer in Sekunden.
+      example: 6
+    color:
+      name: Color
+      description: Hintergrundfarbe.
+      example: "#111827"
+    position:
+      name: Position
+      description: bottom, top oder center.
+      example: bottom
+    wake_screen:
+      name: Wake screen
+      description: Display für den Toast aufwecken.
+      example: true
+
+show_banner:
+  name: Show banner
+  description: Zeigt ein Banner oben auf dem Display.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    title:
+      name: Title
+      description: Banner-Titel.
+      example: Info
+    message:
+      name: Message
+      description: Banner-Text.
+      example: Fenster im Büro ist noch offen
+    color:
+      name: Color
+      description: Bannerfarbe.
+      example: "#2196F3"
+    duration:
+      name: Duration
+      description: Anzeigedauer in Sekunden.
+      example: 8
+    wake_screen:
+      name: Wake screen
+      description: Display für das Banner aufwecken.
+      example: true
+
+show_alert:
+  name: Show alert
+  description: Zeigt einen Alert als Vollbild, Banner oder Toast.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    title:
+      name: Title
+      description: Alert-Titel.
+      example: Türklingel
+    message:
+      name: Message
+      description: Alert-Text.
+      example: Jemand steht vor der Haustür
+    severity:
+      name: Severity
+      description: info, success, warning oder critical.
+      example: warning
+    mode:
+      name: Mode
+      description: fullscreen, banner oder toast.
+      example: fullscreen
+    color:
+      name: Color
+      description: Akzent-/Hintergrundfarbe als Hex-Wert.
+      example: "#ff9800"
+    duration:
+      name: Duration
+      description: Dauer in Sekunden. 0 = manuell schließen.
+      example: 10
+    wake_screen:
+      name: Wake screen
+      description: Display bei Eingang des Alerts einschalten.
+      example: true
+    sound:
+      name: Sound
+      description: Interner Sound/Alias wie doorbell, notification oder alarm.
+      example: doorbell
+    sound_url:
+      name: Sound URL
+      description: Direkte Audio-URL.
+      example: /media/local/doorbell.mp3
+    volume:
+      name: Volume
+      description: Lautstärke in Prozent.
+      example: 90
+    vibrate:
+      name: Vibrate
+      description: Gerät zusätzlich vibrieren lassen.
+      example: true
+    require_ack:
+      name: Require acknowledge
+      description: Bestätigungsbutton anzeigen.
+      example: true
+    ack_label:
+      name: Ack label
+      description: Text des Bestätigen-Buttons.
+      example: Bestätigen
+    actions:
+      name: Actions
+      description: Zusätzliche Buttons als Liste, z. B. [{"id":"open_cam","label":"Kamera"}].
+      example: '[{"id":"close","label":"Schließen","close":true}]'
+    tts_message:
+      name: TTS message
+      description: Optionaler TTS-Text für denselben Alert.
+      example: Achtung. Jemand steht vor der Haustür.
+    tts_language:
+      name: TTS language
+      description: Sprachcode für TTS.
+      example: de-DE
+    tts_engine_id:
+      name: TTS engine
+      description: Optionale HA-TTS-Engine.
+      example: google_translate
+
+show_clock:
+  name: Show clock
+  description: Zeigt die Uhr als Kiosk-Overlay. Ohne Felder werden die Standardwerte aus der Admin-Seite des Geräts verwendet.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    title:
+      name: Title
+      description: Optionaler Titel.
+      example: Zeit
+    format:
+      name: Format
+      description: 24h oder 12h.
+      example: 24h
+    show_date:
+      name: Show date
+      description: Datum unter der Uhr anzeigen.
+      example: true
+    show_seconds:
+      name: Show seconds
+      description: Sekunden anzeigen.
+      example: false
+    time_zone:
+      name: Time zone
+      description: Optionale IANA-Zeitzone, z. B. Europe/Zurich.
+      example: Europe/Zurich
+    position:
+      name: Position
+      description: top-left, top-right, bottom-left, bottom-right, center oder fullscreen.
+      example: top-right
+    duration:
+      name: Duration
+      description: Anzeigedauer in Sekunden. 0 = bleibt bis clear_alert.
+      example: 30
+    wake_screen:
+      name: Wake screen
+      description: Display einschalten bevor die Uhr angezeigt wird.
+      example: true
+
+show_weather:
+  name: Show weather
+  description: Zeigt eine Wetterkarte als Kiosk-Overlay. Die Wetter-Entity kann in der Admin-Seite pro Gerät vordefiniert werden.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    entity_id:
+      name: Weather entity
+      description: Home-Assistant-Wetter-Entity.
+      example: weather.home
+    title:
+      name: Title
+      description: Optionaler Kartentitel.
+      example: Wetter
+    layout:
+      name: Layout
+      description: compact oder full.
+      example: compact
+    position:
+      name: Position
+      description: top-left, top-right, bottom-left, bottom-right, center oder fullscreen.
+      example: top-left
+    duration:
+      name: Duration
+      description: Anzeigedauer in Sekunden. 0 = bleibt bis clear_alert.
+      example: 45
+    refresh_seconds:
+      name: Refresh seconds
+      description: Aktualisierungsintervall während die Karte sichtbar ist.
+      example: 300
+    wake_screen:
+      name: Wake screen
+      description: Display einschalten bevor Wetter angezeigt wird.
+      example: true
+
+show_camera:
+  name: Show camera
+  description: Zeigt eine Kamera als Kiosk-Overlay oder Vollbild. Die Kamera-Entity kann in der Admin-Seite pro Gerät vordefiniert werden.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    entity_id:
+      name: Camera entity
+      description: Home-Assistant-Kamera-Entity.
+      example: camera.haustuer
+    title:
+      name: Title
+      description: Optionaler Titel.
+      example: Haustür
+    mode:
+      name: Mode
+      description: auto, snapshot, entity_picture, camera_proxy oder stream.
+      example: auto
+    position:
+      name: Position
+      description: fullscreen, top-left, top-right, bottom-left, bottom-right oder center.
+      example: fullscreen
+    duration:
+      name: Duration
+      description: Anzeigedauer in Sekunden. 0 = bleibt bis clear_alert.
+      example: 30
+    refresh_seconds:
+      name: Refresh seconds
+      description: Bild-Aktualisierung in Sekunden bei Snapshot/Proxy.
+      example: 10
+    wake_screen:
+      name: Wake screen
+      description: Display einschalten bevor die Kamera angezeigt wird.
+      example: true
+
+clear_alert:
+  name: Clear alert
+  description: Schließt aktive Toasts, Banner und Alerts auf einem oder mehreren Geräten.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+next_screen:
+  name: Next screen
+  description: Wechselt zur nächsten Kiosk-Seite.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+previous_screen:
+  name: Previous screen
+  description: Wechselt zur vorherigen Kiosk-Seite.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+goto_screen:
+  name: Go to screen
+  description: Springt zu einer Kiosk-Seite anhand von ID, Name oder page_id.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    screen_id:
+      name: Screen ID
+      description: Seiten-ID oder Name.
+      example: page_1
+    page_id:
+      name: Page ID
+      description: Alias für screen_id.
+      example: page_1
+
+pause_rotation:
+  name: Pause rotation
+  description: Pausiert die automatische Kiosk-Rotation.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    duration:
+      name: Duration
+      description: Optionale Dauer in Sekunden.
+      example: 300
+
+resume_rotation:
+  name: Resume rotation
+  description: Setzt die automatische Kiosk-Rotation fort.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+reload_page:
+  name: Reload page
+  description: Lädt die Display-Seite neu.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+identify_device:
+  name: Identify device
+  description: Zeigt eine kurze Markierung auf dem Gerät.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
 
 set_screen_power:
   name: Set screen power
@@ -407,7 +418,7 @@ set_screen_power:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     power:
       name: Power
       description: true = an, false = aus.
@@ -420,41 +431,94 @@ set_brightness:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     brightness:
       name: Brightness
       description: Helligkeit von 0 bis 100.
       example: 80
 
-set_theme:
-  name: Set theme
-  description: Sendet ein Theme-Update an das Gerät.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    mode:
-      name: Mode
-      description: Theme-Modus, z. B. light oder dark.
-      example: dark
-    accent:
-      name: Accent
-      description: Akzentfarbe.
-      example: "#4f46e5"
-
 set_volume:
   name: Set volume
-  description: Setzt die Lautstärke auf dem Gerät.
+  description: Setzt die Android-/Medienlautstärke in Prozent.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     volume:
       name: Volume
-      description: Lautstärke in Prozent.
+      description: Lautstärke von 0 bis 100.
       example: 50
+
+set_screen_orientation:
+  name: Set orientation
+  description: Setzt die Bildschirmausrichtung.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    orientation:
+      name: Orientation
+      description: 0, 90, 180 oder 270.
+      example: 0
+
+set_device_setting:
+  name: Set device setting
+  description: Setzt eine native Android-Gerätefunktion, z. B. motion_detection, keep_screen_on oder camera_interval_seconds.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    setting:
+      name: Setting
+      description: Name der Einstellung.
+      example: motion_detection
+    value:
+      name: Value
+      description: Neuer Wert, z. B. true, false, 75 oder 30.
+      example: true
+
+restart_app:
+  name: Restart app
+  description: Startet die Android-App auf einem oder mehreren Geräten neu.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+open_android_settings:
+  name: Open Android settings
+  description: Öffnet die Android-App-Detailseite auf dem Gerät.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+
+vibrate_device:
+  name: Vibrate device
+  description: Lässt das Smartphone kurz vibrieren.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
+    duration:
+      name: Duration
+      description: Vibrationsdauer in Millisekunden.
+      example: 500
+
+report_device_state:
+  name: Report device state
+  description: Fordert sofort einen neuen Status-/Sensorbericht vom Android-Gerät an.
+  fields:
+    device:
+      name: Device
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
 
 play_sound:
   name: Play sound
@@ -463,7 +527,7 @@ play_sound:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     sound:
       name: Sound
       description: Interner Sound/Alias wie doorbell, notification, alarm.
@@ -483,12 +547,12 @@ play_sound:
 
 play_announcement:
   name: Play announcement
-  description: Spielt eine kurze Ansage ab und nutzt wenn möglich den HA-Medienbrowser-/Assist-Pfad.
+  description: Spielt eine kurze Ansage oder Sounddatei ab.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     url:
       name: URL
       description: Audio-URL für die Ansage.
@@ -517,7 +581,7 @@ tts_speak:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
     message:
       name: Message
       description: Zu sprechender Text.
@@ -537,7 +601,7 @@ tts_speak:
     media_player_entity_id:
       name: Media player entity
       description: Optionaler Ziel-Media-Player. Wird sonst automatisch aus dem Gerät ermittelt.
-      example: media_player.redmi_note_7_redmi_note_7_speaker
+      example: media_player.redmi_note_7_speaker
     volume:
       name: Volume
       description: Lautstärke in Prozent.
@@ -550,238 +614,27 @@ stop_audio:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-next_screen:
-  name: Next screen
-  description: Wechselt zum nächsten Screen.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-previous_screen:
-  name: Previous screen
-  description: Wechselt zum vorherigen Screen.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-goto_screen:
-  name: Go to screen
-  description: Springt zu einem bestimmten Screen anhand von ID oder Name.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    screen_id:
-      name: Screen ID
-      description: Screen-ID oder Name, z. B. screen_1, screen_2 oder Screen 3.
-      example: screen_3
-
-pause_rotation:
-  name: Pause rotation
-  description: Pausiert die automatische Screen-Rotation.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-resume_rotation:
-  name: Resume rotation
-  description: Setzt die automatische Screen-Rotation fort.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-reload_page:
-  name: Reload page
-  description: Lädt die Display-Seite neu.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-identify_device:
-  name: Identify device
-  description: Zeigt eine kurze Markierung/Overlay auf dem Gerät, um es eindeutig zu identifizieren.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-# ══════════════════════════════════════════════════════════
-# ERWEITERTE SERVICES - NEU
-# ══════════════════════════════════════════════════════════
-
-entity_toggle:
-  name: Toggle entity
-  description: Schaltet eine Entity ein oder aus.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-    entity_id:
-      name: Entity ID
-      description: Die zu schaltende Entity.
-      example: light.wohnzimmer
-
-entity_action:
-  name: Entity action
-  description: Führt eine Aktion auf einer Entity aus.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-    entity_id:
-      name: Entity ID
-      description: Die Entity-ID.
-      example: light.wohnzimmer
-    action:
-      name: Action
-      description: Aktion wie toggle, turn_on, turn_off.
-      example: turn_on
-    data:
-      name: Data
-      description: Zusätzliche Daten als JSON.
-      example: '{"brightness": 128}'
-
-
-show_popup:
-  name: Show popup
-  description: Zeigt ein Popup-Fenster.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-    popup_type:
-      name: Popup type
-      description: Typ (widget, entity, list, color, mode).
-      example: widget
-    entity_id:
-      name: Entity ID
-      description: Entity für das Popup.
-      example: light.wohnzimmer
-    title:
-      name: Title
-      description: Titel.
-      example: Steuerung
-
-dismiss_popup:
-  name: Dismiss popup
-  description: Schließt ein Popup.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-
-show_silent_alert:
-  name: Show silent alert
-  description: Alert ohne Sound.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-    title:
-      name: Title
-      description: Titel.
-      example: Hinweis
-    message:
-      name: Message
-      description: Nachricht.
-      example: Stille Warnung
-    severity:
-      name: Severity
-      description: info, warning, critical.
-      example: info
-    mode:
-      name: Mode
-      description: Vollbild, Banner, Overlay, Toast.
-      example: banner
-    duration:
-      name: Duration
-      description: Sekunden.
-      example: 5
-
-update_ticker_config:
-  name: Update ticker config
-  description: Ticker-Konfiguration.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-    enabled:
-      name: Enabled
-      description: Aktivieren.
-      example: true
-    direction:
-      name: Direction
-      description: ltr oder rtl.
-      example: ltr
-    speed:
-      name: Speed
-      description: slow, normal, fast.
-      example: normal
-    style_template:
-      name: Style template
-      description: classic, glass, alert, minimal.
-      example: classic
-    height:
-      name: Height
-      description: Pixel.
-      example: 36
-    font_size:
-      name: Font size
-      description: Pixel.
-      example: 14
-    auto_hide_seconds:
-      name: Auto hide
-      description: Sekunden.
-      example: 15
-
-set_screen_orientation:
-  name: Set orientation
-  description: Bildschirmausrichtung.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-    orientation:
-      name: Orientation
-      description: 0, 90, 180, 270.
-      example: 0
+      example: all
 
 play_media:
   name: Play media
-  description: Mediendatei abspielen.
+  description: Spielt eine Mediendatei/Audio-URL ab.
   fields:
     device:
       name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
     media_url:
       name: Media URL
       description: URL der Datei.
       example: /media/local/song.mp3
+    url:
+      name: URL
+      description: Alias für media_url.
+      example: /media/local/song.mp3
     volume:
       name: Volume
-      description: 0-100.
+      description: Lautstärke in Prozent.
       example: 70
     loop:
       name: Loop
@@ -790,102 +643,45 @@ play_media:
 
 stop_media:
   name: Stop media
-  description: Stoppt Wiedergabe.
+  description: Stoppt Medienwiedergabe.
   fields:
     device:
       name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-
-media_next:
-  name: Media next
-  description: Nächster Track.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-
-media_previous:
-  name: Media previous
-  description: Vorheriger Track.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
 
 media_pause:
   name: Media pause
-  description: Pause.
+  description: Pausiert Medienwiedergabe.
   fields:
     device:
       name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
+      description: Geräte-ID, Gerätename, Liste oder "all".
+      example: all
 
 media_resume:
   name: Media resume
-  description: Fortsetzen.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID oder "all".
-      example: redmi_note_7
-
-set_device_setting:
-  name: Set device setting
-  description: Setzt eine native Android-Gerätefunktion, z. B. motion_detection, front_camera, camera_interval_seconds oder motion_sensitivity.
+  description: Setzt Medienwiedergabe fort.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    setting:
-      name: Setting
-      description: Name der Einstellung.
-      example: motion_detection
-    value:
-      name: Value
-      description: Neuer Wert, z. B. true, false, 75 oder 30.
-      example: true
+      example: all
 
-restart_app:
-  name: Restart app
-  description: Startet die Android-App auf einem oder mehreren Geräten neu.
+media_next:
+  name: Media next
+  description: Nächster Track, falls vom Android-Player unterstützt.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all
 
-open_android_settings:
-  name: Open Android settings
-  description: Öffnet die Android-App-Detailseite auf dem Gerät.
+media_previous:
+  name: Media previous
+  description: Vorheriger Track, falls vom Android-Player unterstützt.
   fields:
     device:
       name: Device
       description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-
-vibrate_device:
-  name: Vibrate device
-  description: Lässt das Smartphone kurz vibrieren.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
-    duration:
-      name: Duration
-      description: Vibrationsdauer in Millisekunden.
-      example: 500
-
-report_device_state:
-  name: Report device state
-  description: Fordert sofort einen neuen Status-/Sensorbericht vom Android-Gerät an.
-  fields:
-    device:
-      name: Device
-      description: Geräte-ID, Gerätename, Liste oder "all".
-      example: redmi_note_7_redmi_note_7
+      example: all

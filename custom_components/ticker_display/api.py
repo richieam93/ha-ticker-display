@@ -59,19 +59,16 @@ class TickerDisplayAPI:
         # Media Files
         app.router.add_get(f"{MEDIA_PATH}/sounds/{{filename}}", self._media_file)
         app.router.add_get(f"{MEDIA_PATH}/fonts/{{filename}}", self._media_file)
-        app.router.add_get(f"{MEDIA_PATH}/images/{{filename}}", self._media_file)
         app.router.add_get(f"{MEDIA_PATH}/tts/{{filename}}", self._tts_media_file)
 
-        # Media Management
-        for res in ["sounds", "fonts", "images"]:
+        # Media routes kept only for sounds/fonts used by alerts and custom font CSS.
+        for res in ["sounds", "fonts"]:
             app.router.add_get(f"{API_BASE}/api/media/{res}", self._list_media)
 
         app.router.add_post(f"{API_BASE}/api/media/sound/upload", self._upload_media)
         app.router.add_post(f"{API_BASE}/api/media/font/upload", self._upload_media)
-        app.router.add_post(f"{API_BASE}/api/media/image/upload", self._upload_media)
         app.router.add_delete(f"{API_BASE}/api/media/sound/{{item_id}}", self._delete_media)
         app.router.add_delete(f"{API_BASE}/api/media/font/{{item_id}}", self._delete_media)
-        app.router.add_delete(f"{API_BASE}/api/media/image/{{item_id}}", self._delete_media)
 
         # Data API
         app.router.add_get(f"{API_BASE}/api/image/camera/{{entity_id}}", self._camera_proxy)
@@ -88,7 +85,6 @@ class TickerDisplayAPI:
         app.router.add_post(f"{API_BASE}/api/media-player/{{entity_id}}/command", self._media_player_command)
         app.router.add_get(f"{API_BASE}/api/persons", self._persons)
         app.router.add_get(f"{API_BASE}/api/entities", self._entities_list)
-        app.router.add_get(f"{API_BASE}/api/ha-media/items", self._ha_media_items)
 
         # Diagnostics API
         app.router.add_get(f"{API_BASE}/api/diagnostics", self._diagnostics)
@@ -99,15 +95,9 @@ class TickerDisplayAPI:
         app.router.add_get(f"{API_BASE}/api/config/devices", self._config_devices)
         app.router.add_get(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_get)
         app.router.add_post(f"{API_BASE}/api/config/device/{{device_id}}", self._config_device_save)
-        app.router.add_get(f"{API_BASE}/api/config/templates", self._config_templates)
-        app.router.add_post(f"{API_BASE}/api/config/template", self._config_template_save)
-        app.router.add_delete(f"{API_BASE}/api/config/template/{{template_id}}", self._config_template_delete)
         app.router.add_get(f"{API_BASE}/api/config/alerts", self._config_alerts)
         app.router.add_post(f"{API_BASE}/api/config/alert", self._config_alert_save)
         app.router.add_delete(f"{API_BASE}/api/config/alert/{{alert_id}}", self._config_alert_delete)
-        app.router.add_get(f"{API_BASE}/api/config/themes", self._config_themes)
-        app.router.add_post(f"{API_BASE}/api/config/theme", self._config_theme_save)
-        app.router.add_delete(f"{API_BASE}/api/config/theme/{{theme_id}}", self._config_theme_delete)
         app.router.add_get(f"{API_BASE}/api/config/global", self._config_global_get)
         app.router.add_post(f"{API_BASE}/api/config/global", self._config_global_save)
         app.router.add_post(f"{API_BASE}/api/config/backup", self._config_backup)
@@ -206,47 +196,43 @@ class TickerDisplayAPI:
         return max(minimum, min(maximum, number))
 
     def _normalize_screen_config(self, screen: dict) -> dict:
+        """Keep only Home Assistant Kiosk page data."""
         if not isinstance(screen, dict):
             return {}
-        normalized = dict(screen)
-        widgets = [dict(w) for w in normalized.get("widgets", []) if isinstance(w, dict)]
-        grid = normalized.get("grid") if isinstance(normalized.get("grid"), dict) else {}
-        columns = self._clean_int(grid.get("columns", grid.get("cols", 3)), 3, minimum=1, maximum=12)
-        rows = self._clean_int(grid.get("rows", 2), 2, minimum=1, maximum=12)
-        max_col = 1
-        max_row = 1
-        for widget in widgets:
-            col = self._clean_int(widget.get("col", 0), 0, minimum=0, maximum=11)
-            row = self._clean_int(widget.get("row", 0), 0, minimum=0, maximum=11)
-            colspan = self._clean_int(widget.get("colspan", 1), 1, minimum=1, maximum=12)
-            rowspan = self._clean_int(widget.get("rowspan", 1), 1, minimum=1, maximum=12)
-            max_col = max(max_col, col + colspan)
-            max_row = max(max_row, row + rowspan)
-        columns = max(columns, min(12, max_col))
-        rows = max(rows, min(12, max_row))
-        normalized_grid = dict(grid)
-        normalized_grid["columns"] = columns
-        normalized_grid["rows"] = rows
-        if "gap" in normalized_grid:
-            normalized_grid["gap"] = self._clean_int(normalized_grid.get("gap"), 12, minimum=0, maximum=80)
-        normalized["grid"] = normalized_grid
-        fixed_widgets = []
-        for widget in widgets:
-            col = self._clean_int(widget.get("col", 0), 0, minimum=0, maximum=max(0, columns - 1))
-            row = self._clean_int(widget.get("row", 0), 0, minimum=0, maximum=max(0, rows - 1))
-            widget["col"] = col
-            widget["row"] = row
-            widget["colspan"] = self._clean_int(widget.get("colspan", 1), 1, minimum=1, maximum=max(1, columns - col))
-            widget["rowspan"] = self._clean_int(widget.get("rowspan", 1), 1, minimum=1, maximum=max(1, rows - row))
-            fixed_widgets.append(widget)
-        normalized["widgets"] = fixed_widgets
-        return normalized
+
+        url = str(
+            screen.get("url")
+            or screen.get("page_url")
+            or screen.get("kiosk_url")
+            or "/lovelace"
+        ).strip()
+        if not url:
+            url = "/lovelace"
+        if not re.match(r"^https?://", url, re.I) and not url.startswith("/"):
+            url = "/" + url.lstrip("/")
+
+        duration = self._clean_int(screen.get("duration"), 60, minimum=5, maximum=86400)
+        name = str(screen.get("name") or screen.get("title") or "Home Assistant").strip()[:120]
+        page_id = self._clean_identifier(screen.get("id") or name or "page", field="id", max_len=80)
+
+        return {
+            "id": page_id,
+            "type": "ha-page",
+            "name": name or "Home Assistant",
+            "url": url,
+            "page_url": url,
+            "duration": duration,
+            "enabled": bool(screen.get("enabled", True)),
+            "kiosk": bool(screen.get("kiosk", True)),
+            "pause_on_touch": bool(screen.get("pause_on_touch", True)),
+            "background_color": str(screen.get("background_color") or "#000000")[:32],
+            "transition": "fade",
+        }
 
     def _sanitize_device_config(self, device_id: str, config: dict) -> dict:
         allowed = {
             "name", "model", "android_version", "screen_resolution", "screens",
-            "rotation", "ticker", "theme", "font", "created_at", "virtual",
-            "browser_mode", "source_device_id", "widget_feature_flags"
+            "rotation", "ticker", "modules", "theme", "font", "created_at"
         }
         cleaned = {k: v for k, v in config.items() if k in allowed}
         cleaned["id"] = device_id
@@ -257,24 +243,106 @@ class TickerDisplayAPI:
             raise web.HTTPBadRequest(text=json.dumps({"error": "rotation must be an object"}), content_type="application/json")
         if not isinstance(cleaned.get("ticker", {}), dict):
             raise web.HTTPBadRequest(text=json.dumps({"error": "ticker must be an object"}), content_type="application/json")
+        cleaned["modules"] = self._sanitize_modules_config(cleaned.get("modules"))
         return cleaned
 
     def _sanitize_global_settings(self, data: dict) -> dict:
         allowed = {
             "default_theme", "default_transition", "default_screen_duration",
-            "default_camera_source", "default_chart_hours",
-            "default_chart_widget_animations", "default_widget_opacity",
-            "default_widget_blur", "default_widget_radius",
-            "default_background_color", "default_ticker_height",
-            "widget_feature_flags", "device_groups"
+            "default_ticker_height", "default_ticker_direction",
+            "default_toast_duration", "device_groups"
         }
         cleaned = {k: v for k, v in data.items() if k in allowed}
-        if "widget_feature_flags" in cleaned and not isinstance(cleaned["widget_feature_flags"], dict):
-            raise web.HTTPBadRequest(text=json.dumps({"error": "widget_feature_flags must be an object"}), content_type="application/json")
         if "device_groups" in cleaned and not isinstance(cleaned["device_groups"], dict):
             raise web.HTTPBadRequest(text=json.dumps({"error": "device_groups must be an object"}), content_type="application/json")
         return cleaned
 
+
+
+    def _default_modules_config(self) -> dict:
+        return {
+            "clock": {
+                "format": "24h",
+                "show_date": True,
+                "show_seconds": False,
+                "time_zone": "",
+                "position": "top-right",
+                "size": "normal",
+                "color": "#ffffff",
+                "background": "rgba(15,23,42,0.82)",
+                "duration": 30,
+            },
+            "weather": {
+                "entity_id": "",
+                "title": "Wetter",
+                "position": "top-left",
+                "layout": "compact",
+                "show_forecast": True,
+                "refresh_seconds": 300,
+                "duration": 45,
+            },
+            "camera": {
+                "entity_id": "",
+                "title": "Kamera",
+                "position": "fullscreen",
+                "mode": "auto",
+                "refresh_seconds": 10,
+                "duration": 30,
+            },
+        }
+
+    def _sanitize_modules_config(self, modules: dict | None) -> dict:
+        defaults = self._default_modules_config()
+        src = modules if isinstance(modules, dict) else {}
+        out = deepcopy(defaults) if 'deepcopy' in globals() else json.loads(json.dumps(defaults))
+
+        def _bool(v, default=False):
+            if isinstance(v, bool):
+                return v
+            if v is None:
+                return default
+            return str(v).strip().lower() in {"1", "true", "yes", "on", "an", "ja"}
+
+        def _text(v, fallback="", max_len=255):
+            return str(v if v is not None else fallback).strip()[:max_len]
+
+        clock = src.get("clock") if isinstance(src.get("clock"), dict) else {}
+        out["clock"].update({
+            "format": "12h" if str(clock.get("format", out["clock"]["format"])).lower() == "12h" else "24h",
+            "show_date": _bool(clock.get("show_date"), out["clock"]["show_date"]),
+            "show_seconds": _bool(clock.get("show_seconds"), out["clock"]["show_seconds"]),
+            "time_zone": _text(clock.get("time_zone"), out["clock"]["time_zone"], 80),
+            "position": _text(clock.get("position"), out["clock"]["position"], 32),
+            "size": _text(clock.get("size"), out["clock"]["size"], 32),
+            "color": _text(clock.get("color"), out["clock"]["color"], 32),
+            "background": _text(clock.get("background"), out["clock"]["background"], 80),
+            "duration": self._clean_int(clock.get("duration"), out["clock"]["duration"], minimum=0, maximum=86400),
+        })
+
+        weather = src.get("weather") if isinstance(src.get("weather"), dict) else {}
+        out["weather"].update({
+            "entity_id": _text(weather.get("entity_id"), out["weather"]["entity_id"], 255),
+            "title": _text(weather.get("title"), out["weather"]["title"], 120),
+            "position": _text(weather.get("position"), out["weather"]["position"], 32),
+            "layout": _text(weather.get("layout"), out["weather"]["layout"], 32),
+            "show_forecast": _bool(weather.get("show_forecast"), out["weather"]["show_forecast"]),
+            "refresh_seconds": self._clean_int(weather.get("refresh_seconds"), out["weather"]["refresh_seconds"], minimum=30, maximum=3600),
+            "duration": self._clean_int(weather.get("duration"), out["weather"]["duration"], minimum=0, maximum=86400),
+        })
+
+        camera = src.get("camera") if isinstance(src.get("camera"), dict) else {}
+        mode = _text(camera.get("mode"), out["camera"]["mode"], 32)
+        if mode not in {"auto", "snapshot", "entity_picture", "camera_proxy", "stream", "camera_proxy_stream"}:
+            mode = "auto"
+        out["camera"].update({
+            "entity_id": _text(camera.get("entity_id"), out["camera"]["entity_id"], 255),
+            "title": _text(camera.get("title"), out["camera"]["title"], 120),
+            "position": _text(camera.get("position"), out["camera"]["position"], 32),
+            "mode": mode,
+            "refresh_seconds": self._clean_int(camera.get("refresh_seconds"), out["camera"]["refresh_seconds"], minimum=2, maximum=3600),
+            "duration": self._clean_int(camera.get("duration"), out["camera"]["duration"], minimum=0, maximum=86400),
+        })
+        return out
 
     def _sanitize_alert_config(self, data: dict) -> dict:
         allowed = {
@@ -1433,38 +1501,6 @@ class TickerDisplayAPI:
 
 
 
-    async def _config_device_virtual(self, request):
-        data = await self._parse_json(request)
-        source_device_id = self._clean_identifier(data.get("source_device_id"), field="source_device_id") if data.get("source_device_id") else None
-        name = (str(data.get("name") or "").strip()[:120]) or None
-        device = await self.store.async_create_virtual_device(
-            name=name,
-            source_device_id=source_device_id,
-        )
-        return web.json_response(
-            {
-                "status": "ok",
-                "device_id": device["id"],
-                "device": device,
-                "display_url": self._absolute_url(request, f"{API_BASE}/{device['id']}"),
-                "preview_url": self._absolute_url(request, f"{API_BASE}/preview/{device['id']}"),
-            }
-        )
-    async def _config_templates(self, request):
-        return web.json_response(self.store.get_templates())
-
-    async def _config_template_save(self, request):
-        data = await self._parse_json(request)
-        tid = self._clean_identifier(data.get("id", f"template_{int(datetime.now().timestamp())}"), field="id")
-        await self.store.async_save_template(tid, data)
-        return web.json_response({"status": "ok", "id": tid})
-
-    async def _config_template_delete(self, request):
-        await self.store.async_delete_template(
-            request.match_info["template_id"]
-        )
-        return web.json_response({"status": "ok"})
-
     async def _config_alerts(self, request):
         return web.json_response(self.store.get_alert_templates())
 
@@ -1479,19 +1515,6 @@ class TickerDisplayAPI:
         await self.store.async_delete_alert_template(
             request.match_info["alert_id"]
         )
-        return web.json_response({"status": "ok"})
-
-    async def _config_themes(self, request):
-        return web.json_response(self.store.get_custom_themes())
-
-    async def _config_theme_save(self, request):
-        data = await self._parse_json(request)
-        tid = self._clean_identifier(data.get("id", f"theme_{int(datetime.now().timestamp())}"), field="id")
-        await self.store.async_save_theme(tid, data)
-        return web.json_response({"status": "ok", "id": tid})
-
-    async def _config_theme_delete(self, request):
-        await self.store.async_delete_theme(request.match_info["theme_id"])
         return web.json_response({"status": "ok"})
 
     async def _config_global_get(self, request):

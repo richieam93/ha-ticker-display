@@ -3,9 +3,9 @@
     "step": {
       "user": {
         "title": "Ticker Display Setup",
-        "description": "Set up Ticker Display. After installation, find the editor in the sidebar.",
+        "description": "Set up Ticker Display Kiosk.",
         "data": {
-          "title": "Display Name",
+          "title": "Display name",
           "description": "Name for this display"
         }
       },
@@ -23,224 +23,161 @@
     }
   },
   "services": {
-    "show_dashboard": {
-      "name": "Show Dashboard",
-      "description": "Shows the dashboard screen"
+    "send_ticker_message": {
+      "name": "Ticker message",
+      "description": "Sends a live message to the ticker bar"
     },
-    "show_graph": {
-      "name": "Show Graph",
-      "description": "Shows a graph/chart screen"
+    "clear_ticker": {
+      "name": "Clear ticker",
+      "description": "Clears the current live ticker message"
     },
-    "show_camera": {
-      "name": "Show Camera",
-      "description": "Shows a camera screen"
-    },
-    "show_weather": {
-      "name": "Show Weather",
-      "description": "Shows a weather screen"
-    },
-    "show_single_value": {
-      "name": "Show Single Value",
-      "description": "Shows a single value screen"
-    },
-    "show_clock": {
-      "name": "Show Clock",
-      "description": "Shows the clock screen"
-    },
-    "show_status_board": {
-      "name": "Show Status Board",
-      "description": "Shows a status board"
-    },
-    "show_image": {
-      "name": "Show Image",
-      "description": "Shows an image screen"
-    },
-    "show_template": {
-      "name": "Show Template",
-      "description": "Shows a saved template"
+    "update_ticker_config": {
+      "name": "Ticker configuration",
+      "description": "Updates the ticker bar"
     },
     "show_alert": {
-      "name": "Show Alert",
+      "name": "Show alert",
       "description": "Shows an alert on the display"
     },
-    "show_notification": {
-      "name": "Notification",
-      "description": "Shows a notification"
+    "show_banner": {
+      "name": "Show banner",
+      "description": "Shows a banner at the top of the display"
     },
     "show_toast": {
-      "name": "Toast Message",
+      "name": "Show toast",
       "description": "Shows a brief toast message"
     },
     "clear_alert": {
-      "name": "Clear Alert",
-      "description": "Clears all active alerts"
+      "name": "Clear alert",
+      "description": "Closes active toasts, banners and alerts"
     },
-    "send_ticker_message": {
-      "name": "Ticker Message",
-      "description": "Sends a message to the ticker bar"
+    "next_screen": {
+      "name": "Next kiosk page",
+      "description": "Switches to the next kiosk page"
     },
-    "set_ticker_entities": {
-      "name": "Set Ticker Entities",
-      "description": "Sets entity templates for the ticker bar"
+    "previous_screen": {
+      "name": "Previous kiosk page",
+      "description": "Switches to the previous kiosk page"
     },
-    "clear_ticker": {
-      "name": "Clear Ticker",
-      "description": "Clears all ticker messages"
+    "goto_screen": {
+      "name": "Go to kiosk page",
+      "description": "Jumps to a specific kiosk page"
+    },
+    "pause_rotation": {
+      "name": "Pause rotation",
+      "description": "Pauses automatic kiosk rotation"
+    },
+    "resume_rotation": {
+      "name": "Resume rotation",
+      "description": "Resumes automatic kiosk rotation"
+    },
+    "reload_page": {
+      "name": "Reload page",
+      "description": "Reloads the display page"
+    },
+    "identify_device": {
+      "name": "Identify device",
+      "description": "Briefly marks the device on screen"
     },
     "set_screen_power": {
-      "name": "Screen On/Off",
+      "name": "Screen on/off",
       "description": "Turns the screen on or off"
     },
     "set_brightness": {
-      "name": "Set Brightness",
-      "description": "Sets the screen brightness"
-    },
-    "set_theme": {
-      "name": "Set Theme",
-      "description": "Sets the display theme"
+      "name": "Set brightness",
+      "description": "Sets screen brightness"
     },
     "set_volume": {
-      "name": "Volume",
-      "description": "Sets the volume"
+      "name": "Set volume",
+      "description": "Sets media volume"
+    },
+    "set_screen_orientation": {
+      "name": "Set orientation",
+      "description": "Sets screen orientation"
+    },
+    "set_device_setting": {
+      "name": "Set device setting",
+      "description": "Sets a native Android device setting"
+    },
+    "restart_app": {
+      "name": "Restart app",
+      "description": "Restarts the Android app"
+    },
+    "open_android_settings": {
+      "name": "Open Android settings",
+      "description": "Opens the Android app details screen"
+    },
+    "vibrate_device": {
+      "name": "Vibrate",
+      "description": "Vibrates the device briefly"
+    },
+    "report_device_state": {
+      "name": "Report device state",
+      "description": "Requests a fresh device state report"
     },
     "play_sound": {
-      "name": "Play Sound",
+      "name": "Play sound",
       "description": "Plays a sound"
     },
     "play_announcement": {
-      "name": "Announcement",
-      "description": "Plays an announcement"
+      "name": "Play announcement",
+      "description": "Plays an announcement or sound file"
     },
     "tts_speak": {
-      "name": "Text-to-Speech",
-      "description": "Speaks a text"
+      "name": "Speak text",
+      "description": "Speaks text using TTS"
     },
     "stop_audio": {
-      "name": "Stop Audio",
-      "description": "Stops all audio playback"
-    },
-    "next_screen": {
-      "name": "Next Screen",
-      "description": "Shows the next screen"
-    },
-    "previous_screen": {
-      "name": "Previous Screen",
-      "description": "Shows the previous screen"
-    },
-    "goto_screen": {
-      "name": "Go to Screen",
-      "description": "Goes to a specific screen"
-    },
-    "pause_rotation": {
-      "name": "Pause Rotation",
-      "description": "Pauses automatic rotation"
-    },
-    "resume_rotation": {
-      "name": "Resume Rotation",
-      "description": "Resumes rotation"
-    },
-    "reload_page": {
-      "name": "Reload Page",
-      "description": "Reloads the page"
-    },
-    "identify_device": {
-      "name": "Identify Device",
-      "description": "Visually identifies the device"
-    },
-    "entity_toggle": {
-      "name": "Toggle Entity",
-      "description": "Toggles an entity on/off"
-    },
-    "entity_action": {
-      "name": "Entity Action",
-      "description": "Executes an action on an entity"
-    },
-    "show_popup": {
-      "name": "Show Popup",
-      "description": "Shows a popup window"
-    },
-    "dismiss_popup": {
-      "name": "Dismiss Popup",
-      "description": "Closes a popup"
-    },
-    "show_silent_alert": {
-      "name": "Silent Alert",
-      "description": "Alert without sound"
-    },
-    "update_ticker_config": {
-      "name": "Ticker Config",
-      "description": "Updates ticker configuration"
-    },
-    "set_screen_orientation": {
-      "name": "Orientation",
-      "description": "Sets screen orientation"
+      "name": "Stop audio",
+      "description": "Stops audio playback"
     },
     "play_media": {
-      "name": "Play Media",
-      "description": "Plays a media file"
+      "name": "Play media",
+      "description": "Plays a media/audio URL"
     },
     "stop_media": {
-      "name": "Stop Media",
+      "name": "Stop media",
       "description": "Stops media playback"
     },
-    "media_next": {
-      "name": "Next Track",
-      "description": "Next media track"
-    },
-    "media_previous": {
-      "name": "Previous Track",
-      "description": "Previous media track"
-    },
     "media_pause": {
-      "name": "Pause",
-      "description": "Pause playback"
+      "name": "Pause media",
+      "description": "Pauses media playback"
     },
     "media_resume": {
-      "name": "Resume",
-      "description": "Resume playback"
+      "name": "Resume media",
+      "description": "Resumes media playback"
+    },
+    "media_next": {
+      "name": "Next track",
+      "description": "Skips to the next track"
+    },
+    "media_previous": {
+      "name": "Previous track",
+      "description": "Skips to the previous track"
     }
   },
   "common": {
     "device": "Device",
     "device_id": "Device ID",
-    "entity_id": "Entity",
     "title": "Title",
     "message": "Message",
     "severity": "Severity",
     "mode": "Mode",
     "duration": "Duration",
     "enabled": "Enabled",
-    "direction": "Direction",
-    "speed": "Speed",
     "volume": "Volume",
     "brightness": "Brightness",
     "orientation": "Orientation",
-    "all": "All Devices",
+    "all": "All devices",
     "info": "Info",
     "warning": "Warning",
     "critical": "Critical",
     "success": "Success",
     "fullscreen": "Fullscreen",
     "banner": "Banner",
-    "overlay": "Overlay",
     "toast": "Toast",
-    "ltr": "Left to Right",
-    "rtl": "Right to Left",
-    "slow": "Slow",
-    "normal": "Normal",
-    "fast": "Fast",
-    "classic": "Classic",
-    "glass": "Glass",
-    "alert": "Alert",
-    "minimal": "Minimal"
-  },
-  "entity": {
-    "step": {
-      "user": {
-        "title": "Add Entity",
-        "description": "Adds a new entity to the display"
-      }
-    }
+    "top": "Top",
+    "bottom": "Bottom"
   },
   "options": {
     "step": {

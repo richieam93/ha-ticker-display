@@ -71,6 +71,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 <div id="alert-overlay" class="alert-overlay" hidden></div>
 <div id="notification-banner" class="notification-banner" hidden></div>
 <div id="toast-container" class="toast-container" hidden></div>
+<div id="module-overlay" class="module-overlay" hidden></div>
 <div id="pip-container" class="pip-container" hidden>
   <img id="pip-image" class="pip-image" alt="PIP">
 </div>
@@ -120,40 +121,14 @@ window.addEventListener("unhandledrejection", function(ev) {{
 }});
 </script>
 
-<script src="/ticker-display/assets/lib/chart.min.js?v={INTEGRATION_VERSION}"></script>
-<script src="/ticker-display/assets/lib/qrcode.min.js?v={INTEGRATION_VERSION}"></script>
 <script src="/ticker-display/assets/js/display.js?v={INTEGRATION_VERSION}"></script>
 </body>
 </html>"""
 
 
 def _collect_entities(config: dict) -> list[str]:
+    """Collect only ticker entities for the Kiosk display."""
     entities = set()
-
-    for screen in config.get("screens", []):
-        for widget in screen.get("widgets", []):
-            eid = widget.get("entity_id")
-            if eid:
-                entities.add(eid)
-            for extra in (widget.get("entities", []) or widget.get("config", {}).get("entities", []) or []):
-                if isinstance(extra, dict):
-                    ex_id = extra.get("entity_id") or extra.get("id")
-                else:
-                    ex_id = extra
-                if ex_id:
-                    entities.add(ex_id)
-
-        for entity in screen.get("entities", []):
-            if isinstance(entity, dict):
-                eid = entity.get("entity_id", "")
-                if eid:
-                    entities.add(eid)
-            elif isinstance(entity, str) and entity:
-                entities.add(entity)
-
-        eid = screen.get("entity_id")
-        if eid:
-            entities.add(eid)
 
     for te in config.get("ticker", {}).get("entities", []):
         if isinstance(te, dict):
@@ -164,7 +139,6 @@ def _collect_entities(config: dict) -> list[str]:
             entities.add(te)
 
     return list(entities)
-
 
 def _get_theme_css(theme_name: str, custom_themes: dict) -> str:
     themes = {
@@ -179,9 +153,6 @@ def _get_theme_css(theme_name: str, custom_themes: dict) -> str:
             "negative": "#F44336",
             "info": "#2196F3",
             "ticker-bg": "rgba(255,255,255,0.03)",
-            "widget-gap": "8px",
-            "widget-padding": "12px",
-            "widget-radius": "12px",
             "ticker-height": "36px",
         },
         "light": {
@@ -195,9 +166,6 @@ def _get_theme_css(theme_name: str, custom_themes: dict) -> str:
             "negative": "#D32F2F",
             "info": "#1976D2",
             "ticker-bg": "rgba(0,0,0,0.03)",
-            "widget-gap": "8px",
-            "widget-padding": "12px",
-            "widget-radius": "12px",
             "ticker-height": "36px",
         },
         "high-contrast": {
@@ -211,9 +179,6 @@ def _get_theme_css(theme_name: str, custom_themes: dict) -> str:
             "negative": "#FF0000",
             "info": "#00BFFF",
             "ticker-bg": "#111111",
-            "widget-gap": "6px",
-            "widget-padding": "16px",
-            "widget-radius": "8px",
             "ticker-height": "40px",
         },
         "night": {
@@ -227,9 +192,6 @@ def _get_theme_css(theme_name: str, custom_themes: dict) -> str:
             "negative": "#CC2222",
             "info": "#993333",
             "ticker-bg": "rgba(255,0,0,0.03)",
-            "widget-gap": "8px",
-            "widget-padding": "12px",
-            "widget-radius": "12px",
             "ticker-height": "36px",
         },
     }

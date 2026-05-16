@@ -27,17 +27,9 @@ class TickerDisplayStore:
                 "default_theme": DEFAULT_THEME,
                 "default_transition": "fade",
                 "default_screen_duration": 15,
-                "default_camera_source": "auto",
-                "default_chart_hours": 24,
-                "default_chart_widget_animations": True,
-                "default_widget_opacity": 0.75,
-                "default_widget_blur": 0,
-                "default_widget_radius": 12,
-                "default_background_color": "#121212",
                 "default_ticker_height": 36,
                 "default_ticker_direction": "ltr",
                 "default_toast_duration": 6,
-                "widget_feature_flags": {},
                 "device_groups": {},
             },
         }
@@ -140,6 +132,36 @@ class TickerDisplayStore:
                 "width": "content",
                 "wake_screen": True,
             },
+            "modules": {
+                "clock": {
+                    "format": "24h",
+                    "show_date": True,
+                    "show_seconds": False,
+                    "time_zone": "",
+                    "position": "top-right",
+                    "size": "normal",
+                    "color": "#ffffff",
+                    "background": "rgba(15,23,42,0.82)",
+                    "duration": 30,
+                },
+                "weather": {
+                    "entity_id": "",
+                    "title": "Wetter",
+                    "position": "top-left",
+                    "layout": "compact",
+                    "show_forecast": True,
+                    "refresh_seconds": 300,
+                    "duration": 45,
+                },
+                "camera": {
+                    "entity_id": "",
+                    "title": "Kamera",
+                    "position": "fullscreen",
+                    "mode": "auto",
+                    "refresh_seconds": 10,
+                    "duration": 30,
+                },
+            },
             "theme": DEFAULT_THEME,
             "font": "roboto",
             "created_at": datetime.utcnow().isoformat(),
@@ -203,68 +225,8 @@ class TickerDisplayStore:
         self._data.get("devices", {}).pop(device_id, None)
         await self.async_save()
 
-    async def async_create_virtual_device(
-        self,
-        name: str | None = None,
-        source_device_id: str | None = None,
-    ) -> dict:
-        devices = self._data.setdefault("devices", {})
-        source = deepcopy(devices.get(source_device_id, {})) if source_device_id else {}
+    # Virtual/browser devices were removed in 3.0.1.
 
-        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-        device_id = f"virtual_{stamp}"
-        virtual_count = sum(1 for d in devices.values() if d.get("virtual")) + 1
-
-        device = {
-            "id": device_id,
-            "name": name or f"Virtuelles Gerät {virtual_count}",
-            "model": source.get("model") or "Browser / Web",
-            "android_version": source.get("android_version") or "Web",
-            "screen_resolution": source.get("screen_resolution") or "",
-            "screens": deepcopy(source.get("screens", [])),
-            "rotation": deepcopy(source.get("rotation", {"enabled": True, "transition": "fade"})),
-            "ticker": deepcopy(
-                source.get(
-                    "ticker",
-                    {
-                        "enabled": True,
-                        "position": "bottom",
-                        "speed": "normal",
-                        "direction": "ltr",
-                        "replace_on_new_message": True,
-                        "auto_show_on_message": True,
-                        "hide_when_empty": True,
-                        "auto_hide_seconds": 15,
-                        "entities": [],
-                        "messages": [],
-                    },
-                )
-            ),
-            "theme": source.get("theme", DEFAULT_THEME),
-            "font": source.get("font", "roboto"),
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-            "toast": deepcopy(source.get("toast", {
-                "enabled": True,
-                "position": "bottom",
-                "duration": 6,
-                "color": "#111827",
-                "text_color": "#f9fafb",
-                "accent_color": "#60a5fa",
-                "border_radius": 16,
-                "font_size": 16,
-                "width": "content",
-                "wake_screen": True,
-            })),
-            "virtual": True,
-            "browser_mode": True,
-            "source_device_id": source_device_id,
-        }
-
-        devices[device_id] = device
-        await self.async_save()
-        _LOGGER.info("Virtual device created: %s", device_id)
-        return deepcopy(device)
 
     # ── TEMPLATES ──
     def get_templates(self) -> dict:

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Ticker Display Einrichtung",
-        "description": "Ticker Display einrichten. Nach der Installation findest du den Editor in der Seitenleiste.",
+        "description": "Ticker Display Kiosk einrichten.",
         "data": {
           "title": "Anzeigename",
           "description": "Name für dieses Display"
@@ -23,69 +23,61 @@
     }
   },
   "services": {
-    "show_dashboard": {
-      "name": "Dashboard anzeigen",
-      "description": "Zeigt den Dashboard-Screen an"
+    "send_ticker_message": {
+      "name": "Ticker-Nachricht",
+      "description": "Sendet eine Live-Meldung an die Ticker-Leiste"
     },
-    "show_graph": {
-      "name": "Graph anzeigen",
-      "description": "Zeigt einen Graph-/Chart-Screen an"
+    "clear_ticker": {
+      "name": "Ticker leeren",
+      "description": "Löscht die aktuelle Live-Ticker-Meldung"
     },
-    "show_camera": {
-      "name": "Kamera anzeigen",
-      "description": "Zeigt einen Kamera-Screen an"
-    },
-    "show_weather": {
-      "name": "Wetter anzeigen",
-      "description": "Zeigt einen Wetter-Screen an"
-    },
-    "show_single_value": {
-      "name": "Einzelwert anzeigen",
-      "description": "Zeigt einen Einzelwert-Screen an"
-    },
-    "show_clock": {
-      "name": "Uhr anzeigen",
-      "description": "Zeigt den Uhr-Screen an"
-    },
-    "show_status_board": {
-      "name": "Status-Board anzeigen",
-      "description": "Zeigt ein Status-Board an"
-    },
-    "show_image": {
-      "name": "Bild anzeigen",
-      "description": "Zeigt einen Bild-Screen an"
-    },
-    "show_template": {
-      "name": "Vorlage anzeigen",
-      "description": "Zeigt eine gespeicherte Vorlage an"
+    "update_ticker_config": {
+      "name": "Ticker-Konfiguration",
+      "description": "Aktualisiert die Ticker-Leiste"
     },
     "show_alert": {
       "name": "Alert anzeigen",
       "description": "Zeigt einen Alert auf dem Display"
     },
-    "show_notification": {
-      "name": "Benachrichtigung",
-      "description": "Zeigt eine Benachrichtigung an"
+    "show_banner": {
+      "name": "Banner anzeigen",
+      "description": "Zeigt ein Banner oben auf dem Display"
     },
     "show_toast": {
-      "name": "Toast-Nachricht",
-      "description": "Zeigt eine kurze Toast-Nachricht"
+      "name": "Toast anzeigen",
+      "description": "Zeigt einen kurzen Toast-Hinweis"
     },
     "clear_alert": {
-      "name": "Alert löschen",
-      "description": "Löscht alle aktiven Alerts"
+      "name": "Alert schließen",
+      "description": "Schließt aktive Toasts, Banner und Alerts"
     },
-    "send_ticker_message": {
-      "name": "Ticker-Nachricht",
-      "description": "Sendet eine Nachricht an die Ticker-Leiste"
+    "next_screen": {
+      "name": "Nächste Kiosk-Seite",
+      "description": "Wechselt zur nächsten Kiosk-Seite"
     },
-    "set_ticker_entities": {
-      "name": "Ticker-Entities setzen",
-      "description": "Setzt Entity-Templates für die Ticker-Leiste"
+    "previous_screen": {
+      "name": "Vorherige Kiosk-Seite",
+      "description": "Wechselt zur vorherigen Kiosk-Seite"
     },
-    "clear_ticker": {
-      "name": "Ticker leeren",
-      "description": "Löscht alle Ticker-Nachrichten"
+    "goto_screen": {
+      "name": "Zu Kiosk-Seite wechseln",
+      "description": "Springt zu einer bestimmten Kiosk-Seite"
+    },
+    "pause_rotation": {
+      "name": "Rotation pausieren",
+      "description": "Pausiert die automatische Kiosk-Rotation"
+    },
+    "resume_rotation": {
+      "name": "Rotation fortsetzen",
+      "description": "Setzt die automatische Kiosk-Rotation fort"
+    },
+    "reload_page": {
+      "name": "Seite neu laden",
+      "description": "Lädt die Display-Seite neu"
+    },
+    "identify_device": {
+      "name": "Gerät identifizieren",
+      "description": "Markiert das Gerät kurz auf dem Bildschirm"
     },
     "set_screen_power": {
       "name": "Bildschirm an/aus",
@@ -95,123 +87,84 @@
       "name": "Helligkeit setzen",
       "description": "Setzt die Bildschirmhelligkeit"
     },
-    "set_theme": {
-      "name": "Theme setzen",
-      "description": "Setzt das Display-Theme"
-    },
     "set_volume": {
-      "name": "Lautstärke",
-      "description": "Setzt die Lautstärke"
+      "name": "Lautstärke setzen",
+      "description": "Setzt die Medienlautstärke"
+    },
+    "set_screen_orientation": {
+      "name": "Ausrichtung setzen",
+      "description": "Setzt die Bildschirmausrichtung"
+    },
+    "set_device_setting": {
+      "name": "Geräteeinstellung setzen",
+      "description": "Setzt eine native Android-Geräteeinstellung"
+    },
+    "restart_app": {
+      "name": "App neu starten",
+      "description": "Startet die Android-App neu"
+    },
+    "open_android_settings": {
+      "name": "Android-Einstellungen öffnen",
+      "description": "Öffnet die Android-App-Detailseite"
+    },
+    "vibrate_device": {
+      "name": "Vibrieren",
+      "description": "Lässt das Gerät kurz vibrieren"
+    },
+    "report_device_state": {
+      "name": "Status melden",
+      "description": "Fordert sofort einen neuen Gerätestatus an"
     },
     "play_sound": {
       "name": "Sound abspielen",
       "description": "Spielt einen Sound ab"
     },
     "play_announcement": {
-      "name": "Durchsage",
-      "description": "Spielt eine Durchsage ab"
+      "name": "Durchsage abspielen",
+      "description": "Spielt eine Durchsage oder Sounddatei ab"
     },
     "tts_speak": {
-      "name": "Text-to-Speech",
-      "description": "Spricht einen Text"
+      "name": "Text sprechen",
+      "description": "Spricht einen Text per TTS"
     },
     "stop_audio": {
       "name": "Audio stoppen",
-      "description": "Stoppt alle Audio-Wiedergabe"
-    },
-    "next_screen": {
-      "name": "Nächster Screen",
-      "description": "Zeigt den nächsten Screen"
-    },
-    "previous_screen": {
-      "name": "Vorheriger Screen",
-      "description": "Zeigt den vorherigen Screen"
-    },
-    "goto_screen": {
-      "name": "Zu Screen gehen",
-      "description": "Geht zu einem bestimmten Screen"
-    },
-    "pause_rotation": {
-      "name": "Rotation pausieren",
-      "description": "Pausiert die automatische Rotation"
-    },
-    "resume_rotation": {
-      "name": "Rotation fortsetzen",
-      "description": "Setzt die Rotation fort"
-    },
-    "reload_page": {
-      "name": "Seite neu laden",
-      "description": "Lädt die Seite neu"
-    },
-    "identify_device": {
-      "name": "Gerät identifizieren",
-      "description": "Identifiziert das Gerät visuell"
-    },
-    "entity_toggle": {
-      "name": "Entity schalten",
-      "description": "Schaltet eine Entity ein/aus"
-    },
-    "entity_action": {
-      "name": "Entity-Aktion",
-      "description": "Führt eine Aktion auf einer Entity aus"
-    },
-    "show_popup": {
-      "name": "Popup anzeigen",
-      "description": "Zeigt ein Popup-Fenster"
-    },
-    "dismiss_popup": {
-      "name": "Popup schließen",
-      "description": "Schließt ein Popup"
-    },
-    "show_silent_alert": {
-      "name": "Stiller Alert",
-      "description": "Alert ohne Sound"
-    },
-    "update_ticker_config": {
-      "name": "Ticker-Config",
-      "description": "Aktualisiert die Ticker-Konfiguration"
-    },
-    "set_screen_orientation": {
-      "name": "Ausrichtung",
-      "description": "Setzt die Bildschirmausrichtung"
+      "description": "Stoppt laufende Audio-Wiedergabe"
     },
     "play_media": {
       "name": "Medien abspielen",
-      "description": "Spielt eine Mediendatei ab"
+      "description": "Spielt eine Medien-/Audio-URL ab"
     },
     "stop_media": {
       "name": "Medien stoppen",
-      "description": "Stoppt die Medien-Wiedergabe"
+      "description": "Stoppt Medienwiedergabe"
+    },
+    "media_pause": {
+      "name": "Medien pausieren",
+      "description": "Pausiert Medienwiedergabe"
+    },
+    "media_resume": {
+      "name": "Medien fortsetzen",
+      "description": "Setzt Medienwiedergabe fort"
     },
     "media_next": {
       "name": "Nächster Track",
-      "description": "Nächster Medien-Track"
+      "description": "Springt zum nächsten Track"
     },
     "media_previous": {
       "name": "Vorheriger Track",
-      "description": "Vorheriger Medien-Track"
-    },
-    "media_pause": {
-      "name": "Pause",
-      "description": "Pausiert die Wiedergabe"
-    },
-    "media_resume": {
-      "name": "Fortsetzen",
-      "description": "Setzt die Wiedergabe fort"
+      "description": "Springt zum vorherigen Track"
     }
   },
   "common": {
     "device": "Gerät",
     "device_id": "Geräte-ID",
-    "entity_id": "Entity",
     "title": "Titel",
     "message": "Nachricht",
     "severity": "Schweregrad",
     "mode": "Modus",
     "duration": "Dauer",
     "enabled": "Aktiviert",
-    "direction": "Richtung",
-    "speed": "Geschwindigkeit",
     "volume": "Lautstärke",
     "brightness": "Helligkeit",
     "orientation": "Ausrichtung",
@@ -222,25 +175,9 @@
     "success": "Erfolg",
     "fullscreen": "Vollbild",
     "banner": "Banner",
-    "overlay": "Overlay",
     "toast": "Toast",
-    "ltr": "Links nach Rechts",
-    "rtl": "Rechts nach Links",
-    "slow": "Langsam",
-    "normal": "Normal",
-    "fast": "Schnell",
-    "classic": "Klassisch",
-    "glass": "Glas",
-    "alert": "Alarm",
-    "minimal": "Minimal"
-  },
-  "entity": {
-    "step": {
-      "user": {
-        "title": "Entity hinzufügen",
-        "description": "Fügt eine neue Entity zum Display hinzu"
-      }
-    }
+    "top": "Oben",
+    "bottom": "Unten"
   },
   "options": {
     "step": {

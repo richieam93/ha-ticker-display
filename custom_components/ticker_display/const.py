@@ -1,7 +1,7 @@
 """Constants for Ticker Display integration."""
 
 DOMAIN = "ticker_display"
-INTEGRATION_VERSION = "3.0.1"
+INTEGRATION_VERSION = "3.0.4"
 PLATFORMS = ["sensor", "binary_sensor", "switch", "number", "media_player", "camera"]
 
 API_BASE = "/ticker-display"
@@ -17,24 +17,12 @@ DEFAULT_HEARTBEAT_TIMEOUT = 900
 DEVICE_STALE_TIMEOUT = 86400
 DEFAULT_THEME = "dark"
 
-WIDGET_TYPES = [
-    "simple-value", "gauge", "radial-progress", "progress-bar",
-    "status-dot", "icon-value", "trend-arrow", "mini-graph",
-    "bar-chart", "sparkline", "donut", "clock", "weather",
-    "camera", "color-block", "image", "countdown", "button",
-    "media-player-control", "switch-control", "light-control",
-    "climate-control", "cover-control",
-]
+WIDGET_TYPES = []
 
-SCREEN_TYPES = [
-    "dashboard", "graph", "weather", "camera", "single-value",
-    "energy", "persons", "calendar", "media-player", "status-board",
-    "clock", "countdown", "table", "qr-code", "floorplan",
-    "webview", "ha-page", "kiosk-page", "image",
-]
+SCREEN_TYPES = ["ha-page", "kiosk-page"]
 
 ALERT_SEVERITIES = ["info", "warning", "critical"]
-ALERT_MODES = ["fullscreen", "banner", "overlay", "toast", "pip", "split", "notification"]
+ALERT_MODES = ["fullscreen", "banner", "toast", "notification"]
 TRANSITION_TYPES = ["fade", "slide", "flip", "zoom", "dissolve", "crossfade", "none"]
 BUILTIN_THEMES = ["dark", "light", "high-contrast", "night"]
 SOUND_CATEGORIES = ["alarm", "notification", "chime", "custom"]
