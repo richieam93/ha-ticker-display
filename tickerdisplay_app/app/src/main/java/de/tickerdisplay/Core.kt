@@ -72,17 +72,16 @@ class Prefs(context: Context) {
         set(v) = p.edit().putString("direct_url", v).apply()
 
     var directKiosk: Boolean
-        get() = p.getBoolean("direct_kiosk", true)
-        set(v) = p.edit().putBoolean("direct_kiosk", v).apply()
+        get() = p.getBoolean("direct_kiosk", false)
+        set(v) = p.edit().putBoolean("direct_kiosk", false).apply()
 
     /**
-     * direct_viewport_mode:
-     * - normal: Android/WebView decides like a mobile browser
-     * - desktop: force a desktop CSS viewport so HA Sections can calculate the grid correctly
+     * Kept for backwards compatibility with older configs. 3.0.13 always uses the
+     * normal Home Assistant Android viewport and never forces a desktop viewport.
      */
     var directViewportMode: String
-        get() = p.getString("direct_viewport_mode", "normal") ?: "normal"
-        set(v) = p.edit().putString("direct_viewport_mode", if (v == "desktop") "desktop" else "normal").apply()
+        get() = "normal"
+        set(v) = p.edit().putString("direct_viewport_mode", "normal").apply()
 
     var directViewportWidth: Int
         get() = p.getInt("direct_viewport_width", 1920).coerceIn(800, 3840)
@@ -1135,10 +1134,9 @@ class WebViewManager(
         } catch (_: Throwable) {}
 
         // Keep WebView cache/cookies like a normal browser. Clearing is available from the app menu.
-
-        applyInitialScale()
-
         webView.settings.apply {
+            // Match the official Home Assistant Android WebView as closely as possible.
+            minimumFontSize = 5
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
@@ -1146,27 +1144,32 @@ class WebViewManager(
             allowFileAccess = false
             allowContentAccess = true
             setSupportZoom(true)
-            builtInZoomControls = true
+            builtInZoomControls = false
             displayZoomControls = false
             textZoom = 100
-            // Direct desktop viewport mode is required for HA Sections on many Android WebViews.
-            // It makes the WebView behave like a landscape desktop browser instead of a narrow phone browser.
-            useWideViewPort = true
-            loadWithOverviewMode = prefs.isDesktopViewportMode
+
+            // Do NOT force desktop/wide viewport here. Home Assistant Sections must get the
+            // normal Android/Companion-app viewport. The official app does not force
+            // useWideViewPort/loadWithOverviewMode for the main HA frontend.
+            useWideViewPort = false
+            loadWithOverviewMode = false
             layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
+
             loadsImagesAutomatically = true
             blockNetworkImage = false
-            javaScriptCanOpenWindowsAutomatically = false
+            javaScriptCanOpenWindowsAutomatically = true
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.12"
+            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.13"
         }
 
+        applyOfficialHomeAssistantScale()
+
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-        webView.setBackgroundColor(if (prefs.isDirectMode) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
+        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.isHorizontalScrollBarEnabled = false
         webView.isVerticalScrollBarEnabled = false
         webView.overScrollMode = android.view.View.OVER_SCROLL_NEVER
@@ -1175,20 +1178,24 @@ class WebViewManager(
         webView.webChromeClient = TickerWebChromeClient()
     }
 
-    private fun currentInitialScalePercent(): Int {
-        val configured = prefs.directPageZoom
-        if (configured > 0) return configured.coerceIn(25, 200)
-        if (!prefs.isDesktopViewportMode) return 100
-        val metrics = webView.resources.displayMetrics
-        val viewPx = if (webView.width > 0) webView.width else metrics.widthPixels
-        val cssWidth = (viewPx / metrics.density).coerceAtLeast(320f)
-        val scale = ((cssWidth / prefs.directViewportWidth.toFloat()) * 100f).toInt()
-        return scale.coerceIn(25, 100)
+    private fun configuredZoomPercent(): Int {
+        // Official Home Assistant app default page zoom. Older experimental zoom settings
+        // are intentionally ignored in 3.0.13 so the page behaves like the HA app again.
+        return 100
     }
 
-    private fun applyInitialScale() {
+    private fun officialInitialScalePercent(): Int {
+        if (!prefs.isDirectMode) return 100
+        // Same idea as the official HA Android app:
+        // webView.setInitialScale((density * pageZoomPercent).toInt())
+        // This makes WebView CSS pixels match Android dp instead of physical pixels.
+        val density = webView.resources.displayMetrics.density
+        return (density * configuredZoomPercent()).toInt().coerceIn(50, 500)
+    }
+
+    private fun applyOfficialHomeAssistantScale() {
         try {
-            webView.setInitialScale(currentInitialScalePercent())
+            webView.setInitialScale(officialInitialScalePercent())
         } catch (_: Throwable) {}
     }
 
@@ -1198,11 +1205,12 @@ class WebViewManager(
     }
 
     fun load() {
-        applyInitialScale()
-        webView.settings.loadWithOverviewMode = prefs.isDesktopViewportMode
+        applyOfficialHomeAssistantScale()
+        webView.settings.useWideViewPort = false
+        webView.settings.loadWithOverviewMode = false
         val targetUrl = if (prefs.isDirectMode) prefs.resolveDirectDisplayUrl() else prefs.displayUrl
         val url = if (prefs.isDirectMode) targetUrl else addCacheBuster(targetUrl)
-        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode}")
+        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode} scale=${officialInitialScalePercent()}")
         val headers = mutableMapOf(
             "Cache-Control" to "no-cache",
             "Pragma" to "no-cache"
@@ -1223,187 +1231,40 @@ class WebViewManager(
 }
 
 class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
-    private fun initialScaleFor(view: WebView): Int {
-        val configured = prefs.directPageZoom
-        if (configured > 0) return configured.coerceIn(25, 200)
-        if (!prefs.isDesktopViewportMode) return 100
-        val metrics = view.resources.displayMetrics
-        val viewPx = if (view.width > 0) view.width else metrics.widthPixels
-        val cssWidth = (viewPx / metrics.density).coerceAtLeast(320f)
-        val scale = ((cssWidth / prefs.directViewportWidth.toFloat()) * 100f).toInt()
-        return scale.coerceIn(25, 100)
+    private fun configuredZoomPercent(): Int {
+        // Official Home Assistant app default page zoom. Older experimental zoom settings
+        // are intentionally ignored in 3.0.13 so the page behaves like the HA app again.
+        return 100
     }
 
-    private fun applyDirectDesktopViewport(view: WebView?) {
-        if (!prefs.isDesktopViewportMode || view == null) return
-        val width = prefs.directViewportWidth
-        try { view.setInitialScale(initialScaleFor(view)) } catch (_: Throwable) {}
-        val js = """
-            (function(){
-              try {
-                var desired = $width;
-                var meta = document.querySelector('meta[name="viewport"]');
-                if (!meta) {
-                  meta = document.createElement('meta');
-                  meta.setAttribute('name','viewport');
-                  document.head.appendChild(meta);
-                }
-                meta.setAttribute('content', 'width=' + desired + ', initial-scale=1.0, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover');
-                window.dispatchEvent(new Event('resize'));
-                setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 250);
-                setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 1000);
-                return 'td-desktop-viewport:' + desired + ':' + window.innerWidth + 'x' + window.innerHeight;
-              } catch(e) {
-                return 'td-desktop-viewport-error:' + e.message;
-              }
-            })();
-        """.trimIndent()
-        try {
-            view.evaluateJavascript(js, null)
-        } catch (e: Exception) {
-            Log.w("TickerDisplay/WebView", "Desktop viewport injection failed: ${e.message}")
-        }
+    private fun officialInitialScalePercent(view: WebView): Int {
+        if (!prefs.isDirectMode) return 100
+        val density = view.resources.displayMetrics.density
+        return (density * configuredZoomPercent()).toInt().coerceIn(50, 500)
     }
 
-    /**
-     * Makes a direct Home Assistant page behave like it is running inside a native app:
-     * - keep the normal responsive device viewport (important for HA Sections)
-     * - optionally hide the Home Assistant shell (sidebar/top bar/edit bar) recursively in shadow roots
-     * - keep only the actual dashboard panel visible
-     */
-    private fun injectHomeAssistantAppMode(view: WebView?) {
+    private fun applyOfficialHomeAssistantZoom(view: WebView?) {
         if (!prefs.isDirectMode || view == null) return
-        val hideChrome = if (prefs.directKiosk) "true" else "false"
-        val js = """
-            (function(){
-              try {
-                var HIDE_CHROME = $hideChrome;
-                var STYLE_ID = 'td-ha-app-mode-style';
-                var CSS_BASE = [
-                  'html,body{margin:0!important;padding:0!important;width:100%!important;min-width:0!important;height:100%!important;background:var(--primary-background-color,#fff)!important}',
-                  'body{overflow:hidden!important}',
-                  'home-assistant{display:block!important;width:100%!important;min-width:0!important;height:100%!important}',
-                  ':host{--safe-area-inset-top:0px!important;--safe-area-inset-bottom:0px!important;--safe-area-inset-left:0px!important;--safe-area-inset-right:0px!important;--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}'
-                ].join('\\n');
-                var CSS_HIDE = [
-                  'app-header,app-toolbar,ha-top-app-bar-fixed,ha-menu-button,ha-drawer,ha-sidebar,app-drawer,.mdc-drawer,.drawer,.sidebar,.toolbar,.header,.top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;width:0!important;min-width:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}',
-                  'home-assistant-main,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout,app-drawer-layout,main,#content,.content,.panel{left:0!important;right:0!important;top:0!important;bottom:0!important;margin:0!important;padding:0!important;width:100vw!important;max-width:100vw!important;min-width:0!important;height:100vh!important;max-height:100vh!important;transform:none!important}',
-                  'hui-view,hui-sections-view,.view{width:100%!important;max-width:100%!important;min-width:0!important;margin-left:auto!important;margin-right:auto!important}',
-                  '.view{padding-top:0!important}'
-                ].join('\\n');
-                var allCss = CSS_BASE + (HIDE_CHROME ? '\\n' + CSS_HIDE : '');
-
-                function addStyle(root) {
-                  if (!root) return;
-                  var doc = root.ownerDocument || document;
-                  var existing = null;
-                  try { existing = root.getElementById ? root.getElementById(STYLE_ID) : null; } catch(e) {}
-                  if (!existing) {
-                    var s = doc.createElement('style');
-                    s.id = STYLE_ID;
-                    s.textContent = allCss;
-                    try {
-                      if (root.head) root.head.appendChild(s);
-                      else root.appendChild(s);
-                    } catch(e1) {
-                      try { (root.documentElement || root).appendChild(s); } catch(e2) {}
-                    }
-                  } else if (existing.textContent !== allCss) {
-                    existing.textContent = allCss;
-                  }
-                }
-
-                function nodes(root) {
-                  try { return root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll('*')) : []; }
-                  catch(e) { return []; }
-                }
-
-                function walk(root, cb) {
-                  if (!root) return;
-                  cb(root);
-                  var list = nodes(root);
-                  for (var i=0; i<list.length; i++) {
-                    var el = list[i];
-                    if (el && el.shadowRoot) walk(el.shadowRoot, cb);
-                  }
-                }
-
-                function forceHide(root) {
-                  if (!HIDE_CHROME) return;
-                  var selectors = [
-                    'app-header','app-toolbar','ha-top-app-bar-fixed','ha-menu-button',
-                    'ha-drawer','ha-sidebar','app-drawer','.mdc-drawer','.drawer','.sidebar',
-                    '.toolbar','.header','.top-app-bar','.edit-mode-toolbar'
-                  ].join(',');
-                  try {
-                    var found = root.querySelectorAll ? root.querySelectorAll(selectors) : [];
-                    for (var i=0; i<found.length; i++) {
-                      var el = found[i];
-                      el.style.setProperty('display','none','important');
-                      el.style.setProperty('visibility','hidden','important');
-                      el.style.setProperty('width','0','important');
-                      el.style.setProperty('height','0','important');
-                      el.style.setProperty('opacity','0','important');
-                      el.setAttribute('hidden','');
-                    }
-                  } catch(e) {}
-                }
-
-                function setViewport() {
-                  var meta = document.querySelector('meta[name="viewport"]');
-                  if (!meta) {
-                    meta = document.createElement('meta');
-                    meta.setAttribute('name', 'viewport');
-                    document.head.appendChild(meta);
-                  }
-                  if (!HIDE_CHROME) {
-                    meta.setAttribute('content','width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes');
-                  } else {
-                    meta.setAttribute('content','width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no');
-                  }
-                  document.documentElement.style.setProperty('min-width','0','important');
-                  document.documentElement.style.setProperty('width','100%','important');
-                  if (document.body) {
-                    document.body.style.setProperty('min-width','0','important');
-                    document.body.style.setProperty('width','100%','important');
-                  }
-                }
-
-                function apply() {
-                  setViewport();
-                  walk(document, function(root){ addStyle(root); forceHide(root); });
-                  window.dispatchEvent(new Event('resize'));
-                }
-
-                apply();
-                if (!window.__tdHaAppModeObserver) {
-                  window.__tdHaAppModeObserver = new MutationObserver(function(){
-                    if (window.__tdHaAppModeTimer) return;
-                    window.__tdHaAppModeTimer = setTimeout(function(){
-                      window.__tdHaAppModeTimer = null;
-                      try { apply(); } catch(e) {}
-                    }, 150);
-                  });
-                  window.__tdHaAppModeObserver.observe(document.documentElement || document, { childList:true, subtree:true });
-                }
-                if (!window.__tdHaAppModeInterval) {
-                  window.__tdHaAppModeInterval = setInterval(function(){ try { apply(); } catch(e) {} }, 1200);
-                  setTimeout(function(){ try { clearInterval(window.__tdHaAppModeInterval); window.__tdHaAppModeInterval = null; } catch(e) {} }, 15000);
-                }
-                setTimeout(function(){ try { apply(); } catch(e) {} }, 250);
-                setTimeout(function(){ try { apply(); } catch(e) {} }, 900);
-                setTimeout(function(){ try { apply(); } catch(e) {} }, 2500);
-                return 'td-ha-app-mode:' + (HIDE_CHROME ? 'chrome-hidden:' : 'chrome-visible:') + window.innerWidth + 'x' + window.innerHeight;
-              } catch(e) {
-                return 'td-ha-app-mode-error:' + e.message;
-              }
-            })();
-        """.trimIndent()
+        try { view.setInitialScale(officialInitialScalePercent(view)) } catch (_: Throwable) {}
         try {
-            view.evaluateJavascript(js, null)
-        } catch (e: Exception) {
-            Log.w("TickerDisplay/WebView", "HA app mode injection failed: ${e.message}")
-        }
+            // Keep the Home Assistant viewport exactly as delivered by the frontend.
+            // Only restore it to device-width if a previous build injected a desktop viewport.
+            view.evaluateJavascript(
+                """
+                (function(){
+                  try {
+                    var meta = document.querySelector('meta[name="viewport"]');
+                    if (meta && /width=\d{3,4}/.test(meta.getAttribute('content') || '')) {
+                      meta.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
+                      window.dispatchEvent(new Event('resize'));
+                    }
+                    return 'td-ha-official-scale:' + window.innerWidth + 'x' + window.innerHeight;
+                  } catch(e) { return 'td-ha-official-scale-error:' + e.message; }
+                })();
+                """.trimIndent(),
+                null
+            )
+        } catch (_: Throwable) {}
     }
 
     var onPageLoaded: (() -> Unit)? = null
@@ -1411,21 +1272,19 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         Log.d("TickerDisplay/WebView", "Loading: $url")
-        view?.let { runCatching { it.setInitialScale(initialScaleFor(it)) } }
+        applyOfficialHomeAssistantZoom(view)
     }
 
     override fun onPageCommitVisible(view: WebView?, url: String?) {
         super.onPageCommitVisible(view, url)
-        injectHomeAssistantAppMode(view)
+        applyOfficialHomeAssistantZoom(view)
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         Log.d("TickerDisplay/WebView", "Loaded: $url")
-        injectHomeAssistantAppMode(view)
-        applyDirectDesktopViewport(view)
-        view?.postDelayed({ injectHomeAssistantAppMode(view); applyDirectDesktopViewport(view) }, 500)
-        view?.postDelayed({ injectHomeAssistantAppMode(view); applyDirectDesktopViewport(view) }, 1500)
-        view?.postDelayed({ injectHomeAssistantAppMode(view); applyDirectDesktopViewport(view) }, 3500)
+        applyOfficialHomeAssistantZoom(view)
+        view?.postDelayed({ applyOfficialHomeAssistantZoom(view) }, 500)
+        view?.postDelayed({ applyOfficialHomeAssistantZoom(view) }, 1500)
         onPageLoaded?.invoke()
     }
 

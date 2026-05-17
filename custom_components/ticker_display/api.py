@@ -242,18 +242,13 @@ class TickerDisplayAPI:
         if cleaned["render_mode"] not in {"wrapper", "direct"}:
             cleaned["render_mode"] = "wrapper"
         cleaned["direct_url"] = str(cleaned.get("direct_url") or config.get("direct_url") or "").strip()[:1000]
-        cleaned["direct_kiosk"] = bool(cleaned.get("direct_kiosk", config.get("direct_kiosk", True)))
-        cleaned["direct_viewport_mode"] = str(cleaned.get("direct_viewport_mode") or config.get("direct_viewport_mode") or "normal").strip().lower()
-        if cleaned["direct_viewport_mode"] not in {"normal", "desktop"}:
-            cleaned["direct_viewport_mode"] = "normal"
+        cleaned["direct_kiosk"] = False
+        cleaned["direct_viewport_mode"] = "normal"
         try:
             cleaned["direct_viewport_width"] = max(800, min(3840, int(cleaned.get("direct_viewport_width", config.get("direct_viewport_width", 1920)) or 1920)))
         except (TypeError, ValueError):
             cleaned["direct_viewport_width"] = 1920
-        try:
-            cleaned["direct_page_zoom"] = max(0, min(200, int(cleaned.get("direct_page_zoom", config.get("direct_page_zoom", 0)) or 0)))
-        except (TypeError, ValueError):
-            cleaned["direct_page_zoom"] = 0
+        cleaned["direct_page_zoom"] = 0
         if not isinstance(cleaned.get("screens", []), list):
             raise web.HTTPBadRequest(text=json.dumps({"error": "screens must be a list"}), content_type="application/json")
         cleaned["screens"] = [self._normalize_screen_config(screen) for screen in cleaned.get("screens", [])]
@@ -506,7 +501,7 @@ class TickerDisplayAPI:
                 "ws_url": self._absolute_url(request, f"/ticker-display/ws/{device_id}"),
                 "render_mode": (self.store.get_device(device_id) or {}).get("render_mode", "wrapper"),
                 "direct_url": (self.store.get_device(device_id) or {}).get("direct_url", ""),
-                "direct_kiosk": (self.store.get_device(device_id) or {}).get("direct_kiosk", True),
+                "direct_kiosk": (self.store.get_device(device_id) or {}).get("direct_kiosk", False),
                 "direct_viewport_mode": (self.store.get_device(device_id) or {}).get("direct_viewport_mode", "normal"),
                 "direct_viewport_width": (self.store.get_device(device_id) or {}).get("direct_viewport_width", 1920),
                 "direct_page_zoom": (self.store.get_device(device_id) or {}).get("direct_page_zoom", 0),

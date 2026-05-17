@@ -109,7 +109,7 @@ class TickerDisplayStore:
             "screens": [],
             "render_mode": "wrapper",
             "direct_url": "",
-            "direct_kiosk": True,
+            "direct_kiosk": False,
             "direct_viewport_mode": "normal",
             "direct_viewport_width": 1920,
             "direct_page_zoom": 0,

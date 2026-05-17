@@ -1,10 +1,10 @@
 /**
- * Ticker Display Panel 3.0.12
+ * Ticker Display Panel 3.0.13
  * Kiosk-Verwaltung mit Modul-Einstellungen fuer Uhr, Wetter und Kamera.
  */
 (function () {
   const API = "/ticker-display";
-  const VERSION = "3.0.12";
+  const VERSION = "3.0.13";
   const DEFAULT_PAGE_URL = "/dashboard-durchgang/4";
   const QUICK_PAGES = [
     ["Durchgang", "/dashboard-durchgang/4"],
@@ -99,8 +99,8 @@
       this._pages = [];
       this._renderMode = "wrapper";
       this._directUrl = "";
-      this._directKiosk = true;
-      this._directViewportMode = "desktop";
+      this._directKiosk = false;
+      this._directViewportMode = "normal";
       this._directViewportWidth = 1920;
       this._directPageZoom = 0;
       this._modules = defaultModules();
@@ -168,7 +168,7 @@
       } finally { this._loading = false; this._render(); }
     }
     async _loadSelectedDevice() {
-      if (!this._selectedId) { this._device = null; this._pages = []; this._renderMode = "wrapper"; this._directUrl = ""; this._directKiosk = true; this._directViewportMode = "desktop"; this._directViewportWidth = 1920; this._directPageZoom = 0; this._modules = defaultModules(); return; }
+      if (!this._selectedId) { this._device = null; this._pages = []; this._renderMode = "wrapper"; this._directUrl = ""; this._directKiosk = false; this._directViewportMode = "normal"; this._directViewportWidth = 1920; this._directPageZoom = 0; this._modules = defaultModules(); return; }
       const device = await this._fetchJson(`${API}/api/config/device/${encodeURIComponent(this._selectedId)}`);
       this._device = device;
       this._pages = Array.isArray(device.screens) ? device.screens.map(screenToPage).filter((p) => p.url) : [];
@@ -226,10 +226,10 @@
         screens: this._pages.map(pageToScreen),
         render_mode: this._renderMode === "direct" ? "direct" : "wrapper",
         direct_url: normalizeHaUrl(this._directUrl || (this._pages[0] && this._pages[0].url) || DEFAULT_PAGE_URL),
-        direct_kiosk: !!this._directKiosk,
-        direct_viewport_mode: this._directViewportMode === "desktop" ? "desktop" : "normal",
+        direct_kiosk: false,
+        direct_viewport_mode: "normal",
         direct_viewport_width: cleanInt(this._directViewportWidth, 1920, 800, 3840),
-        direct_page_zoom: cleanInt(this._directPageZoom, 0, 0, 200),
+        direct_page_zoom: 0,
         rotation: { ...(this._device.rotation || {}), touch_pause_seconds: this._pauseSeconds, enabled: true, transition: "fade" },
         ticker: { ...(this._device.ticker || {}), ...tickerExtra, enabled: !!this._tickerEnabled },
         modules: normalizeModules({ ...this._modules, ...modulesExtra }),
@@ -328,9 +328,8 @@
     _renderPages() {
       const d = this._device; if (!d) return `<div class="card">Bitte zuerst ein Gerät auswählen.</div>`;
       const rows = this._pages.map((p, i) => `<div class="page-row"><div class="page-number">${i + 1}</div><label>Name<input data-index="${i}" data-key="name" value="${esc(p.name)}" placeholder="z.B. Durchgang"></label><label class="url">Home-Assistant-Seite / URL<input data-index="${i}" data-key="url" value="${esc(p.url)}" placeholder="/dashboard-durchgang/4"></label><label>Dauer Sekunden<input type="number" min="5" max="86400" data-index="${i}" data-key="duration" value="${esc(p.duration)}"></label><label class="check"><input type="checkbox" data-index="${i}" data-key="enabled" ${p.enabled !== false ? "checked" : ""}> Aktiv</label><label class="check"><input type="checkbox" data-index="${i}" data-key="kiosk" ${p.kiosk !== false ? "checked" : ""}> Kiosk-Parameter</label><div class="row-actions"><button class="icon" data-action="move-up" data-index="${i}" title="Nach oben">↑</button><button class="icon" data-action="move-down" data-index="${i}" title="Nach unten">↓</button><button class="icon danger" data-action="delete-page" data-index="${i}" title="Löschen">✕</button></div></div>`).join("");
-      const directInfo = this._renderMode === "direct" ? "Die Android-App lädt diese Home-Assistant-Seite direkt in der WebView. Ticker und Alerts laufen als natives Overlay über der Seite. Empfohlen für Sections: HA-App / normaler Android-Viewport." : "Die Android-App lädt die Ticker-Display-Weboberfläche mit eingebettetem Home Assistant. Gut für normale Browser-Vorschau und einfache Seiten.";
-      const viewportHint = this._directViewportMode === "desktop" ? `Desktop-Viewport aktiv: Home Assistant sieht ca. ${cleanInt(this._directViewportWidth, 1920, 800, 3840)} CSS-Pixel Breite. Nur verwenden, wenn HA-App-Viewport nicht passt.` : "HA-App-Viewport aktiv: Home Assistant entscheidet selbst zwischen Phone/Tablet/Desktop. Das entspricht der offiziellen App am ehesten.";
-      return `<div class="hero"><div><h1>Kiosk-Seiten</h1><p>Hier trägst du Home-Assistant-Seiten ein. Layout, Karten und Hintergründe baust du direkt in Lovelace/YAML.</p></div><button class="primary" data-action="save" ${this._saving ? "disabled" : ""}>Speichern</button></div><div class="card"><h2>Android-App Anzeige</h2><div class="settings-grid two"><label>App-Modus<select data-field="renderMode"><option value="wrapper" ${this._renderMode !== "direct" ? "selected" : ""}>Wrapper / Browser-Vorschau</option><option value="direct" ${this._renderMode === "direct" ? "selected" : ""}>Direct WebView wie HA-App</option></select></label><label>Direct-URL<input data-field="directUrl" value="${esc(this._directUrl || (this._pages[0] && this._pages[0].url) || DEFAULT_PAGE_URL)}" placeholder="/dashboard-bad/0"></label><label>Viewport für Direct-Modus<select data-field="directViewportMode"><option value="desktop" ${this._directViewportMode !== "normal" ? "selected" : ""}>Desktop-Viewport erzwingen</option><option value="normal" ${this._directViewportMode === "normal" ? "selected" : ""}>HA-App / normaler Android-Viewport</option></select></label><label>Desktop-Breite CSS-Pixel (nur bei Desktop-Viewport)<input type="number" min="800" max="3840" data-field="directViewportWidth" value="${esc(this._directViewportWidth)}"></label><label>Zoom Prozent<input type="number" min="0" max="200" data-field="directPageZoom" value="${esc(this._directPageZoom)}"><small>0 = Standard. Nur bei Bedarf ändern.</small></label><label class="check"><input type="checkbox" data-field="directKiosk" ${this._directKiosk !== false ? "checked" : ""}> Home-Assistant-Menü/Sidebar in der App ausblenden</label></div><p class="hint">${esc(directInfo)} ${esc(viewportHint)} Speichern und die Android-App danach über das App-Menü neu laden.</p></div><div class="card"><h2>Schnell hinzufügen</h2><div class="quick-list">${QUICK_PAGES.map(([name, url]) => `<button data-action="add-quick" data-name="${esc(name)}" data-url="${esc(url)}">${esc(name)}<small>${esc(url)}</small></button>`).join("")}</div><button data-action="add-page">+ Eigene Seite hinzufügen</button></div><div class="card"><h2>Rotation</h2><div class="settings-grid"><label>Touch-Pause in Sekunden<input type="number" min="0" max="86400" data-field="pauseSeconds" value="${esc(this._pauseSeconds)}"></label><label class="check"><input type="checkbox" data-field="tickerEnabled" ${this._tickerEnabled ? "checked" : ""}> Ticker-Leiste anzeigen</label></div><p class="hint">Standard: 300 Sekunden = 5 Minuten. Jeder Tap/Klick im Display pausiert den Seitenwechsel für diese Zeit.</p></div><div class="card"><h2>Seiten-Reihenfolge</h2>${rows || `<div class="empty-big">Noch keine Seite eingetragen.<br>Füge z.B. <code>/dashboard-durchgang/4</code> hinzu.</div>`}</div><div class="card links"><h2>Display-Links</h2><a href="${esc(d.display_url || `/ticker-display/${d.id}`)}" target="_blank" rel="noreferrer">Display öffnen</a><a href="${esc(d.preview_url || `/ticker-display/preview/${d.id}`)}" target="_blank" rel="noreferrer">Vorschau öffnen</a><button data-action="copy" data-copy="${esc(d.display_url || `/ticker-display/${d.id}`)}">Display-Link kopieren</button></div>`;
+      const directInfo = this._renderMode === "direct" ? "Die Android-App lädt diese Home-Assistant-Seite direkt in einer WebView mit den gleichen Grund-Einstellungen wie die offizielle Home-Assistant-App: kein Iframe, kein erzwungener Desktop-Viewport, keine CSS-Manipulation am HA-Frontend. Ticker und Alerts laufen nur als natives Overlay, wenn sie aktiv sind." : "Die Android-App lädt die Ticker-Display-Weboberfläche mit eingebettetem Home Assistant. Für Sections-Dashboards ist Direct WebView empfohlen.";
+      return `<div class="hero"><div><h1>Kiosk-Seiten</h1><p>Hier trägst du Home-Assistant-Seiten ein. Layout, Karten und Hintergründe baust du direkt in Lovelace/YAML.</p></div><button class="primary" data-action="save" ${this._saving ? "disabled" : ""}>Speichern</button></div><div class="card"><h2>Android-App Anzeige</h2><div class="settings-grid two"><label>App-Modus<select data-field="renderMode"><option value="wrapper" ${this._renderMode !== "direct" ? "selected" : ""}>Wrapper / Browser-Vorschau</option><option value="direct" ${this._renderMode === "direct" ? "selected" : ""}>Direct WebView wie HA-App</option></select></label><label>Direct-URL<input data-field="directUrl" value="${esc(this._directUrl || (this._pages[0] && this._pages[0].url) || DEFAULT_PAGE_URL)}" placeholder="/badezimmer-display/0"></label></div><p class="hint">${esc(directInfo)} Speichern und die Android-App danach über das App-Menü neu laden.</p></div><div class="card"><h2>Schnell hinzufügen</h2><div class="quick-list">${QUICK_PAGES.map(([name, url]) => `<button data-action="add-quick" data-name="${esc(name)}" data-url="${esc(url)}">${esc(name)}<small>${esc(url)}</small></button>`).join("")}</div><button data-action="add-page">+ Eigene Seite hinzufügen</button></div><div class="card"><h2>Rotation</h2><div class="settings-grid"><label>Touch-Pause in Sekunden<input type="number" min="0" max="86400" data-field="pauseSeconds" value="${esc(this._pauseSeconds)}"></label><label class="check"><input type="checkbox" data-field="tickerEnabled" ${this._tickerEnabled ? "checked" : ""}> Ticker-Leiste anzeigen</label></div><p class="hint">Standard: 300 Sekunden = 5 Minuten. Jeder Tap/Klick im Display pausiert den Seitenwechsel für diese Zeit.</p></div><div class="card"><h2>Seiten-Reihenfolge</h2>${rows || `<div class="empty-big">Noch keine Seite eingetragen.<br>Füge z.B. <code>/badezimmer-display/0</code> hinzu.</div>`}</div><div class="card links"><h2>Display-Links</h2><a href="${esc(d.display_url || `/ticker-display/${d.id}`)}" target="_blank" rel="noreferrer">Display öffnen</a><a href="${esc(d.preview_url || `/ticker-display/preview/${d.id}`)}" target="_blank" rel="noreferrer">Vorschau öffnen</a><button data-action="copy" data-copy="${esc(d.display_url || `/ticker-display/${d.id}`)}">Display-Link kopieren</button></div>`;
     }
     _renderModules() {
       if (!this._device) return `<div class="card">Bitte zuerst ein Gerät auswählen.</div>`;
