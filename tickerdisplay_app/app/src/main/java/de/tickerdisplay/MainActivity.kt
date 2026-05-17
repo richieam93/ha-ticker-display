@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var kioskMgr: KioskManager
     private lateinit var screenMgr: ScreenManager
     private lateinit var sound: SoundPlayer
+    private var nativeOverlay: NativeOverlayManager? = null
     private lateinit var sensors: SensorReporter
     private lateinit var connection: ConnectionMonitor
     private var frontCameraUploader: CameraSnapshotUploader? = null
@@ -90,9 +91,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
             screenMgr = ScreenManager(this)
             sound = SoundPlayer(this)
+            nativeOverlay = NativeOverlayManager(this, prefs, sound)
             val api = ApiClient(prefs)
             Thread {
-                try { api.ensureRegistered() } catch (_: Exception) {}
+                try {
+                    api.ensureRegistered()
+                    api.syncDeviceConfig()
+                    runOnUiThread { nativeOverlay?.refreshForPrefs() }
+                } catch (_: Exception) {}
             }.start()
             sensors = SensorReporter(this, api, prefs)
             motionDetector = MotionCameraDetector(this, api, prefs) { active, data ->
@@ -510,10 +516,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         offlineView.visibility = View.GONE
-        manager.load()
-        handler.postDelayed({
-            if (!pageLoaded) scheduleRetry()
-        }, 10000)
+        Thread {
+            try {
+                val api = ApiClient(prefs)
+                api.ensureRegistered(1)
+                api.syncDeviceConfig()
+            } catch (e: Exception) {
+                Log.w("TickerDisplay", "Config sync before load failed: ${e.message}")
+            }
+            runOnUiThread {
+                nativeOverlay?.refreshForPrefs()
+                manager.load()
+                handler.postDelayed({
+                    if (!pageLoaded) scheduleRetry()
+                }, 10000)
+            }
+        }.start()
     }
 
     private fun scheduleRetry() {

@@ -370,7 +370,7 @@ async def async_setup_services(hass, store, coordinator, websocket, media_manage
 
         The primary payload is type=module. A command fallback is sent as well
         so displays that still have a mixed/cached Kiosk script after an update
-        can still render clock/weather/camera once the 3.0.7 script is loaded.
+        can still render clock/weather/camera once the 3.0.9 script is loaded.
         """
         d = _data(call)
         if "duration" in d:

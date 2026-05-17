@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// AndroidX annotation-experimental is only needed as a compile-time annotation library.
+// Some Android/Gradle combinations can pull its generated R class into the dex archive
+// twice through transitive dependencies/caches. Excluding it from packaged classpaths
+// prevents: "Type androidx.annotation.experimental.R is defined multiple times".
+configurations.configureEach {
+    exclude(group = "androidx.annotation", module = "annotation-experimental")
+}
+
 android {
     namespace = "de.tickerdisplay"
     compileSdk = 35
@@ -11,8 +19,8 @@ android {
         applicationId = "de.tickerdisplay"
         minSdk = 23
         targetSdk = 35
-        versionCode = 308
-        versionName = "3.0.8"
+        versionCode = 310
+        versionName = "3.0.10"
     }
 
     buildTypes {

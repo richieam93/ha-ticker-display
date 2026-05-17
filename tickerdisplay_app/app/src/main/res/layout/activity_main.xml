@@ -9,6 +9,82 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+
+    <FrameLayout
+        android:id="@+id/native_overlay_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="false">
+
+        <FrameLayout
+            android:id="@+id/native_alert_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#B3000000"
+            android:visibility="gone"
+            android:clickable="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="28dp">
+
+                <LinearLayout
+                    android:id="@+id/native_alert_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="32dp"
+                    android:background="@drawable/bg_surface_glow">
+
+                    <TextView
+                        android:id="@+id/native_alert_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="Alert"
+                        android:textColor="#FFFFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="42sp" />
+
+                    <TextView
+                        android:id="@+id/native_alert_message"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:layout_marginTop="14dp"
+                        android:text="Nachricht"
+                        android:textColor="#FFFFFFFF"
+                        android:textSize="24sp"
+                        android:lineSpacingExtra="4dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/native_ticker_bar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_gravity="bottom"
+            android:gravity="center_vertical"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:singleLine="true"
+            android:ellipsize="marquee"
+            android:marqueeRepeatLimit="marquee_forever"
+            android:scrollHorizontally="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp"
+            android:background="#E6000000"
+            android:visibility="gone" />
+    </FrameLayout>
+
     <LinearLayout
         android:id="@+id/offline_view"
         android:layout_width="match_parent"

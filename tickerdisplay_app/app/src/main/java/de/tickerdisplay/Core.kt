@@ -63,6 +63,21 @@ class Prefs(context: Context) {
         get() = p.getString("ws_url_override", "") ?: ""
         set(v) = p.edit().putString("ws_url_override", v).apply()
 
+    var renderMode: String
+        get() = p.getString("render_mode", "wrapper") ?: "wrapper"
+        set(v) = p.edit().putString("render_mode", if (v == "direct") "direct" else "wrapper").apply()
+
+    var directUrl: String
+        get() = p.getString("direct_url", "") ?: ""
+        set(v) = p.edit().putString("direct_url", v).apply()
+
+    var directKiosk: Boolean
+        get() = p.getBoolean("direct_kiosk", true)
+        set(v) = p.edit().putBoolean("direct_kiosk", v).apply()
+
+    val isDirectMode: Boolean
+        get() = renderMode == "direct"
+
     var registeredAtEpochMs: Long
         get() = p.getLong("registered_at_ms", 0L)
         set(v) = p.edit().putLong("registered_at_ms", v).apply()
@@ -199,6 +214,36 @@ class Prefs(context: Context) {
 
     val displayUrl: String
         get() = displayUrlOverride.ifBlank { "$haUrl${String.format(C.DISPLAY_PATH, deviceId)}" }
+
+    fun resolveDirectDisplayUrl(): String {
+        val raw = directUrl.ifBlank { "/lovelace" }.trim()
+        val base = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "${haUrl.trimEnd('/')}/${raw.trimStart('/')}"
+        if (!directKiosk || base.contains("kiosk", ignoreCase = true)) return base
+        val hashIndex = base.indexOf('#')
+        val beforeHash = if (hashIndex >= 0) base.substring(0, hashIndex) else base
+        val afterHash = if (hashIndex >= 0) base.substring(hashIndex) else ""
+        val sep = if (beforeHash.contains('?')) "&" else "?"
+        return beforeHash + sep + "kiosk" + afterHash
+    }
+
+    fun resolveWsUrl(): String {
+        val explicit = wsUrlOverride.trim()
+        if (explicit.isNotBlank()) {
+            return when {
+                explicit.startsWith("ws://") || explicit.startsWith("wss://") -> explicit
+                explicit.startsWith("https://") -> "wss://" + explicit.removePrefix("https://")
+                explicit.startsWith("http://") -> "ws://" + explicit.removePrefix("http://")
+                else -> explicit
+            }
+        }
+        val base = haUrl.trimEnd('/')
+        val wsBase = when {
+            base.startsWith("https://") -> "wss://" + base.removePrefix("https://")
+            base.startsWith("http://") -> "ws://" + base.removePrefix("http://")
+            else -> "ws://" + base
+        }
+        return "$wsBase/ticker-display/ws/$deviceId"
+    }
 
     fun isConfigured() = haUrl.isNotBlank() && token.isNotBlank()
 
@@ -635,12 +680,53 @@ class ApiClient(private val prefs: Prefs) {
                     if (returnedId.isNotBlank()) prefs.deviceId = returnedId
                     if (displayUrl.isNotBlank()) prefs.displayUrlOverride = displayUrl
                     if (wsUrl.isNotBlank()) prefs.wsUrlOverride = wsUrl
+                    val renderMode = obj["render_mode"]?.toString()?.trim().orEmpty()
+                    val directUrl = obj["direct_url"]?.toString()?.trim().orEmpty()
+                    val directKiosk = obj["direct_kiosk"]
+                    if (renderMode.isNotBlank()) prefs.renderMode = renderMode
+                    if (directUrl.isNotBlank()) prefs.directUrl = directUrl
+                    if (directKiosk != null) prefs.directKiosk = directKiosk.toString().equals("true", ignoreCase = true)
                     prefs.registeredAtEpochMs = System.currentTimeMillis()
                 }
                 true
             }
         } catch (e: Exception) {
             Log.e("TickerDisplay/ApiClient", "Register failed", e)
+            false
+        }
+    }
+
+    fun syncDeviceConfig(): Boolean {
+        prefs.ensureStableDeviceIdentity(App.instance)
+        val url = "${prefs.haUrl}/ticker-display/api/device/${prefs.deviceId}/config"
+        val req = Request.Builder()
+            .url(url)
+            .get()
+            .addHeader("Authorization", "Bearer ${prefs.token}")
+            .addHeader("Accept", "application/json")
+            .build()
+        return try {
+            client.newCall(req).execute().use { res ->
+                val body = res.body?.string().orEmpty()
+                if (!res.isSuccessful) {
+                    Log.w("TickerDisplay/ApiClient", "Config sync failed: ${res.code} - $body")
+                    return false
+                }
+                val obj = gson.fromJson(body, Map::class.java) ?: return false
+                obj["render_mode"]?.toString()?.let { prefs.renderMode = it }
+                obj["direct_url"]?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let { prefs.directUrl = it }
+                obj["direct_kiosk"]?.let { prefs.directKiosk = it.toString().equals("true", ignoreCase = true) }
+                val screens = obj["screens"] as? List<*>
+                if (prefs.directUrl.isBlank() && !screens.isNullOrEmpty()) {
+                    val first = screens.firstOrNull() as? Map<*, *>
+                    val urlValue = (first?.get("url") ?: first?.get("page_url") ?: first?.get("kiosk_url"))?.toString()?.trim().orEmpty()
+                    if (urlValue.isNotBlank()) prefs.directUrl = urlValue
+                }
+                L.i("ApiClient", "Config synced: render=${prefs.renderMode} direct=${prefs.directUrl}")
+                true
+            }
+        } catch (e: Exception) {
+            Log.e("TickerDisplay/ApiClient", "Config sync error", e)
             false
         }
     }
@@ -1014,31 +1100,27 @@ class WebViewManager(
             }
         } catch (_: Throwable) {}
 
-        try {
-            webView.clearCache(true)
-            webView.clearHistory()
-        } catch (_: Throwable) {}
+        // Keep WebView cache/cookies like a normal browser. Clearing is available from the app menu.
 
         try {
-            webView.setInitialScale(0)
+            webView.setInitialScale(100)
         } catch (_: Throwable) {}
 
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            cacheMode = WebSettings.LOAD_NO_CACHE
+            cacheMode = WebSettings.LOAD_DEFAULT
             allowFileAccess = false
             allowContentAccess = true
-            setSupportZoom(false)
-            builtInZoomControls = false
+            setSupportZoom(true)
+            builtInZoomControls = true
             displayZoomControls = false
             textZoom = 100
-            // 3.0.8: Desktop-like overview mode for HA Sections.
-            // The display page uses a 1920px viewport so HA does not switch
-            // the sections dashboard to the narrow mobile layout.
+            // 3.0.9: behave like a normal Android browser / HA Companion WebView.
+            // Direct WebView mode loads HA without iframe so Sections can use HA's own layout logic.
             useWideViewPort = true
-            loadWithOverviewMode = true
+            loadWithOverviewMode = false
             layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
             loadsImagesAutomatically = true
             blockNetworkImage = false
@@ -1048,7 +1130,7 @@ class WebViewManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.7"
+            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.9"
         }
 
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
@@ -1064,8 +1146,9 @@ class WebViewManager(
     }
 
     fun load() {
-        val url = addCacheBuster(prefs.displayUrl)
-        Log.i("TickerDisplay/WebView", "Loading: $url")
+        val targetUrl = if (prefs.isDirectMode) prefs.resolveDirectDisplayUrl() else prefs.displayUrl
+        val url = addCacheBuster(targetUrl)
+        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode}")
         val headers = mutableMapOf(
             "Cache-Control" to "no-cache",
             "Pragma" to "no-cache"
@@ -1086,6 +1169,23 @@ class WebViewManager(
 }
 
 class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
+    private fun injectKioskChromeHider(view: WebView?) {
+        if (!prefs.isDirectMode || !prefs.directKiosk || view == null) return
+        try {
+            view.evaluateJavascript("""
+                (function(){
+                  if (document.getElementById('td-native-kiosk-style')) return 'exists';
+                  var s=document.createElement('style');
+                  s.id='td-native-kiosk-style';
+                  s.textContent='app-header,app-toolbar,ha-top-app-bar-fixed,ha-drawer,ha-sidebar,ha-menu-button,.toolbar,.header,.mdc-top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important}home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}ha-panel-lovelace,hui-root,.view,.container,main,#view,#root,body{margin-top:0!important;padding-top:0!important;top:0!important}';
+                  document.head.appendChild(s);
+                  return 'ok';
+                })();
+            """.trimIndent(), null)
+        } catch (e: Exception) {
+            Log.w("TickerDisplay/WebView", "Kiosk CSS injection failed: ${e.message}")
+        }
+    }
     var onPageLoaded: (() -> Unit)? = null
     var onPageError: (() -> Unit)? = null
 
@@ -1095,6 +1195,7 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
 
     override fun onPageFinished(view: WebView?, url: String?) {
         Log.d("TickerDisplay/WebView", "Loaded: $url")
+        injectKioskChromeHider(view)
         onPageLoaded?.invoke()
     }
 

@@ -107,6 +107,9 @@ class TickerDisplayStore:
             "install_id": device_info.get("install_id", ""),
             "app_version": device_info.get("app_version", ""),
             "screens": [],
+            "render_mode": "wrapper",
+            "direct_url": "",
+            "direct_kiosk": True,
             "rotation": {"enabled": True, "transition": "fade"},
             "ticker": {
                 "enabled": True,

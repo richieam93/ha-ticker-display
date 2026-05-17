@@ -24,7 +24,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta id="td-viewport" name="viewport" content="width=1920,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
+<meta id="td-viewport" name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
 <meta name="theme-color" content="#121212">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -36,8 +36,7 @@ def render_display_page(hass: HomeAssistant, store, media_manager, device_id: st
 
 <script>
 (function() {{
-  /* 3.0.8: fixed desktop-like layout viewport for Android/Kiosk browsers.
-     This keeps Home Assistant sections from switching to the narrow mobile grid. */
+  /* 3.0.9: normal browser viewport. Android Direct WebView mode handles HA Sections without iframe. */
   function applyViewportVars() {{
     try {{
       var root = document.documentElement;

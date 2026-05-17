@@ -232,10 +232,16 @@ class TickerDisplayAPI:
     def _sanitize_device_config(self, device_id: str, config: dict) -> dict:
         allowed = {
             "name", "model", "android_version", "screen_resolution", "screens",
+            "render_mode", "direct_url", "direct_kiosk",
             "rotation", "ticker", "modules", "theme", "font", "created_at"
         }
         cleaned = {k: v for k, v in config.items() if k in allowed}
         cleaned["id"] = device_id
+        cleaned["render_mode"] = str(cleaned.get("render_mode") or config.get("render_mode") or "wrapper").strip().lower()
+        if cleaned["render_mode"] not in {"wrapper", "direct"}:
+            cleaned["render_mode"] = "wrapper"
+        cleaned["direct_url"] = str(cleaned.get("direct_url") or config.get("direct_url") or "").strip()[:1000]
+        cleaned["direct_kiosk"] = bool(cleaned.get("direct_kiosk", config.get("direct_kiosk", True)))
         if not isinstance(cleaned.get("screens", []), list):
             raise web.HTTPBadRequest(text=json.dumps({"error": "screens must be a list"}), content_type="application/json")
         cleaned["screens"] = [self._normalize_screen_config(screen) for screen in cleaned.get("screens", [])]
@@ -486,6 +492,9 @@ class TickerDisplayAPI:
                 "existing": existing is not None or not created,
                 "display_url": self._absolute_url(request, f"{API_BASE}/{device_id}"),
                 "ws_url": self._absolute_url(request, f"/ticker-display/ws/{device_id}"),
+                "render_mode": (self.store.get_device(device_id) or {}).get("render_mode", "wrapper"),
+                "direct_url": (self.store.get_device(device_id) or {}).get("direct_url", ""),
+                "direct_kiosk": (self.store.get_device(device_id) or {}).get("direct_kiosk", True),
             }
         )
 

@@ -1,5 +1,5 @@
 /*
- * Ticker Display 3.0.8 - Kiosk-only display engine.
+ * Ticker Display 3.0.9 - Kiosk-only display engine.
  * Kiosk-only display. Shows Home Assistant pages in a fullscreen iframe,
  * plus ticker/toast/banner/alert.
  */
