@@ -243,9 +243,9 @@ class TickerDisplayAPI:
             cleaned["render_mode"] = "wrapper"
         cleaned["direct_url"] = str(cleaned.get("direct_url") or config.get("direct_url") or "").strip()[:1000]
         cleaned["direct_kiosk"] = bool(cleaned.get("direct_kiosk", config.get("direct_kiosk", True)))
-        cleaned["direct_viewport_mode"] = str(cleaned.get("direct_viewport_mode") or config.get("direct_viewport_mode") or "desktop").strip().lower()
+        cleaned["direct_viewport_mode"] = str(cleaned.get("direct_viewport_mode") or config.get("direct_viewport_mode") or "normal").strip().lower()
         if cleaned["direct_viewport_mode"] not in {"normal", "desktop"}:
-            cleaned["direct_viewport_mode"] = "desktop"
+            cleaned["direct_viewport_mode"] = "normal"
         try:
             cleaned["direct_viewport_width"] = max(800, min(3840, int(cleaned.get("direct_viewport_width", config.get("direct_viewport_width", 1920)) or 1920)))
         except (TypeError, ValueError):
@@ -507,7 +507,7 @@ class TickerDisplayAPI:
                 "render_mode": (self.store.get_device(device_id) or {}).get("render_mode", "wrapper"),
                 "direct_url": (self.store.get_device(device_id) or {}).get("direct_url", ""),
                 "direct_kiosk": (self.store.get_device(device_id) or {}).get("direct_kiosk", True),
-                "direct_viewport_mode": (self.store.get_device(device_id) or {}).get("direct_viewport_mode", "desktop"),
+                "direct_viewport_mode": (self.store.get_device(device_id) or {}).get("direct_viewport_mode", "normal"),
                 "direct_viewport_width": (self.store.get_device(device_id) or {}).get("direct_viewport_width", 1920),
                 "direct_page_zoom": (self.store.get_device(device_id) or {}).get("direct_page_zoom", 0),
             }

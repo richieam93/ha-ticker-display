@@ -110,7 +110,7 @@ class TickerDisplayStore:
             "render_mode": "wrapper",
             "direct_url": "",
             "direct_kiosk": True,
-            "direct_viewport_mode": "desktop",
+            "direct_viewport_mode": "normal",
             "direct_viewport_width": 1920,
             "direct_page_zoom": 0,
             "rotation": {"enabled": True, "transition": "fade"},

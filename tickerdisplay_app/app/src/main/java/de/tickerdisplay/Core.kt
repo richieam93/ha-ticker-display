@@ -81,8 +81,8 @@ class Prefs(context: Context) {
      * - desktop: force a desktop CSS viewport so HA Sections can calculate the grid correctly
      */
     var directViewportMode: String
-        get() = p.getString("direct_viewport_mode", "desktop") ?: "desktop"
-        set(v) = p.edit().putString("direct_viewport_mode", if (v == "normal") "normal" else "desktop").apply()
+        get() = p.getString("direct_viewport_mode", "normal") ?: "normal"
+        set(v) = p.edit().putString("direct_viewport_mode", if (v == "desktop") "desktop" else "normal").apply()
 
     var directViewportWidth: Int
         get() = p.getInt("direct_viewport_width", 1920).coerceIn(800, 3840)
@@ -96,7 +96,7 @@ class Prefs(context: Context) {
         get() = renderMode == "direct"
 
     val isDesktopViewportMode: Boolean
-        get() = isDirectMode && directViewportMode != "normal"
+        get() = isDirectMode && directViewportMode == "desktop"
 
     var registeredAtEpochMs: Long
         get() = p.getLong("registered_at_ms", 0L)
@@ -237,13 +237,10 @@ class Prefs(context: Context) {
 
     fun resolveDirectDisplayUrl(): String {
         val raw = directUrl.ifBlank { "/lovelace" }.trim()
-        val base = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "${haUrl.trimEnd('/')}/${raw.trimStart('/')}"
-        if (!directKiosk || base.contains("kiosk", ignoreCase = true)) return base
-        val hashIndex = base.indexOf('#')
-        val beforeHash = if (hashIndex >= 0) base.substring(0, hashIndex) else base
-        val afterHash = if (hashIndex >= 0) base.substring(hashIndex) else ""
-        val sep = if (beforeHash.contains('?')) "&" else "?"
-        return beforeHash + sep + "kiosk" + afterHash
+        // Direct mode should open exactly the Home Assistant page configured in the web UI.
+        // Hiding the HA header/sidebar is handled by the native app WebView injection below,
+        // not by adding unsupported query parameters to the URL.
+        return if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "${haUrl.trimEnd('/')}/${raw.trimStart('/')}"
     }
 
     fun resolveWsUrl(): String {
@@ -1165,14 +1162,17 @@ class WebViewManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.11"
+            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.12"
         }
 
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+        webView.setBackgroundColor(if (prefs.isDirectMode) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
+        webView.isHorizontalScrollBarEnabled = false
+        webView.isVerticalScrollBarEnabled = false
+        webView.overScrollMode = android.view.View.OVER_SCROLL_NEVER
         webView.addJavascriptInterface(bridge, "TickerBridge")
         webView.webViewClient = TickerWebViewClient(prefs)
         webView.webChromeClient = TickerWebChromeClient()
-        webView.setBackgroundColor(android.graphics.Color.BLACK)
     }
 
     private fun currentInitialScalePercent(): Int {
@@ -1201,7 +1201,7 @@ class WebViewManager(
         applyInitialScale()
         webView.settings.loadWithOverviewMode = prefs.isDesktopViewportMode
         val targetUrl = if (prefs.isDirectMode) prefs.resolveDirectDisplayUrl() else prefs.displayUrl
-        val url = addCacheBuster(targetUrl)
+        val url = if (prefs.isDirectMode) targetUrl else addCacheBuster(targetUrl)
         Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode}")
         val headers = mutableMapOf(
             "Cache-Control" to "no-cache",
@@ -1249,14 +1249,7 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
                   document.head.appendChild(meta);
                 }
                 meta.setAttribute('content', 'width=' + desired + ', initial-scale=1.0, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover');
-                document.documentElement.style.setProperty('min-width', desired + 'px', 'important');
-                document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
-                if (document.body) {
-                  document.body.style.setProperty('min-width', desired + 'px', 'important');
-                  document.body.style.setProperty('overflow-x', 'hidden', 'important');
-                }
                 window.dispatchEvent(new Event('resize'));
-                window.dispatchEvent(new Event('orientationchange'));
                 setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 250);
                 setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 1000);
                 return 'td-desktop-viewport:' + desired + ':' + window.innerWidth + 'x' + window.innerHeight;
@@ -1272,37 +1265,167 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
         }
     }
 
-    private fun injectKioskChromeHider(view: WebView?) {
-        if (!prefs.isDirectMode || !prefs.directKiosk || view == null) return
+    /**
+     * Makes a direct Home Assistant page behave like it is running inside a native app:
+     * - keep the normal responsive device viewport (important for HA Sections)
+     * - optionally hide the Home Assistant shell (sidebar/top bar/edit bar) recursively in shadow roots
+     * - keep only the actual dashboard panel visible
+     */
+    private fun injectHomeAssistantAppMode(view: WebView?) {
+        if (!prefs.isDirectMode || view == null) return
+        val hideChrome = if (prefs.directKiosk) "true" else "false"
+        val js = """
+            (function(){
+              try {
+                var HIDE_CHROME = $hideChrome;
+                var STYLE_ID = 'td-ha-app-mode-style';
+                var CSS_BASE = [
+                  'html,body{margin:0!important;padding:0!important;width:100%!important;min-width:0!important;height:100%!important;background:var(--primary-background-color,#fff)!important}',
+                  'body{overflow:hidden!important}',
+                  'home-assistant{display:block!important;width:100%!important;min-width:0!important;height:100%!important}',
+                  ':host{--safe-area-inset-top:0px!important;--safe-area-inset-bottom:0px!important;--safe-area-inset-left:0px!important;--safe-area-inset-right:0px!important;--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}'
+                ].join('\\n');
+                var CSS_HIDE = [
+                  'app-header,app-toolbar,ha-top-app-bar-fixed,ha-menu-button,ha-drawer,ha-sidebar,app-drawer,.mdc-drawer,.drawer,.sidebar,.toolbar,.header,.top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;width:0!important;min-width:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}',
+                  'home-assistant-main,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout,app-drawer-layout,main,#content,.content,.panel{left:0!important;right:0!important;top:0!important;bottom:0!important;margin:0!important;padding:0!important;width:100vw!important;max-width:100vw!important;min-width:0!important;height:100vh!important;max-height:100vh!important;transform:none!important}',
+                  'hui-view,hui-sections-view,.view{width:100%!important;max-width:100%!important;min-width:0!important;margin-left:auto!important;margin-right:auto!important}',
+                  '.view{padding-top:0!important}'
+                ].join('\\n');
+                var allCss = CSS_BASE + (HIDE_CHROME ? '\\n' + CSS_HIDE : '');
+
+                function addStyle(root) {
+                  if (!root) return;
+                  var doc = root.ownerDocument || document;
+                  var existing = null;
+                  try { existing = root.getElementById ? root.getElementById(STYLE_ID) : null; } catch(e) {}
+                  if (!existing) {
+                    var s = doc.createElement('style');
+                    s.id = STYLE_ID;
+                    s.textContent = allCss;
+                    try {
+                      if (root.head) root.head.appendChild(s);
+                      else root.appendChild(s);
+                    } catch(e1) {
+                      try { (root.documentElement || root).appendChild(s); } catch(e2) {}
+                    }
+                  } else if (existing.textContent !== allCss) {
+                    existing.textContent = allCss;
+                  }
+                }
+
+                function nodes(root) {
+                  try { return root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll('*')) : []; }
+                  catch(e) { return []; }
+                }
+
+                function walk(root, cb) {
+                  if (!root) return;
+                  cb(root);
+                  var list = nodes(root);
+                  for (var i=0; i<list.length; i++) {
+                    var el = list[i];
+                    if (el && el.shadowRoot) walk(el.shadowRoot, cb);
+                  }
+                }
+
+                function forceHide(root) {
+                  if (!HIDE_CHROME) return;
+                  var selectors = [
+                    'app-header','app-toolbar','ha-top-app-bar-fixed','ha-menu-button',
+                    'ha-drawer','ha-sidebar','app-drawer','.mdc-drawer','.drawer','.sidebar',
+                    '.toolbar','.header','.top-app-bar','.edit-mode-toolbar'
+                  ].join(',');
+                  try {
+                    var found = root.querySelectorAll ? root.querySelectorAll(selectors) : [];
+                    for (var i=0; i<found.length; i++) {
+                      var el = found[i];
+                      el.style.setProperty('display','none','important');
+                      el.style.setProperty('visibility','hidden','important');
+                      el.style.setProperty('width','0','important');
+                      el.style.setProperty('height','0','important');
+                      el.style.setProperty('opacity','0','important');
+                      el.setAttribute('hidden','');
+                    }
+                  } catch(e) {}
+                }
+
+                function setViewport() {
+                  var meta = document.querySelector('meta[name="viewport"]');
+                  if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.setAttribute('name', 'viewport');
+                    document.head.appendChild(meta);
+                  }
+                  if (!HIDE_CHROME) {
+                    meta.setAttribute('content','width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes');
+                  } else {
+                    meta.setAttribute('content','width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no');
+                  }
+                  document.documentElement.style.setProperty('min-width','0','important');
+                  document.documentElement.style.setProperty('width','100%','important');
+                  if (document.body) {
+                    document.body.style.setProperty('min-width','0','important');
+                    document.body.style.setProperty('width','100%','important');
+                  }
+                }
+
+                function apply() {
+                  setViewport();
+                  walk(document, function(root){ addStyle(root); forceHide(root); });
+                  window.dispatchEvent(new Event('resize'));
+                }
+
+                apply();
+                if (!window.__tdHaAppModeObserver) {
+                  window.__tdHaAppModeObserver = new MutationObserver(function(){
+                    if (window.__tdHaAppModeTimer) return;
+                    window.__tdHaAppModeTimer = setTimeout(function(){
+                      window.__tdHaAppModeTimer = null;
+                      try { apply(); } catch(e) {}
+                    }, 150);
+                  });
+                  window.__tdHaAppModeObserver.observe(document.documentElement || document, { childList:true, subtree:true });
+                }
+                if (!window.__tdHaAppModeInterval) {
+                  window.__tdHaAppModeInterval = setInterval(function(){ try { apply(); } catch(e) {} }, 1200);
+                  setTimeout(function(){ try { clearInterval(window.__tdHaAppModeInterval); window.__tdHaAppModeInterval = null; } catch(e) {} }, 15000);
+                }
+                setTimeout(function(){ try { apply(); } catch(e) {} }, 250);
+                setTimeout(function(){ try { apply(); } catch(e) {} }, 900);
+                setTimeout(function(){ try { apply(); } catch(e) {} }, 2500);
+                return 'td-ha-app-mode:' + (HIDE_CHROME ? 'chrome-hidden:' : 'chrome-visible:') + window.innerWidth + 'x' + window.innerHeight;
+              } catch(e) {
+                return 'td-ha-app-mode-error:' + e.message;
+              }
+            })();
+        """.trimIndent()
         try {
-            view.evaluateJavascript("""
-                (function(){
-                  if (document.getElementById('td-native-kiosk-style')) return 'exists';
-                  var s=document.createElement('style');
-                  s.id='td-native-kiosk-style';
-                  s.textContent='app-header,app-toolbar,ha-top-app-bar-fixed,ha-drawer,ha-sidebar,ha-menu-button,.toolbar,.header,.mdc-top-app-bar,.edit-mode-toolbar{display:none!important;visibility:hidden!important;max-height:0!important}home-assistant,home-assistant-main,app-drawer-layout,partial-panel-resolver,ha-panel-lovelace,hui-root,ha-app-layout{--app-header-height:0px!important;--mdc-top-app-bar-height:0px!important}ha-panel-lovelace,hui-root,.view,.container,main,#view,#root,body{margin-top:0!important;padding-top:0!important;top:0!important}';
-                  document.head.appendChild(s);
-                  return 'ok';
-                })();
-            """.trimIndent(), null)
+            view.evaluateJavascript(js, null)
         } catch (e: Exception) {
-            Log.w("TickerDisplay/WebView", "Kiosk CSS injection failed: ${e.message}")
+            Log.w("TickerDisplay/WebView", "HA app mode injection failed: ${e.message}")
         }
     }
+
     var onPageLoaded: (() -> Unit)? = null
     var onPageError: (() -> Unit)? = null
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         Log.d("TickerDisplay/WebView", "Loading: $url")
-        view?.let { if (prefs.isDesktopViewportMode) runCatching { it.setInitialScale(initialScaleFor(it)) } }
+        view?.let { runCatching { it.setInitialScale(initialScaleFor(it)) } }
+    }
+
+    override fun onPageCommitVisible(view: WebView?, url: String?) {
+        super.onPageCommitVisible(view, url)
+        injectHomeAssistantAppMode(view)
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         Log.d("TickerDisplay/WebView", "Loaded: $url")
+        injectHomeAssistantAppMode(view)
         applyDirectDesktopViewport(view)
-        injectKioskChromeHider(view)
-        view?.postDelayed({ applyDirectDesktopViewport(view); injectKioskChromeHider(view) }, 800)
-        view?.postDelayed({ applyDirectDesktopViewport(view); injectKioskChromeHider(view) }, 2500)
+        view?.postDelayed({ injectHomeAssistantAppMode(view); applyDirectDesktopViewport(view) }, 500)
+        view?.postDelayed({ injectHomeAssistantAppMode(view); applyDirectDesktopViewport(view) }, 1500)
+        view?.postDelayed({ injectHomeAssistantAppMode(view); applyDirectDesktopViewport(view) }, 3500)
         onPageLoaded?.invoke()
     }
 
