@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 return
             }
 
+            prepareFullscreenWindow()
             setContentView(R.layout.activity_main)
             webViewContainer = findViewById(R.id.webview_container)
             offlineView = findViewById(R.id.offline_view)
@@ -169,6 +170,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
 
             kioskMgr.enable()
+            applyImmersiveModeIfNeeded()
             if (prefs.screenOn) screenMgr.keepScreenOn(this)
             connection.start()
             sensors.start()
@@ -201,6 +203,39 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         } catch (e: Exception) {
             Log.e("TickerDisplay", "onCreate failed", e)
             Toast.makeText(this, "Fehler: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun prepareFullscreenWindow() {
+        try {
+            requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.setDecorFitsSystemWindows(false)
+            }
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        } catch (e: Exception) {
+            Log.w("TickerDisplay", "Fullscreen window setup failed: ${e.message}")
+        }
+    }
+
+    private fun shouldUseImmersiveMode(): Boolean {
+        return try { prefs.kioskEnabled || prefs.isDirectMode } catch (_: Exception) { false }
+    }
+
+    private fun applyImmersiveModeIfNeeded() {
+        if (shouldUseImmersiveMode() && ::kioskMgr.isInitialized) {
+            kioskMgr.hideSystemUI()
         }
     }
 
@@ -558,7 +593,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         if (prefs.screenOn) screenMgr.keepScreenOn(this) else screenMgr.clearKeepScreenOn(this)
                     }
                     "kiosk", "kiosk_enabled", "kiosk_mode" -> {
-                        if (prefs.kioskEnabled) kioskMgr.hideSystemUI()
+                        applyImmersiveModeIfNeeded()
                     }
                     "light_sensor", "light_sensor_enabled" -> sensors.applyPreferenceChange(key)
                     "motion", "motion_detect", "motion_detection", "motion_detection_enabled" -> {
@@ -598,7 +633,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && prefs.kioskEnabled) kioskMgr.hideSystemUI()
+        if (hasFocus) applyImmersiveModeIfNeeded()
     }
 
     @Deprecated("Deprecated in Java")
@@ -631,7 +666,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         accelerometer?.also {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
-        if (prefs.kioskEnabled) kioskMgr.hideSystemUI()
+        applyImmersiveModeIfNeeded()
         ensureRuntimePermissions()
         motionDetector?.start()
         // Motion detection owns the camera while active. Avoid opening a second

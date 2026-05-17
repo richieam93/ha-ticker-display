@@ -75,8 +75,28 @@ class Prefs(context: Context) {
         get() = p.getBoolean("direct_kiosk", true)
         set(v) = p.edit().putBoolean("direct_kiosk", v).apply()
 
+    /**
+     * direct_viewport_mode:
+     * - normal: Android/WebView decides like a mobile browser
+     * - desktop: force a desktop CSS viewport so HA Sections can calculate the grid correctly
+     */
+    var directViewportMode: String
+        get() = p.getString("direct_viewport_mode", "desktop") ?: "desktop"
+        set(v) = p.edit().putString("direct_viewport_mode", if (v == "normal") "normal" else "desktop").apply()
+
+    var directViewportWidth: Int
+        get() = p.getInt("direct_viewport_width", 1920).coerceIn(800, 3840)
+        set(v) = p.edit().putInt("direct_viewport_width", v.coerceIn(800, 3840)).apply()
+
+    var directPageZoom: Int
+        get() = p.getInt("direct_page_zoom", 0).coerceIn(0, 200)
+        set(v) = p.edit().putInt("direct_page_zoom", v.coerceIn(0, 200)).apply()
+
     val isDirectMode: Boolean
         get() = renderMode == "direct"
+
+    val isDesktopViewportMode: Boolean
+        get() = isDirectMode && directViewportMode != "normal"
 
     var registeredAtEpochMs: Long
         get() = p.getLong("registered_at_ms", 0L)
@@ -683,9 +703,15 @@ class ApiClient(private val prefs: Prefs) {
                     val renderMode = obj["render_mode"]?.toString()?.trim().orEmpty()
                     val directUrl = obj["direct_url"]?.toString()?.trim().orEmpty()
                     val directKiosk = obj["direct_kiosk"]
+                    val directViewportMode = obj["direct_viewport_mode"]?.toString()?.trim().orEmpty()
+                    val directViewportWidth = obj["direct_viewport_width"]
+                    val directPageZoom = obj["direct_page_zoom"]
                     if (renderMode.isNotBlank()) prefs.renderMode = renderMode
                     if (directUrl.isNotBlank()) prefs.directUrl = directUrl
                     if (directKiosk != null) prefs.directKiosk = directKiosk.toString().equals("true", ignoreCase = true)
+                    if (directViewportMode.isNotBlank()) prefs.directViewportMode = directViewportMode
+                    parseIntConfig(directViewportWidth)?.let { prefs.directViewportWidth = it }
+                    parseIntConfig(directPageZoom)?.let { prefs.directPageZoom = it }
                     prefs.registeredAtEpochMs = System.currentTimeMillis()
                 }
                 true
@@ -693,6 +719,14 @@ class ApiClient(private val prefs: Prefs) {
         } catch (e: Exception) {
             Log.e("TickerDisplay/ApiClient", "Register failed", e)
             false
+        }
+    }
+
+    private fun parseIntConfig(value: Any?): Int? {
+        return when (value) {
+            is Number -> value.toInt()
+            is String -> value.trim().toDoubleOrNull()?.toInt()
+            else -> null
         }
     }
 
@@ -716,13 +750,16 @@ class ApiClient(private val prefs: Prefs) {
                 obj["render_mode"]?.toString()?.let { prefs.renderMode = it }
                 obj["direct_url"]?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let { prefs.directUrl = it }
                 obj["direct_kiosk"]?.let { prefs.directKiosk = it.toString().equals("true", ignoreCase = true) }
+                obj["direct_viewport_mode"]?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let { prefs.directViewportMode = it }
+                parseIntConfig(obj["direct_viewport_width"])?.let { prefs.directViewportWidth = it }
+                parseIntConfig(obj["direct_page_zoom"])?.let { prefs.directPageZoom = it }
                 val screens = obj["screens"] as? List<*>
                 if (prefs.directUrl.isBlank() && !screens.isNullOrEmpty()) {
                     val first = screens.firstOrNull() as? Map<*, *>
                     val urlValue = (first?.get("url") ?: first?.get("page_url") ?: first?.get("kiosk_url"))?.toString()?.trim().orEmpty()
                     if (urlValue.isNotBlank()) prefs.directUrl = urlValue
                 }
-                L.i("ApiClient", "Config synced: render=${prefs.renderMode} direct=${prefs.directUrl}")
+                L.i("ApiClient", "Config synced: render=${prefs.renderMode} direct=${prefs.directUrl} viewport=${prefs.directViewportMode}/${prefs.directViewportWidth} zoom=${prefs.directPageZoom}")
                 true
             }
         } catch (e: Exception) {
@@ -1102,9 +1139,7 @@ class WebViewManager(
 
         // Keep WebView cache/cookies like a normal browser. Clearing is available from the app menu.
 
-        try {
-            webView.setInitialScale(100)
-        } catch (_: Throwable) {}
+        applyInitialScale()
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -1117,10 +1152,10 @@ class WebViewManager(
             builtInZoomControls = true
             displayZoomControls = false
             textZoom = 100
-            // 3.0.9: behave like a normal Android browser / HA Companion WebView.
-            // Direct WebView mode loads HA without iframe so Sections can use HA's own layout logic.
+            // Direct desktop viewport mode is required for HA Sections on many Android WebViews.
+            // It makes the WebView behave like a landscape desktop browser instead of a narrow phone browser.
             useWideViewPort = true
-            loadWithOverviewMode = false
+            loadWithOverviewMode = prefs.isDesktopViewportMode
             layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
             loadsImagesAutomatically = true
             blockNetworkImage = false
@@ -1130,7 +1165,7 @@ class WebViewManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.9"
+            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.11"
         }
 
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
@@ -1140,12 +1175,31 @@ class WebViewManager(
         webView.setBackgroundColor(android.graphics.Color.BLACK)
     }
 
+    private fun currentInitialScalePercent(): Int {
+        val configured = prefs.directPageZoom
+        if (configured > 0) return configured.coerceIn(25, 200)
+        if (!prefs.isDesktopViewportMode) return 100
+        val metrics = webView.resources.displayMetrics
+        val viewPx = if (webView.width > 0) webView.width else metrics.widthPixels
+        val cssWidth = (viewPx / metrics.density).coerceAtLeast(320f)
+        val scale = ((cssWidth / prefs.directViewportWidth.toFloat()) * 100f).toInt()
+        return scale.coerceIn(25, 100)
+    }
+
+    private fun applyInitialScale() {
+        try {
+            webView.setInitialScale(currentInitialScalePercent())
+        } catch (_: Throwable) {}
+    }
+
     private fun addCacheBuster(url: String): String {
         val separator = if (url.contains("?")) "&" else "?"
         return "$url${separator}_td_app_ts=${System.currentTimeMillis()}"
     }
 
     fun load() {
+        applyInitialScale()
+        webView.settings.loadWithOverviewMode = prefs.isDesktopViewportMode
         val targetUrl = if (prefs.isDirectMode) prefs.resolveDirectDisplayUrl() else prefs.displayUrl
         val url = addCacheBuster(targetUrl)
         Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode}")
@@ -1169,6 +1223,55 @@ class WebViewManager(
 }
 
 class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
+    private fun initialScaleFor(view: WebView): Int {
+        val configured = prefs.directPageZoom
+        if (configured > 0) return configured.coerceIn(25, 200)
+        if (!prefs.isDesktopViewportMode) return 100
+        val metrics = view.resources.displayMetrics
+        val viewPx = if (view.width > 0) view.width else metrics.widthPixels
+        val cssWidth = (viewPx / metrics.density).coerceAtLeast(320f)
+        val scale = ((cssWidth / prefs.directViewportWidth.toFloat()) * 100f).toInt()
+        return scale.coerceIn(25, 100)
+    }
+
+    private fun applyDirectDesktopViewport(view: WebView?) {
+        if (!prefs.isDesktopViewportMode || view == null) return
+        val width = prefs.directViewportWidth
+        try { view.setInitialScale(initialScaleFor(view)) } catch (_: Throwable) {}
+        val js = """
+            (function(){
+              try {
+                var desired = $width;
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (!meta) {
+                  meta = document.createElement('meta');
+                  meta.setAttribute('name','viewport');
+                  document.head.appendChild(meta);
+                }
+                meta.setAttribute('content', 'width=' + desired + ', initial-scale=1.0, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover');
+                document.documentElement.style.setProperty('min-width', desired + 'px', 'important');
+                document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
+                if (document.body) {
+                  document.body.style.setProperty('min-width', desired + 'px', 'important');
+                  document.body.style.setProperty('overflow-x', 'hidden', 'important');
+                }
+                window.dispatchEvent(new Event('resize'));
+                window.dispatchEvent(new Event('orientationchange'));
+                setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 250);
+                setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 1000);
+                return 'td-desktop-viewport:' + desired + ':' + window.innerWidth + 'x' + window.innerHeight;
+              } catch(e) {
+                return 'td-desktop-viewport-error:' + e.message;
+              }
+            })();
+        """.trimIndent()
+        try {
+            view.evaluateJavascript(js, null)
+        } catch (e: Exception) {
+            Log.w("TickerDisplay/WebView", "Desktop viewport injection failed: ${e.message}")
+        }
+    }
+
     private fun injectKioskChromeHider(view: WebView?) {
         if (!prefs.isDirectMode || !prefs.directKiosk || view == null) return
         try {
@@ -1191,11 +1294,15 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         Log.d("TickerDisplay/WebView", "Loading: $url")
+        view?.let { if (prefs.isDesktopViewportMode) runCatching { it.setInitialScale(initialScaleFor(it)) } }
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         Log.d("TickerDisplay/WebView", "Loaded: $url")
+        applyDirectDesktopViewport(view)
         injectKioskChromeHider(view)
+        view?.postDelayed({ applyDirectDesktopViewport(view); injectKioskChromeHider(view) }, 800)
+        view?.postDelayed({ applyDirectDesktopViewport(view); injectKioskChromeHider(view) }, 2500)
         onPageLoaded?.invoke()
     }
 
