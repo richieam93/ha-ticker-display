@@ -1112,6 +1112,130 @@ class Bridge(
     }
 }
 
+
+/**
+ * Minimal official Home Assistant externalApp bridge.
+ *
+ * Home Assistant Companion does not authenticate Lovelace by sending an
+ * Authorization header to the page. It loads the frontend with
+ * ?external_auth=1 and exposes window.externalApp. The frontend then asks the
+ * native app for an access token through getExternalAuth().
+ *
+ * Without this bridge HA behaves like a normal Android browser instead of the
+ * Companion App, which is exactly what broke sections dashboards on the user's
+ * tablet/phone.
+ */
+private class HaExternalAppBridge(
+    private val webView: WebView,
+    private val prefs: Prefs,
+) {
+    private val gson = Gson()
+
+    private fun evaluate(script: String) {
+        try {
+            webView.post { webView.evaluateJavascript(script, null) }
+        } catch (_: Throwable) {}
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseMap(raw: String): Map<String, Any?> {
+        return try {
+            (gson.fromJson(raw, Map::class.java) as? Map<String, Any?>) ?: emptyMap()
+        } catch (_: Throwable) {
+            emptyMap()
+        }
+    }
+
+    @JavascriptInterface
+    fun getExternalAuth(payload: String) {
+        val data = parseMap(payload)
+        val callback = (data["callback"]?.toString()?.takeIf { it.isNotBlank() } ?: "externalAuthSetToken").trim()
+        if (callback != "externalAuthSetToken") return
+
+        val token = prefs.token.trim()
+        if (token.isBlank()) {
+            evaluate("$callback(false);")
+            return
+        }
+
+        // HA frontend expects the same JSON shape as the official Android app:
+        // externalAuthSetToken(true, {"access_token":"...","expires_in":3600})
+        // The configured HA token is used as the access token for this app mode.
+        val authJson = gson.toJson(
+            mapOf(
+                "access_token" to token,
+                "expires_in" to 315360000
+            )
+        )
+        evaluate("$callback(true, $authJson);")
+    }
+
+    @JavascriptInterface
+    fun revokeExternalAuth(payload: String) {
+        val data = parseMap(payload)
+        val callback = (data["callback"]?.toString()?.takeIf { it.isNotBlank() } ?: "externalAuthRevokeToken").trim()
+        if (callback == "externalAuthRevokeToken") {
+            evaluate("$callback(true);")
+        }
+    }
+
+    @JavascriptInterface
+    fun externalBus(message: String) {
+        val data = parseMap(message)
+        val type = data["type"]?.toString().orEmpty()
+        val rawId = data["id"]
+        val id: Any? = when (rawId) {
+            is Number -> rawId.toInt()
+            else -> rawId
+        }
+
+        when (type) {
+            "config/get" -> {
+                val result = mapOf(
+                    "hasSettingsScreen" to false,
+                    "canWriteTag" to false,
+                    "hasExoPlayer" to false,
+                    "canCommissionMatter" to false,
+                    "canImportThreadCredentials" to false,
+                    "hasAssist" to false,
+                    "hasBarCodeScanner" to 0,
+                    "canSetupImprov" to false,
+                    "downloadFileSupported" to true,
+                    "appVersion" to "Ticker Display 3.0.15",
+                    "hasEntityAddTo" to false,
+                    "hasAssistSettings" to false
+                )
+                val response = gson.toJson(
+                    mapOf(
+                        "id" to id,
+                        "type" to "result",
+                        "success" to true,
+                        "result" to result
+                    )
+                )
+                evaluate("if (window.externalBus) { window.externalBus($response); }")
+            }
+            "connection-status", "theme-update", "haptic" -> {
+                // Fire-and-forget messages. No response required.
+            }
+            else -> {
+                if (id != null) {
+                    val response = gson.toJson(
+                        mapOf(
+                            "id" to id,
+                            "type" to "result",
+                            "success" to true,
+                            "result" to emptyMap<String, Any>()
+                        )
+                    )
+                    evaluate("if (window.externalBus) { window.externalBus($response); }")
+                }
+            }
+        }
+    }
+}
+
+
 // ═══════════════════════════════════════════════════════════
 // WEBVIEW MANAGER
 // ═══════════════════════════════════════════════════════════
@@ -1171,7 +1295,11 @@ class WebViewManager(
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.overScrollMode = android.view.View.OVER_SCROLL_IF_CONTENT_SCROLLS
 
-        if (!prefs.isDirectMode) {
+        if (prefs.isDirectMode) {
+            webView.removeJavascriptInterface("TickerBridge")
+            webView.addJavascriptInterface(HaExternalAppBridge(webView, prefs), "externalApp")
+        } else {
+            webView.removeJavascriptInterface("externalApp")
             webView.addJavascriptInterface(bridge, "TickerBridge")
         }
         webView.webViewClient = TickerWebViewClient(prefs)
@@ -1183,18 +1311,29 @@ class WebViewManager(
         return "$url${separator}_td_app_ts=${System.currentTimeMillis()}"
     }
 
+    private fun addQueryParam(url: String, key: String, value: String): String {
+        val separator = if (url.contains("?")) "&" else "?"
+        return if (url.contains("$key=")) url else "$url$separator$key=$value"
+    }
+
     fun load() {
         val targetUrl = if (prefs.isDirectMode) prefs.resolveDirectDisplayUrl() else prefs.displayUrl
-        val url = if (prefs.isDirectMode) targetUrl else addCacheBuster(targetUrl)
-        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode} officialHaAppMode=${prefs.isDirectMode}")
+        val url = if (prefs.isDirectMode) {
+            // Official HA app behaviour: no Authorization header for the page.
+            // Instead load with external_auth=1 and answer frontend auth requests through window.externalApp.
+            addQueryParam(targetUrl, "external_auth", "1")
+        } else {
+            addCacheBuster(targetUrl)
+        }
+        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode} haExternalApp=${prefs.isDirectMode}")
         val headers = mutableMapOf<String, String>()
         if (!prefs.isDirectMode) {
             headers["Cache-Control"] = "no-cache"
             headers["Pragma"] = "no-cache"
-        }
-        val token = prefs.token.trim()
-        if (token.isNotBlank()) {
-            headers["Authorization"] = "Bearer $token"
+            val token = prefs.token.trim()
+            if (token.isNotBlank()) {
+                headers["Authorization"] = "Bearer $token"
+            }
         }
         webView.loadUrl(url, headers)
     }
@@ -1203,6 +1342,7 @@ class WebViewManager(
 
     fun destroy() {
         try { webView.removeJavascriptInterface("TickerBridge") } catch (_: Throwable) {}
+        try { webView.removeJavascriptInterface("externalApp") } catch (_: Throwable) {}
         webView.destroy()
     }
 }
@@ -1212,12 +1352,10 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
     var onPageError: (() -> Unit)? = null
 
     private fun applyOfficialHaAppZoom(view: WebView?) {
-        if (!prefs.isDirectMode || view == null) return
-        try {
-            // Official Home Assistant Android app applies this after page load.
-            // Do not rewrite the viewport meta tag and do not force desktop width.
-            view.setInitialScale((view.resources.displayMetrics.density * 100).toInt())
-        } catch (_: Throwable) {}
+        // Intentionally no forced scale here.
+        // The official app applies user-configurable page zoom; forcing density * 100
+        // in this project made sections dashboards render as very narrow columns.
+        // Leaving the WebView at its default scale matches Chrome/HA app rendering better.
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {

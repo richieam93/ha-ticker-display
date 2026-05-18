@@ -19,8 +19,8 @@ android {
         applicationId = "de.tickerdisplay"
         minSdk = 23
         targetSdk = 35
-        versionCode = 314
-        versionName = "3.0.14"
+        versionCode = 315
+        versionName = "3.0.15"
     }
 
     buildTypes {
