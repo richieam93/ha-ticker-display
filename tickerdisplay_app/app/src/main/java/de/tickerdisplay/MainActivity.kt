@@ -209,28 +209,47 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun prepareFullscreenWindow() {
         try {
             requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-            window.addFlags(
-                android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                window.attributes = window.attributes.apply {
-                    layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+            if (prefs.isDirectMode) {
+                // Home-Assistant-App-Modus: die WebView bekommt ein normales Android-Fenster.
+                // Kein FLAG_LAYOUT_NO_LIMITS, kein erzwungener Vollbild-Modus und keine
+                // transparenten Systemleisten. Genau diese alten Kiosk-Tricks haben den
+                // Home-Assistant-Sections-Viewport auf Android verfälscht.
+                window.clearFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.setDecorFitsSystemWindows(true)
                 }
+                window.statusBarColor = android.graphics.Color.BLACK
+                window.navigationBarColor = android.graphics.Color.BLACK
+            } else {
+                window.addFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    window.attributes = window.attributes.apply {
+                        layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.setDecorFitsSystemWindows(false)
+                }
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                window.setDecorFitsSystemWindows(false)
-            }
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
         } catch (e: Exception) {
-            Log.w("TickerDisplay", "Fullscreen window setup failed: ${e.message}")
+            Log.w("TickerDisplay", "Window setup failed: ${e.message}")
         }
     }
 
     private fun shouldUseImmersiveMode(): Boolean {
-        return try { prefs.kioskEnabled || prefs.isDirectMode } catch (_: Exception) { false }
+        // Direct Mode soll sich wie die offizielle Home-Assistant-App verhalten.
+        // Immersive/Kiosk wird nur aktiv, wenn der Nutzer den Kiosk-Modus wirklich einschaltet.
+        return try { prefs.kioskEnabled } catch (_: Exception) { false }
     }
 
     private fun applyImmersiveModeIfNeeded() {

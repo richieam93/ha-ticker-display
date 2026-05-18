@@ -1133,28 +1133,22 @@ class WebViewManager(
             }
         } catch (_: Throwable) {}
 
-        // Keep WebView cache/cookies like a normal browser. Clearing is available from the app menu.
         webView.settings.apply {
-            // Match the official Home Assistant Android WebView as closely as possible.
+            // 3.0.14: keep this intentionally close to the official Home Assistant
+            // Android HAWebView.defaultSettings(). The old Ticker Display WebView
+            // changed viewport, overview mode, layout flags and injected CSS/JS; those
+            // changes break Home Assistant sections dashboards on Android.
             minimumFontSize = 5
             javaScriptEnabled = true
             domStorageEnabled = true
+            displayZoomControls = false
+            builtInZoomControls = false
+            setSupportZoom(false)
+            userAgentString = "$userAgentString HomeAssistant/Android TickerDisplayAndroid/3.0.14"
+
+            // Keep storage/cache like a normal browser / the official HA app.
             databaseEnabled = true
             cacheMode = WebSettings.LOAD_DEFAULT
-            allowFileAccess = false
-            allowContentAccess = true
-            setSupportZoom(true)
-            builtInZoomControls = false
-            displayZoomControls = false
-            textZoom = 100
-
-            // Do NOT force desktop/wide viewport here. Home Assistant Sections must get the
-            // normal Android/Companion-app viewport. The official app does not force
-            // useWideViewPort/loadWithOverviewMode for the main HA frontend.
-            useWideViewPort = false
-            loadWithOverviewMode = false
-            layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
-
             loadsImagesAutomatically = true
             blockNetworkImage = false
             javaScriptCanOpenWindowsAutomatically = true
@@ -1163,40 +1157,25 @@ class WebViewManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = false
             }
-            userAgentString = "$userAgentString TickerDisplayAndroid/3.0.13"
+
+            // Important: do not touch these in Direct Mode. The defaults are what the
+            // official app uses and what HA sections expects.
+            if (!prefs.isDirectMode) {
+                useWideViewPort = false
+                loadWithOverviewMode = false
+                layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
+                textZoom = 100
+            }
         }
 
-        applyOfficialHomeAssistantScale()
-
-        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        webView.isHorizontalScrollBarEnabled = false
-        webView.isVerticalScrollBarEnabled = false
-        webView.overScrollMode = android.view.View.OVER_SCROLL_NEVER
-        webView.addJavascriptInterface(bridge, "TickerBridge")
+        webView.overScrollMode = android.view.View.OVER_SCROLL_IF_CONTENT_SCROLLS
+
+        if (!prefs.isDirectMode) {
+            webView.addJavascriptInterface(bridge, "TickerBridge")
+        }
         webView.webViewClient = TickerWebViewClient(prefs)
         webView.webChromeClient = TickerWebChromeClient()
-    }
-
-    private fun configuredZoomPercent(): Int {
-        // Official Home Assistant app default page zoom. Older experimental zoom settings
-        // are intentionally ignored in 3.0.13 so the page behaves like the HA app again.
-        return 100
-    }
-
-    private fun officialInitialScalePercent(): Int {
-        if (!prefs.isDirectMode) return 100
-        // Same idea as the official HA Android app:
-        // webView.setInitialScale((density * pageZoomPercent).toInt())
-        // This makes WebView CSS pixels match Android dp instead of physical pixels.
-        val density = webView.resources.displayMetrics.density
-        return (density * configuredZoomPercent()).toInt().coerceIn(50, 500)
-    }
-
-    private fun applyOfficialHomeAssistantScale() {
-        try {
-            webView.setInitialScale(officialInitialScalePercent())
-        } catch (_: Throwable) {}
     }
 
     private fun addCacheBuster(url: String): String {
@@ -1205,16 +1184,14 @@ class WebViewManager(
     }
 
     fun load() {
-        applyOfficialHomeAssistantScale()
-        webView.settings.useWideViewPort = false
-        webView.settings.loadWithOverviewMode = false
         val targetUrl = if (prefs.isDirectMode) prefs.resolveDirectDisplayUrl() else prefs.displayUrl
         val url = if (prefs.isDirectMode) targetUrl else addCacheBuster(targetUrl)
-        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode} scale=${officialInitialScalePercent()}")
-        val headers = mutableMapOf(
-            "Cache-Control" to "no-cache",
-            "Pragma" to "no-cache"
-        )
+        Log.i("TickerDisplay/WebView", "Loading: $url mode=${prefs.renderMode} officialHaAppMode=${prefs.isDirectMode}")
+        val headers = mutableMapOf<String, String>()
+        if (!prefs.isDirectMode) {
+            headers["Cache-Control"] = "no-cache"
+            headers["Pragma"] = "no-cache"
+        }
         val token = prefs.token.trim()
         if (token.isNotBlank()) {
             headers["Authorization"] = "Bearer $token"
@@ -1225,66 +1202,31 @@ class WebViewManager(
     fun reload() = load()
 
     fun destroy() {
-        webView.removeJavascriptInterface("TickerBridge")
+        try { webView.removeJavascriptInterface("TickerBridge") } catch (_: Throwable) {}
         webView.destroy()
     }
 }
 
 class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
-    private fun configuredZoomPercent(): Int {
-        // Official Home Assistant app default page zoom. Older experimental zoom settings
-        // are intentionally ignored in 3.0.13 so the page behaves like the HA app again.
-        return 100
-    }
-
-    private fun officialInitialScalePercent(view: WebView): Int {
-        if (!prefs.isDirectMode) return 100
-        val density = view.resources.displayMetrics.density
-        return (density * configuredZoomPercent()).toInt().coerceIn(50, 500)
-    }
-
-    private fun applyOfficialHomeAssistantZoom(view: WebView?) {
-        if (!prefs.isDirectMode || view == null) return
-        try { view.setInitialScale(officialInitialScalePercent(view)) } catch (_: Throwable) {}
-        try {
-            // Keep the Home Assistant viewport exactly as delivered by the frontend.
-            // Only restore it to device-width if a previous build injected a desktop viewport.
-            view.evaluateJavascript(
-                """
-                (function(){
-                  try {
-                    var meta = document.querySelector('meta[name="viewport"]');
-                    if (meta && /width=\d{3,4}/.test(meta.getAttribute('content') || '')) {
-                      meta.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
-                      window.dispatchEvent(new Event('resize'));
-                    }
-                    return 'td-ha-official-scale:' + window.innerWidth + 'x' + window.innerHeight;
-                  } catch(e) { return 'td-ha-official-scale-error:' + e.message; }
-                })();
-                """.trimIndent(),
-                null
-            )
-        } catch (_: Throwable) {}
-    }
-
     var onPageLoaded: (() -> Unit)? = null
     var onPageError: (() -> Unit)? = null
 
-    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-        Log.d("TickerDisplay/WebView", "Loading: $url")
-        applyOfficialHomeAssistantZoom(view)
+    private fun applyOfficialHaAppZoom(view: WebView?) {
+        if (!prefs.isDirectMode || view == null) return
+        try {
+            // Official Home Assistant Android app applies this after page load.
+            // Do not rewrite the viewport meta tag and do not force desktop width.
+            view.setInitialScale((view.resources.displayMetrics.density * 100).toInt())
+        } catch (_: Throwable) {}
     }
 
-    override fun onPageCommitVisible(view: WebView?, url: String?) {
-        super.onPageCommitVisible(view, url)
-        applyOfficialHomeAssistantZoom(view)
+    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        Log.d("TickerDisplay/WebView", "Loading: $url")
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         Log.d("TickerDisplay/WebView", "Loaded: $url")
-        applyOfficialHomeAssistantZoom(view)
-        view?.postDelayed({ applyOfficialHomeAssistantZoom(view) }, 500)
-        view?.postDelayed({ applyOfficialHomeAssistantZoom(view) }, 1500)
+        applyOfficialHaAppZoom(view)
         onPageLoaded?.invoke()
     }
 
@@ -1300,8 +1242,9 @@ class TickerWebViewClient(private val prefs: Prefs) : WebViewClient() {
     }
 
     override fun shouldOverrideUrlLoading(view: WebView?, req: WebResourceRequest?): Boolean {
+        // Let the WebView handle normal HTTP(S) navigation exactly like the HA app browser.
         val url = req?.url?.toString() ?: return false
-        return !(url.startsWith(prefs.haUrl) || url.startsWith("http://") || url.startsWith("https://"))
+        return !(url.startsWith("http://") || url.startsWith("https://"))
     }
 }
 
