@@ -1,5 +1,17 @@
 # Ticker Display for Home Assistant
 
+**Important notice / Wichtiger Hinweis**
+This version is no longer maintained or actively developed.
+Diese Version wird nicht mehr gepflegt und nicht mehr aktiv weiterentwickelt.
+
+A new version is available here:
+Eine neue Version ist hier verfügbar:
+
+Repository:
+https://github.com/richieam93/ha_android_kiosk
+
+
+
 **Deutsch / English README**
 
 Ticker Display ist eine Kombination aus einer **Home-Assistant-Custom-Integration** und einer **Android-Kiosk-App**. Das Projekt verwandelt Android-Geräte wie Tablets oder alte Smartphones in flexible Smart-Home-Displays mit Dashboards, Tickern, Alarmen, Mediensteuerung, Kameras, Wetter, Status-Boards und mehr.
